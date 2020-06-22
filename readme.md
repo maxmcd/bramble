@@ -59,3 +59,55 @@ print(random.string)
 # loads the file random.bramble
 random = load("github.com/maxmcd/brambles", "random")
 ```
+
+TODO
+
+
+# Derivation
+
+<!-- derivation {
+  name = "simple";
+  builder = "${bash}/bin/bash";
+  args = [ ./simple_builder.sh ];
+  inherit gcc coreutils;
+  src = ./simple.c;
+  system = builtins.currentSystem;
+} -->
+```python
+bash, gcc, coreutils = load("core", ["bash", "gcc", "coreutils"])
+
+build(
+    name = "simple",
+    builder = "{bash}/bin/bash".format(bash) or bash+"/bin/bash",
+    args = "./builder.sh",
+    include = [gcc, coreutils],
+    src = "./simple.c",
+)
+```
+
+
+```python
+
+
+
+
+build = load("build")
+
+ruby = load("languages/ruby")
+
+build(
+    runtimeDependencies = [ruby],
+    build =
+)
+
+
+def build_script(env):
+    files = env.fetch_url(url="", hash="asd")
+
+    env.script("""
+    mv {files} ./
+    cargo build ./
+    """.format(files))
+
+
+```
