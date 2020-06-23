@@ -1,45 +1,66 @@
 package bramble
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
+	"encoding/base32"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
 
 func Run() (err error) {
-	client := NewClient()
+
+	client, err := NewClient()
+	if err != nil {
+		return err
+	}
 	return client.Run(os.Args[1])
 }
 
 type Client struct {
-	builds map[string]Build
-	thread *starlark.Thread
+	bramblePath string
+	builds      map[string]Derivation
+	thread      *starlark.Thread
 }
 
-func NewClient() *Client {
-	return &Client{
-		builds: make(map[string]Build),
-		thread: &starlark.Thread{Name: "main"},
+func NewClient() (*Client, error) {
+	bramblePath := os.Getenv("BRAMBLE_PATH")
+	if bramblePath == "" {
+		return nil, errors.New("environment variable BRAMBLE_PATH must be populated")
 	}
+	if !filepath.IsAbs(bramblePath) {
+		return nil, errors.Errorf("bramble path %s must be absolute", bramblePath)
+	}
+	return &Client{
+		bramblePath: bramblePath,
+		builds:      make(map[string]Derivation),
+		thread:      &starlark.Thread{Name: "main"},
+	}, nil
 }
 
 func (c *Client) Run(file string) (err error) {
 	globals, err := starlark.ExecFile(c.thread, file, nil, starlark.StringDict{
-		"load":  starlark.NewBuiltin("load", c.StarlarkLoad),
-		"build": starlark.NewBuiltin("build", c.StarlarkBuild),
+		"load":       starlark.NewBuiltin("load", c.StarlarkLoad),
+		"derivation": starlark.NewBuiltin("derivation", c.StarlarkDerivation),
 	})
 	fmt.Println(globals)
 	if err != nil {
 		return
 	}
 	for _, build := range c.builds {
+		if err := build.MakeDerivation(); err != nil {
+			return err
+		}
 		if err := build.Build(); err != nil {
 			return err
 		}
@@ -51,7 +72,7 @@ func (c *Client) StarlarkLoad(thread *starlark.Thread, fn *starlark.Builtin, arg
 	return
 }
 
-type Build struct {
+type Derivation struct {
 	Name        string
 	Outputs     []Output
 	Builder     string
@@ -60,11 +81,32 @@ type Build struct {
 	Environment map[string]string
 }
 
-func (b Build) Build() (err error) {
-	tempDir, err := ioutil.TempDir("", "")
+func (b Derivation) MakeDerivation() (err error) {
+	jsonBytes, err := json.Marshal(b)
 	if err != nil {
 		return err
 	}
+	// https://nixos.org/nixos/nix-pills/nix-store-paths.html
+	fileHash := sha256.New()
+	_, _ = fileHash.Write(jsonBytes)
+
+	namePlusContentHash := sha256.New()
+	_, _ = namePlusContentHash.Write([]byte(fmt.Sprintf("%x:%s", fileHash.Sum(nil), b.Name)))
+	var buf bytes.Buffer
+	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(namePlusContentHash.Sum(nil)[:20])
+	// Finally the comments tell us to compute the base-32 representation of the
+	// first 160 bits (truncation) of a sha256 of the above string:
+
+	fmt.Println(string(jsonBytes), strings.ToLower(buf.String()))
+	return nil
+}
+
+func (b Derivation) Build() (err error) {
+	tempDir, err := ioutil.TempDir("", "bramble")
+	if err != nil {
+		return err
+	}
+	fmt.Println(tempDir)
 	if b.Builder == "fetch_url" {
 		url, ok := b.Environment["url"]
 		if !ok {
@@ -76,18 +118,15 @@ func (b Build) Build() (err error) {
 		}
 		defer resp.Body.Close()
 		fmt.Println("downloading")
-		f, err := os.Create(filepath.Join(tempDir, filepath.Base(url)))
+
+		hash := sha256.New()
+		tee := io.TeeReader(resp.Body, hash)
+		gzReader, err := gzip.NewReader(tee)
+		// xzReader, err := xz.NewReader(tee)
 		if err != nil {
 			return err
 		}
-		hash := sha256.New()
-		tee := io.TeeReader(resp.Body, hash)
-		if _, err := io.Copy(f, tee); err != nil {
-			return err
-		}
-		if fmt.Sprintf("%x", hash.Sum(nil)) != b.Environment["hash"] {
-			return errors.New("hash mismatch")
-		}
+		return Untar(gzReader, tempDir)
 	}
 	return nil
 }
@@ -109,10 +148,12 @@ func (te typeError) Error() string {
 	return fmt.Sprintf("%s() keyword argument '%s' must be of type '%s'", te.funcName, te.argument, te.wantedType)
 }
 
-func newBuildFromKWArgs(kwargs []starlark.Tuple) (build Build, err error) {
+func newDerivationFromKWArgs(kwargs []starlark.Tuple) (build Derivation, err error) {
 	te := typeError{
 		funcName: "build",
 	}
+	// TODO: move beyond hardcoded default
+	build.Outputs = []Output{{Name: "out"}}
 	for _, kwarg := range kwargs {
 		key := kwarg.Index(0).(starlark.String).GoString()
 		value := kwarg.Index(1)
@@ -180,11 +221,11 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 	return
 }
 
-func (c *Client) StarlarkBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
-	build, err := newBuildFromKWArgs(kwargs)
+	build, err := newDerivationFromKWArgs(kwargs)
 	if err != nil {
 		return nil, err
 	}

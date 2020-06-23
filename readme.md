@@ -11,7 +11,7 @@ A nix-style build system that:
 
 # Content addressability
 
-https://www.reddit.com/r/NixOS/comments/9rriwn/how_will_making_nixpkgs_content_addressable_make/
+ https://www.reddit.com/r/NixOS/comments/9rriwn/how_will_making_nixpkgs_content_addressable_make/
 https://www.youtube.com/watch?v=8M6yvJC00J4&feature=youtu.be&t=782
 
 
@@ -157,3 +157,22 @@ def build_script(env):
 
 
 ```
+
+
+## Parsing a derivation
+
+1. Which build are we building in the file? All? A subset?
+2. Parse the file, find the builds we want to run and find the imports related to them.
+3. If the file has no dependencies then generate a json drv with a name that is a hash of its contents (without output).
+4. Check the drv cache, do we have the result of this drv?
+5. If we have dependencies then download them (or visit them on the filesystem). Crawl those downloaded dependencies recursively until we have every drv and content resulting from a drv.
+6. Create the json output for that drv with all of its source drv's and now build the new output.
+
+
+
+# Bootstrapping
+
+https://bellard.org/tcc/
+
+https://guix.gnu.org/blog/2019/guix-reduces-bootstrap-seed-by-50/
+https://guix.gnu.org/blog/2020/guix-further-reduces-bootstrap-seed-to-25/
