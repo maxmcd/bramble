@@ -9,6 +9,52 @@ A nix-style build system that:
  - uses starlark as a build language
  - maybe uses GOPATH style resource caching
 
+# Content addressability
+
+https://www.reddit.com/r/NixOS/comments/9rriwn/how_will_making_nixpkgs_content_addressable_make/
+https://www.youtube.com/watch?v=8M6yvJC00J4&feature=youtu.be&t=782
+
+
+# Notes
+
+Source of mkDerivation: https://github.com/NixOS/nixpkgs/blob/master/pkgs/stdenv/generic/make-derivation.nix
+
+Derivation with multiple outputs:
+
+```
+cat /nix/store/y4hp8gli1r1xw391lrijdvkch83sbk48-clang-10.0.0.drv | pretty-derivation
+  { outputs =
+      fromList
+        [ ( "lib"
+          , DerivationOutput
+              { path =
+                  FilePath
+                    "/nix/store/6gv3x5xxg00lg500li9mcb4wymr39n7a-clang-10.0.0-lib"
+              , hashAlgo = ""
+              , hash = ""
+              }
+          )
+        , ( "out"
+          , DerivationOutput
+              { path =
+                  FilePath "/nix/store/ys8r7d24s03sz2yxj0989ahv0pdxyx86-clang-10.0.0"
+              , hashAlgo = ""
+              , hash = ""
+              }
+          )
+        , ( "python"
+          , DerivationOutput
+              { path =
+                  FilePath
+                    "/nix/store/633jidi6yymhim9ggssrvvxf03rc3q2z-clang-10.0.0-python"
+              , hashAlgo = ""
+              , hash = ""
+              }
+          )
+        ]
+```
+
+And source: https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/compilers/llvm/7/clang/default.nix
 
 # Imports and dependencies
 

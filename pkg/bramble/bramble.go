@@ -1,37 +1,53 @@
 package bramble
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
+	"path/filepath"
 
-	"github.com/maxmcd/tester"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
 
 func Run() (err error) {
-	thread := &starlark.Thread{Name: ""}
-	globals, err := starlark.ExecFile(thread, os.Args[1], nil, starlark.StringDict{
-		"load":  starlark.NewBuiltin("load", StarlarkLoad),
-		"build": starlark.NewBuiltin("build", StarlarkBuild),
+	client := NewClient()
+	return client.Run(os.Args[1])
+}
+
+type Client struct {
+	builds map[string]Build
+	thread *starlark.Thread
+}
+
+func NewClient() *Client {
+	return &Client{
+		builds: make(map[string]Build),
+		thread: &starlark.Thread{Name: "main"},
+	}
+}
+
+func (c *Client) Run(file string) (err error) {
+	globals, err := starlark.ExecFile(c.thread, file, nil, starlark.StringDict{
+		"load":  starlark.NewBuiltin("load", c.StarlarkLoad),
+		"build": starlark.NewBuiltin("build", c.StarlarkBuild),
 	})
+	fmt.Println(globals)
 	if err != nil {
 		return
 	}
-	fmt.Println(globals)
+	for _, build := range c.builds {
+		if err := build.Build(); err != nil {
+			return err
+		}
+	}
 	return
-	// main := globals["main"]
-	// _, err = starlark.Call(thread, main, starlark.Tuple{}, nil)
-	// if err != nil {
-	// 	if er, ok := err.(*starlark.EvalError); ok {
-	// 		fmt.Println(er.Backtrace())
-	// 	}
-	// 	return
-	// }
-	// return
 }
 
-func StarlarkLoad(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (c *Client) StarlarkLoad(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	return
 }
 
@@ -42,6 +58,38 @@ type Build struct {
 	Platform    string
 	Args        []string
 	Environment map[string]string
+}
+
+func (b Build) Build() (err error) {
+	tempDir, err := ioutil.TempDir("", "")
+	if err != nil {
+		return err
+	}
+	if b.Builder == "fetch_url" {
+		url, ok := b.Environment["url"]
+		if !ok {
+			return errors.New("fetch_url requires the environment variable 'url' to be set")
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		fmt.Println("downloading")
+		f, err := os.Create(filepath.Join(tempDir, filepath.Base(url)))
+		if err != nil {
+			return err
+		}
+		hash := sha256.New()
+		tee := io.TeeReader(resp.Body, hash)
+		if _, err := io.Copy(f, tee); err != nil {
+			return err
+		}
+		if fmt.Sprintf("%x", hash.Sum(nil)) != b.Environment["hash"] {
+			return errors.New("hash mismatch")
+		}
+	}
+	return nil
 }
 
 type Output struct {
@@ -119,12 +167,12 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 		value := item.Index(1)
 		ks, ok := key.(starlark.String)
 		if !ok {
-			err = errors.Errorf("%s %s expects a dictionary of strings, but got value %s", function, param, key.String())
+			err = errors.Errorf("%s %s expects a dictionary of strings, but got value '%s'", function, param, key.String())
 			return
 		}
 		vs, ok := value.(starlark.String)
 		if !ok {
-			err = errors.Errorf("%s %s expects a dictionary of strings, but got value %s", function, param, value.String())
+			err = errors.Errorf("%s %s expects a dictionary of strings, but got value '%s'", function, param, value.String())
 			return
 		}
 		out[ks.GoString()] = vs.GoString()
@@ -132,7 +180,7 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 	return
 }
 
-func StarlarkBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (c *Client) StarlarkBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
@@ -140,6 +188,7 @@ func StarlarkBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.
 	if err != nil {
 		return nil, err
 	}
-	tester.Print(build)
+	c.builds[build.Name] = build
+	// TODO: return build as value
 	return starlark.None, nil
 }
