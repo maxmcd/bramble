@@ -12,9 +12,8 @@
 #     """,
 # )
 
-
-derivation(
-    name="bootstrap-tools",
+hermes_seed = derivation(
+    name="hermes-seed",
     builder="fetch_url",
     environment={
         "decompress": "true",

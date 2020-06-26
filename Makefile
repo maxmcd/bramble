@@ -3,5 +3,8 @@
 export BRAMBLE_PATH=$(shell pwd)/brambles
 
 
-bootstrap_run:
-	go run main.go bootstrap-tools.bramble.py
+seed_run:
+	go run main.go hermes-seed.bramble.py
+
+simple_run:
+	go run main.go ./simple/simple.bramble.py
