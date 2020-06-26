@@ -18,8 +18,11 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func Run() (err error) {
+var (
+	TempDirPrefix = "bramble-"
+)
 
+func Run() (err error) {
 	client, err := NewClient()
 	if err != nil {
 		return err
@@ -41,11 +44,16 @@ func NewClient() (*Client, error) {
 	if !filepath.IsAbs(bramblePath) {
 		return nil, errors.Errorf("bramble path %s must be absolute", bramblePath)
 	}
+	// TODO: check that the store directory structure is accurate and mkdirs if needed
 	return &Client{
 		bramblePath: bramblePath,
 		builds:      make(map[string]Derivation),
 		thread:      &starlark.Thread{Name: "main"},
 	}, nil
+}
+
+func storePath() string {
+	return filepath.Join(os.Getenv("BRAMBLE_PATH"), "./store")
 }
 
 func (c *Client) Run(file string) (err error) {
@@ -97,22 +105,63 @@ func (b Derivation) MakeDerivation() (err error) {
 	// Finally the comments tell us to compute the base-32 representation of the
 	// first 160 bits (truncation) of a sha256 of the above string:
 
-	fmt.Println(string(jsonBytes), strings.ToLower(buf.String()))
+	fileLocation := filepath.Join(storePath(), strings.ToLower(buf.String())+"-"+b.Name+".drv")
+	// TODO: more cache checking here
+	_, doesnotExistErr := os.Stat(fileLocation)
+	if doesnotExistErr != nil {
+		return ioutil.WriteFile(fileLocation, jsonBytes, 0444)
+	}
 	return nil
 }
 
+func (b Derivation) createTempDir() (tempDir string, err error) {
+	tempDir, err = ioutil.TempDir("", TempDirPrefix)
+	if err != nil {
+		return
+	}
+	// TODO: create output folders and environment variables for other outputs
+	err = os.MkdirAll(filepath.Join(tempDir, "out"), os.ModePerm)
+	return
+}
+
+func hashDir(location string) (hash string, err error) {
+	shaHash := sha256.New()
+	location = filepath.Clean(location) + "/" // use the extra / to make the paths relative
+
+	// filepath.Walk orders files in lexical order, so this will be deterministic
+	if err = filepath.Walk(location, func(path string, info os.FileInfo, err error) error {
+		relativePath := strings.Replace(path, location, "", -1)
+		_, _ = shaHash.Write([]byte(relativePath))
+		f, err := os.Open(path)
+		if err != nil {
+			// we already know this file exists, likely just a symlink that points nowhere
+			fmt.Println(path, err)
+			return nil
+		}
+		_, _ = io.Copy(shaHash, f)
+		f.Close()
+		return nil
+	}); err != nil {
+		return
+	}
+	var buf bytes.Buffer
+	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(shaHash.Sum(nil)[:20])
+	return buf.String(), nil
+}
+
 func (b Derivation) Build() (err error) {
-	tempDir, err := ioutil.TempDir("", "bramble")
+	tempDir, err := b.createTempDir()
+	outPath := filepath.Join(tempDir, "out")
 	if err != nil {
 		return err
 	}
-	fmt.Println(tempDir)
 	if b.Builder == "fetch_url" {
 		url, ok := b.Environment["url"]
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
 		}
-		resp, err := http.Get(url)
+		var resp *http.Response
+		resp, err = http.Get(url)
 		if err != nil {
 			return err
 		}
@@ -121,14 +170,24 @@ func (b Derivation) Build() (err error) {
 
 		hash := sha256.New()
 		tee := io.TeeReader(resp.Body, hash)
-		gzReader, err := gzip.NewReader(tee)
+
+		var gzReader io.ReadCloser
+		gzReader, err = gzip.NewReader(tee)
 		// xzReader, err := xz.NewReader(tee)
 		if err != nil {
 			return err
 		}
-		return Untar(gzReader, tempDir)
+		defer gzReader.Close()
+		if err = Untar(gzReader, outPath); err != nil {
+			return
+		}
 	}
-	return nil
+
+	hashString, err := hashDir(outPath)
+	if err != nil {
+		return err
+	}
+	return os.Rename(outPath, storePath()+"/"+hashString+"-"+b.Name)
 }
 
 type Output struct {
