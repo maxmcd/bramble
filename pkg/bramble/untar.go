@@ -27,6 +27,7 @@ func Untar(r io.Reader, dir string) error {
 }
 
 func untar(r io.Reader, dir string) (err error) {
+	// for help https://github.com/mholt/archiver/blob/master/tar.go
 	t0 := time.Now()
 	nFiles := 0
 	madeDir := map[string]bool{}
@@ -40,7 +41,6 @@ func untar(r io.Reader, dir string) (err error) {
 	}()
 	tr := tar.NewReader(r)
 	loggedChtimesError := false
-
 	for {
 		f, err := tr.Next()
 		if err == io.EOF {
@@ -58,8 +58,18 @@ func untar(r io.Reader, dir string) (err error) {
 
 		fi := f.FileInfo()
 		mode := fi.Mode()
+
 		switch {
+		case f.Typeflag == tar.TypeSymlink:
+			if err := os.Symlink(f.Linkname, abs); err != nil {
+				return err
+			}
+		case f.Typeflag == tar.TypeLink:
+			if err := os.Symlink(filepath.Join(dir, f.Linkname), abs); err != nil {
+				return err
+			}
 		case mode.IsRegular():
+
 			// Make the directory. This is redundant because it should
 			// already be made by a directory entry in the tar
 			// beforehand. Thus, don't check for errors; the next
@@ -106,19 +116,15 @@ func untar(r io.Reader, dir string) (err error) {
 			}
 			nFiles++
 		case mode.IsDir():
-
 			if err := os.MkdirAll(abs, 0755); err != nil {
 				return err
 			}
 			madeDir[abs] = true
-		case f.Typeflag == tar.TypeSymlink:
-			if err := os.Symlink(f.Linkname, abs); err != nil {
-				return err
-			}
 		default:
 			return fmt.Errorf("tar file entry %s contained unsupported file type %v", f.Name, mode)
 		}
 	}
+
 	return nil
 }
 

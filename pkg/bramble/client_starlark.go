@@ -23,6 +23,7 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 	}
 	drv = &Derivation{
 		Outputs: map[string]Output{"out": {}},
+		client:  c,
 	}
 	for _, kwarg := range kwargs {
 		key := kwarg.Index(0).(starlark.String).GoString()
@@ -64,7 +65,10 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 			return
 		}
 	}
-	c.log.Debug(fmt.Sprintf("%#v", drv))
+	if err = drv.AssembleSources(c.scriptLocation.Peek()); err != nil {
+		return
+	}
+	c.log.Debug("Assembled derivation: ", drv.PrettyJson())
 	return drv, nil
 }
 

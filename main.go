@@ -13,6 +13,8 @@ func main() {
 		valueErr, ok := err.(*starlark.EvalError)
 		if ok {
 			fmt.Println(valueErr.Backtrace())
+		} else {
+			fmt.Println(err)
 		}
 		os.Exit(1)
 	}

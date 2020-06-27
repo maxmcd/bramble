@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -40,6 +41,11 @@ func (drv *Derivation) Type() string          { return "Derivation" }
 func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Hash() (uint32, error) { return 0, nil }
+
+func (drv *Derivation) PrettyJson() string {
+	b, _ := json.MarshalIndent(drv, "", "  ")
+	return string(b)
+}
 
 func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
 	defer file.Close()
@@ -100,6 +106,39 @@ func (drv *Derivation) CheckForExisting() (exists bool, err error) {
 	}
 	drv.Outputs = existingDrv.Outputs
 	return true, nil
+}
+
+func (drv *Derivation) AssembleSources(directory string) (err error) {
+	if len(drv.Sources) == 0 {
+		return nil
+	}
+	sources := drv.Sources
+	drv.Sources = []string{}
+	absDir, err := filepath.Abs(directory)
+	if err != nil {
+		return err
+	}
+	// get absolute paths for all sources
+	for i, src := range sources {
+		sources[i] = filepath.Join(absDir, src)
+	}
+	tmpDir, err := ioutil.TempDir("", TempDirPrefix)
+	if err != nil {
+		return err
+	}
+	if err = CopyFiles(sources, tmpDir); err != nil {
+		return
+	}
+	hash := hashDir(tmpDir)
+	folderName := fmt.Sprintf("%s-source", hash)
+	if !Exists(drv.client.StorePath(folderName)) {
+		if err = os.Rename(tmpDir, drv.client.StorePath(folderName)); err != nil {
+			return
+		}
+	}
+	drv.Environment["src"] = folderName
+
+	return nil
 }
 
 func (drv *Derivation) WriteDerivation() (err error) {
@@ -169,7 +208,8 @@ func (drv *Derivation) Build() (err error) {
 			return err
 		}
 		defer resp.Body.Close()
-		fmt.Println("downloading")
+
+		drv.client.log.Debugf("Downloading url %s", url)
 
 		hash := sha256.New()
 		tee := io.TeeReader(resp.Body, hash)
@@ -184,6 +224,28 @@ func (drv *Derivation) Build() (err error) {
 		if err = Untar(gzReader, outPath); err != nil {
 			return
 		}
+	} else {
+		builderLocation := drv.client.StorePath(drv.Builder)
+		// TODO: validate this before build?
+		if _, err := os.Stat(builderLocation); err != nil {
+			return err
+		}
+		drv.Args[0] = drv.client.StorePath(drv.Environment["src"] + "/simple_builder.sh")
+		cmd := exec.Command(builderLocation, drv.Args...)
+		cmd.Dir = tempDir
+		cmd.Env = []string{}
+		for k, v := range drv.Environment {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "BRAMBLE_PATH", drv.client.bramblePath))
+		// cmd.Stdout = os.Stdout
+		// cmd.Stderr = os.Stderr
+		b, err := cmd.CombinedOutput()
+		fmt.Println(string(b))
+		if err != nil {
+			return err
+		}
 	}
 
 	hashString := hashDir(outPath)
@@ -192,6 +254,7 @@ func (drv *Derivation) Build() (err error) {
 
 	newPath := drv.client.StorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
+	drv.client.log.Debug("Output at ", newPath)
 	if doesnotExistErr != nil {
 		return os.Rename(outPath, newPath)
 	}

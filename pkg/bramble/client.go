@@ -69,8 +69,6 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 		return
 	}
 	for _, drv := range c.derivations {
-		drv.client = c
-
 		var exists bool
 		exists, err = drv.CheckForExisting()
 		if err != nil {
