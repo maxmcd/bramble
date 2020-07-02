@@ -199,18 +199,26 @@ func ReadyByFrame(frameSize int, reader io.Reader, p func(b []byte) error) io.Re
 	}
 }
 
-func CopyWithFrames(dst io.Writer, src io.Reader, frameSize int, transform func(b []byte) error) (written int64, err error) {
-	size := 15 // The default from io/io.go.
-	buf := make([]byte, size)
-
-	// frameIndex := 0
+func CopyWithFrames(dst io.Writer, src io.Reader, buf []byte, frameSize int, transform func(b []byte) error) (written int64, err error) {
+	if buf == nil {
+		size := 32 * 1024 // The default from io/io.go.
+		buf = make([]byte, size)
+	}
 	for {
-		nr, er := src.Read(buf)
+		nr, er := src.Read(buf[frameSize:])
 		if nr > 0 {
-			if err = transform(buf); err != nil {
+			toTransform := buf
+			if written == 0 {
+				toTransform = buf[frameSize:]
+			}
+			if err = transform(toTransform); err != nil {
 				return
 			}
-			nw, ew := dst.Write(buf[0:nr])
+			toWrite := buf[:nr]
+			if written == 0 {
+				toWrite = buf[frameSize:nr]
+			}
+			nw, ew := dst.Write(toWrite)
 			if nw > 0 {
 				written += int64(nw)
 			}
@@ -218,18 +226,25 @@ func CopyWithFrames(dst io.Writer, src io.Reader, frameSize int, transform func(
 				err = ew
 				break
 			}
-			if nr != nw {
+			if nr != nw && written != int64(nw) {
 				err = io.ErrShortWrite
 				break
+			}
+			if n := copy(buf[:frameSize], buf[nr:nr+frameSize]); n != frameSize {
+				panic(frameSize)
 			}
 		}
 		if er != nil {
 			if er != io.EOF {
 				err = er
 			}
+			nw, ew := dst.Write(buf[:frameSize])
+			if ew != nil {
+				err = ew
+			}
+			written += int64(nw)
 			break
 		}
-		// frameIndex = frameSize
 	}
 	return
 }

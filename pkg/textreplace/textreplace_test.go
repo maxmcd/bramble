@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	radix "github.com/hashicorp/go-immutable-radix"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMatch(t *testing.T) {
@@ -36,30 +37,26 @@ func TestFrameReader(t *testing.T) {
 
 	out := bytes.Buffer{}
 
-	_, _ = CopyWithFrames(&out, source, 5, func(b []byte) error {
-		fmt.Println(string(b))
+	_, _ = CopyWithFrames(&out, source, make([]byte, 15), 5, func(b []byte) error {
+		fmt.Println(string(b), b)
 		copy(b, bytes.Replace(b, []byte("dolor"), []byte("fishy"), -1))
 		return nil
 	})
-	if !bytes.Equal(out.Bytes(), expectedAnswer) {
-		fmt.Println(out.String())
-		fmt.Println(string(expectedAnswer))
-		t.Error("bytes should be fishy but they're not")
-	}
 
+	assert.Equal(t, out.Bytes(), expectedAnswer)
 }
 
-func TestOverlap(t *testing.T) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-	prefixToReplace := "/tmp/wings/"
+// func TestOverlap(t *testing.T) {
+// 	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+// 	prefixToReplace := "/tmp/wings/"
 
-	r := NewReplacer(input, []byte(prefixToReplace), GenerateUninterruptedCorpus(input, 100))
+// 	r := NewReplacer(input, []byte(prefixToReplace), GenerateUninterruptedCorpus(input, 100))
 
-	_, _ = ioutil.ReadAll(r)
-	if r.replacements != 100 {
-		t.Error("got", r.replacements, "replacements, wanted", 100)
-	}
-}
+// 	_, _ = ioutil.ReadAll(r)
+// 	if r.replacements != 100 {
+// 		t.Error("got", r.replacements, "replacements, wanted", 100)
+// 	}
+// }
 
 func TestGen(t *testing.T) {
 	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
@@ -108,10 +105,10 @@ func BenchmarkFrameReader(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
-		r := ReadyByFrame(200, corpus, func(b []byte) error {
+		var buf bytes.Buffer
+		_, _ = CopyWithFrames(&buf, corpus, nil, 100, func(b []byte) error {
 			return nil
 		})
-		_, _ = ioutil.ReadAll(r)
 	}
 }
 func BenchmarkJustStream(b *testing.B) {
