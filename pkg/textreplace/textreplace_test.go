@@ -2,34 +2,61 @@ package textreplace
 
 import (
 	"bytes"
-	"fmt"
+	"crypto/rand"
+	"io"
 	"io/ioutil"
 	"testing"
 
-	radix "github.com/hashicorp/go-immutable-radix"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMatch(t *testing.T) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-	//solution := [][]byte{[]byte("/nix/store/sadfasdfasdfasdfasdfasdfasdf-foo.drv")}
-
-	prefixToReplace := "/tmp/wings/"
-
-	r := NewReplacer(input, []byte(prefixToReplace), GenerateRandomCorpus(input))
-	fmt.Println(r.NextValue([]byte("/nix")))
-	fmt.Println(r.NextValue([]byte("y")))
-	fmt.Println(r.tree.Root().Maximum())
-	fmt.Println(r.NextValue([]byte("y")))
-
-	b, _ := ioutil.ReadAll(r)
-	for _, in := range prepNixPaths(prefixToReplace, SomeRandomNixPaths) {
-		if !bytes.Contains(b, in) {
-			t.Errorf("bytes should contain %s but they do not", string(in))
-		}
-	}
+var SomeRandomNixPaths = []string{
+	"zzinxg9s1libj0k7gn7s4sl6zvvc2aja-libiec61883-1.2.0.tar.gz.drv",
+	"zziylsdvcqgwwwhbspf1agbz0vldxjr3-perl5.30.2-JSON-4.02",
+	"zzjsli12acp352n9i5db89hy5nnvfsdw-bcrypt-3.1.7.tar.gz.drv",
+	"zzl9m6p4qzczcyf4s73n8aczrdw2ws5r-libsodium-1.0.18.tar.gz.drv",
+	"zznqyjs1mz3i4ipg7cfjn0mki9ca9jvk-libxml2-2.9.10-bin",
+	"zzp24m9jbrlqjp1zqf5n3s95jq6fhiqy-python3.7-python3.7-pytest-runner-4.4.drv",
+	"zzsfwzjxvkvp3qmak8pwi05z99hihyng-curl-7.64.0.drv",
+	"zzw8bb3ihq0jwhmy1mvcf48c3k627xbs-ghc-8.6.5-binary.drv",
+	"zzxz9hl1zxana8f66jr7d7xkdhx066pm-xterm-353.drv",
+	"zzy2an4hplsl06dfl6dgik4zmn7vycvd-hscolour-1.24.4.drv",
 }
 
+func prepNixPaths(prefix string, v []string) (out [][]byte) {
+	for _, path := range v {
+		out = append(out, []byte(prefix+path))
+	}
+	return
+}
+
+func GenerateUninterruptedCorpus(values [][]byte, count int) io.Reader {
+	var buf bytes.Buffer
+	for i := 0; i < count; i++ {
+		_, _ = buf.Write(values[i%len(values)])
+	}
+	return bytes.NewReader(buf.Bytes())
+}
+
+func GenerateRandomCorpus(values [][]byte) io.Reader {
+	count := 50
+	chunks := count / (len(values))
+	valueIndex := 0
+	var buf bytes.Buffer
+	b := make([]byte, 1024)
+	for i := 0; i < count; i++ {
+		rand.Read(b)
+		if i%chunks == 0 {
+			valueLen := len(values[valueIndex])
+			// input can't be larger than the byte array
+			// will panic if input size is larger than the byte array
+			copy(b[0:valueLen], values[valueIndex])
+			valueIndex++
+		}
+		buf.Write(b)
+	}
+	return bytes.NewReader(buf.Bytes())
+}
 func TestFrameReader(t *testing.T) {
 	lorem := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam pharetra velit sit amet nibh vulputate imperdiet. Pellentesque hendrerit consequat metus.")
 	expectedAnswer := bytes.Replace(lorem, []byte("dolor"), []byte("fishy"), -1)
@@ -38,7 +65,6 @@ func TestFrameReader(t *testing.T) {
 	out := bytes.Buffer{}
 
 	_, _ = CopyWithFrames(&out, source, make([]byte, 15), 5, func(b []byte) error {
-		fmt.Println(string(b), b)
 		copy(b, bytes.Replace(b, []byte("dolor"), []byte("fishy"), -1))
 		return nil
 	})
@@ -46,17 +72,17 @@ func TestFrameReader(t *testing.T) {
 	assert.Equal(t, out.Bytes(), expectedAnswer)
 }
 
-// func TestOverlap(t *testing.T) {
-// 	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-// 	prefixToReplace := "/tmp/wings/"
-
-// 	r := NewReplacer(input, []byte(prefixToReplace), GenerateUninterruptedCorpus(input, 100))
-
-// 	_, _ = ioutil.ReadAll(r)
-// 	if r.replacements != 100 {
-// 		t.Error("got", r.replacements, "replacements, wanted", 100)
-// 	}
-// }
+func TestOverlap(t *testing.T) {
+	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	var buf bytes.Buffer
+	replacements, _, err := ReplaceStrings(values, []byte("/nix/store/"), []byte("/tmp/wings/"), GenerateUninterruptedCorpus(values, 100), &buf)
+	if err != nil {
+		t.Error(err)
+	}
+	if replacements != 100 {
+		t.Error("got", replacements, "replacements, wanted", 100)
+	}
+}
 
 func TestGen(t *testing.T) {
 	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
@@ -68,33 +94,6 @@ func TestGen(t *testing.T) {
 		if !bytes.Contains(b, in) {
 			t.Errorf("bytes should contain %s but they do not", string(in))
 		}
-	}
-}
-
-func TestRadix(t *testing.T) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-	tree := radix.New()
-	for _, in := range input {
-		tree, _, _ = tree.Insert(in, struct{}{})
-	}
-	tree.Root().WalkPrefix([]byte("/nix/store/zzi"), func(k []byte, _ interface{}) bool {
-		fmt.Println(string(k))
-		return false
-	})
-}
-
-func BenchmarkReplace(b *testing.B) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-	//solution := [][]byte{[]byte("/nix/store/sadfasdfasdfasdfasdfasdfasdf-foo.drv")}
-
-	prefixToReplace := "/tmp/wings/"
-
-	corpus := GenerateRandomCorpus(input)
-	r := NewReplacer(input, []byte(prefixToReplace), corpus)
-
-	for i := 0; i < b.N; i++ {
-		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
-		_, _ = ioutil.ReadAll(r)
 	}
 }
 
@@ -111,6 +110,24 @@ func BenchmarkFrameReader(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkReplace(b *testing.B) {
+	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+
+	corpus := GenerateRandomCorpus(values)
+
+	var buf bytes.Buffer
+	for i := 0; i < b.N; i++ {
+		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		_, _, _ = ReplaceStrings(
+			values,
+			[]byte("/nix/store/"),
+			[]byte("/tmp/wings/"),
+			corpus, &buf)
+		buf.Truncate(0)
+	}
+}
+
 func BenchmarkJustStream(b *testing.B) {
 	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
 
@@ -123,13 +140,17 @@ func BenchmarkJustStream(b *testing.B) {
 }
 
 func BenchmarkUninterruptedReplace(b *testing.B) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
-	prefixToReplace := "/tmp/wings/"
-	corpus := GenerateUninterruptedCorpus(input, 1000)
-	r := NewReplacer(input, []byte(prefixToReplace), corpus)
+	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	corpus := GenerateUninterruptedCorpus(values, 1000)
 
+	var buf bytes.Buffer
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
-		_, _ = ioutil.ReadAll(r)
+		_, _, _ = ReplaceStrings(
+			values,
+			[]byte("/nix/store/"),
+			[]byte("/tmp/wings/"),
+			corpus, &buf)
+		buf.Truncate(0)
 	}
 }
