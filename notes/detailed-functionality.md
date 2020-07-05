@@ -22,3 +22,6 @@ How do we know the origin of the files? If I have a derivation output can it fin
 nix heal could find content that doesn't hash correctly and report and rebuild it!! (this doesn't work without full source tracking, which we don't have)
 
 should track the derivations source file, can find everything from there. (and all parent derivations??) this is tough with local builds though, do we track the file in the nix store? I think we ignore how the drv got there for now
+
+
+
