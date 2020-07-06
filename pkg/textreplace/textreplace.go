@@ -5,8 +5,10 @@ import (
 	"io"
 )
 
-func ReplaceStrings(values [][]byte, old []byte, new []byte,
-	source io.Reader, output io.Writer) (
+// ReplaceStringsPrefix replaces the prefix of matching strings in a byte
+// stream. All values to be replaced must have the same prefix and that
+// prefix must be the same length as the new value.
+func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, old []byte, new []byte) (
 	replacements int, matches map[string]struct{}, err error) {
 	longestValueLength := 0
 	for _, in := range values {
@@ -29,7 +31,7 @@ func ReplaceStrings(values [][]byte, old []byte, new []byte,
 				if len(input) > len(b[j:]) {
 					continue
 				}
-				if bytes.Equal(b[j:j+len(input)], input) {
+				if bytes.Equal(b[j:j+len(input)], []byte(input)) {
 					matches[string(input)] = struct{}{}
 					replacements++
 					copy(b[j:j+len(old)], new)
@@ -43,8 +45,11 @@ func ReplaceStrings(values [][]byte, old []byte, new []byte,
 	return
 }
 
-func CopyWithFrames(dst io.Writer, src io.Reader,
-	buf []byte, frameSize int, transform func(b []byte) error) (
+// CopyWithFrames copies data between two sources. As data is copied it is
+// loaded into a byte buffer that overlaps with the previous buffer. This
+// ensures that bytes of a certain width will not be split over the boundary
+// of a frame.
+func CopyWithFrames(dst io.Writer, src io.Reader, buf []byte, frameSize int, transform func(b []byte) error) (
 	written int64, err error) {
 	if buf == nil {
 		size := 32 * 1024 // The default from io/io.go.

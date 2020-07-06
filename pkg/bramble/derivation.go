@@ -42,7 +42,7 @@ func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Hash() (uint32, error) { return 0, nil }
 
-func (drv *Derivation) PrettyJson() string {
+func (drv *Derivation) PrettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
