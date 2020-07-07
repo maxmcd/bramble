@@ -10,12 +10,11 @@ import (
 )
 
 var (
+	// TODO: improve and document these error messages
 
-	// TODO: improve this error message
-	ErrPathTooLong        = errors.New("calculated path is too long")
 	ErrStoreDoesNotExist  = errors.New("calculated store path doesn't exist, did the location change?")
 	PathPaddingCharacters = "bramble_store_padding"
-	PaddingLength         = 512
+	PaddingLength         = 50
 )
 
 func ensureBramblePath() (bramblePath, storePath string, err error) {
@@ -28,6 +27,10 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 			return
 		}
 		bramblePath = filepath.Join(home, "bramble")
+	}
+	if !filepath.IsAbs(bramblePath) {
+		err = errors.Errorf("bramble path %s must be absolute", bramblePath)
+		return
 	}
 
 	if _, err = os.Stat(bramblePath); err != nil {
@@ -44,7 +47,7 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 	}
 
 	var storeDirectoryName string
-	storeDirectoryName, err = calculatePaddedDirectoryName(bramblePath, 512)
+	storeDirectoryName, err = calculatePaddedDirectoryName(bramblePath, PaddingLength)
 	if err != nil {
 		return
 	}
@@ -71,13 +74,17 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 }
 
 func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeDirectoryName string, err error) {
+	fmt.Println(bramblePath, paddingLength)
 	paddingLen := paddingLength -
 		len(bramblePath) - // parent folder lengths
 		1 - // slash before directory
 		1 // slash after the directory
 
 	if paddingLen <= 0 {
-		return "", ErrPathTooLong
+		return "", errors.Errorf(
+			"Bramble location creates a path that is too long. "+
+				"Location '%s' is too long to create a directory less than %d in length",
+			bramblePath, paddingLen)
 	}
 
 	paddingSize := len(PathPaddingCharacters)

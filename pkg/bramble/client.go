@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.starlark.net/starlark"
 )
@@ -13,6 +12,7 @@ import (
 // Client is the bramble client. $BRAMBLE_PATH must be set to an absolute path when initializing
 type Client struct {
 	bramblePath string
+	storePath   string
 	derivations map[string]*Derivation
 	thread      *starlark.Thread
 
@@ -21,17 +21,15 @@ type Client struct {
 }
 
 func NewClient() (*Client, error) {
-	bramblePath := os.Getenv("BRAMBLE_PATH")
-	if bramblePath == "" {
-		return nil, errors.New("environment variable BRAMBLE_PATH must be populated")
-	}
-	if !filepath.IsAbs(bramblePath) {
-		return nil, errors.Errorf("bramble path %s must be absolute", bramblePath)
+	bramblePath, storePath, err := ensureBramblePath()
+	if err != nil {
+		return nil, err
 	}
 	// TODO: check that the store directory structure is accurate and make directories if needed
 	c := &Client{
 		log:         logrus.New(),
 		bramblePath: bramblePath,
+		storePath:   storePath,
 		derivations: make(map[string]*Derivation),
 	}
 	// c.log.SetReportCaller(true)
@@ -42,7 +40,7 @@ func NewClient() (*Client, error) {
 }
 
 func (c *Client) StorePath(v ...string) string {
-	return filepath.Join(append([]string{c.bramblePath, "./store"}, v...)...)
+	return filepath.Join(append([]string{c.storePath}, v...)...)
 }
 
 func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {

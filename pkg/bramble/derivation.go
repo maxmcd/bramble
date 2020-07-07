@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,23 +48,14 @@ func (drv *Derivation) PrettyJSON() string {
 
 func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
 	defer file.Close()
-	hash := sha256.New()
-	if _, err = hash.Write([]byte(name)); err != nil {
+	hasher := NewHasher()
+	if _, err = hasher.Write([]byte(name)); err != nil {
 		return
 	}
-	if _, err = io.Copy(hash, file); err != nil {
+	if _, err = io.Copy(hasher, file); err != nil {
 		return
 	}
-	var buf bytes.Buffer
-	// https://nixos.org/nixos/nix-pills/nix-store-paths.html
-	// Finally the comments tell us to compute the base-32 representation of the
-	// first 160 bits (truncation) of a sha256 of the above string:
-	if _, err = base32.NewEncoder(base32.StdEncoding, &buf).Write(hash.Sum(nil)[:20]); err != nil {
-		return
-	}
-
-	fileHash = strings.ToLower(buf.String())
-	filename = fmt.Sprintf("%s-%s", fileHash, name)
+	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
 	return
 }
 
@@ -155,18 +145,25 @@ func (drv *Derivation) WriteDerivation() (err error) {
 }
 
 func (drv *Derivation) createTempDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir("", TempDirPrefix)
-	if err != nil {
-		return
-	}
-	// TODO: create output folders and environment variables for other outputs
-	err = os.MkdirAll(filepath.Join(tempDir, "out"), os.ModePerm)
-	return
+	return ioutil.TempDir("", TempDirPrefix)
+}
+
+func (drv *Derivation) computeOutPath() (outPath string, err error) {
+	_, filename, err := drv.ComputeDerivation()
+
+	return filepath.Join(
+		drv.client.storePath,
+		strings.TrimSuffix(filename, ".drv"),
+	), err
 }
 
 func hashDir(location string) (hash string) {
-	shaHash := sha256.New()
+	hasher := NewHasher()
 	location = filepath.Clean(location) + "/" // use the extra / to make the paths relative
+
+	// TODO: this is incomplete, ensure you cover the bits that NAR has
+	// determined are important
+	// https://gist.github.com/jbeda/5c79d2b1434f0018d693
 
 	// TODO: handle common errors like "missing location"
 	// likely still want to ignore errors related to missing symlinks, etc...
@@ -175,25 +172,24 @@ func hashDir(location string) (hash string) {
 	// filepath.Walk orders files in lexical order, so this will be deterministic
 	_ = filepath.Walk(location, func(path string, info os.FileInfo, _ error) error {
 		relativePath := strings.Replace(path, location, "", -1)
-		_, _ = shaHash.Write([]byte(relativePath))
+		_, _ = hasher.Write([]byte(relativePath))
 		f, err := os.Open(path)
 		if err != nil {
 			// we already know this file exists, likely just a symlink that points nowhere
 			fmt.Println(path, err)
 			return nil
 		}
-		_, _ = io.Copy(shaHash, f)
+		_, _ = io.Copy(hasher, f)
 		f.Close()
 		return nil
 	})
-	var buf bytes.Buffer
-	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(shaHash.Sum(nil)[:20])
-	return strings.ToLower(buf.String())
+	return hasher.String()
 }
 
 func (drv *Derivation) Build() (err error) {
 	tempDir, err := drv.createTempDir()
-	outPath := filepath.Join(tempDir, "out")
+
+	outPath, err := drv.computeOutPath()
 	if err != nil {
 		return err
 	}
