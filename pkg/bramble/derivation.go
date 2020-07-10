@@ -217,6 +217,10 @@ func (drv *Derivation) Build() (err error) {
 			return err
 		}
 		defer gzReader.Close()
+		if err = os.Mkdir(outPath, 0755); err != nil {
+			return
+		}
+		os.Chdir(outPath)
 		if err = Untar(gzReader, outPath); err != nil {
 			return
 		}

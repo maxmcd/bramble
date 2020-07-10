@@ -61,11 +61,13 @@ func untar(r io.Reader, dir string) (err error) {
 
 		switch {
 		case f.Typeflag == tar.TypeSymlink:
-			if err := os.Symlink(f.Linkname, abs); err != nil {
+			fmt.Println("symlink", f.Linkname, rel)
+			if err := os.Symlink(f.Linkname, rel); err != nil {
 				return err
 			}
 		case f.Typeflag == tar.TypeLink:
-			if err := os.Symlink(filepath.Join(dir, f.Linkname), abs); err != nil {
+			fmt.Println("link", f.Linkname, rel)
+			if err := os.Link(f.Linkname, rel); err != nil {
 				return err
 			}
 		case mode.IsRegular():

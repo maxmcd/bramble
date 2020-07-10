@@ -8,3 +8,7 @@ simple_run:
 
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh
+
+
+test:
+	go test ./...

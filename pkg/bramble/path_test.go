@@ -3,6 +3,7 @@ package bramble
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,9 +24,9 @@ func Test_calculatePaddedDirectoryName(t *testing.T) {
 		paddingLength int
 	}
 	tests := []struct {
-		name    string
-		args    args
-		wantErr error
+		name        string
+		args        args
+		errContains string
 	}{{
 		name: "shorter",
 		args: args{
@@ -56,21 +57,21 @@ func Test_calculatePaddedDirectoryName(t *testing.T) {
 			bramblePath:   "/bramble",
 			paddingLength: 10,
 		},
-		wantErr: ErrPathTooLong,
+		errContains: "path that is too long",
 	}, {
 		name: "too short",
 		args: args{
 			bramblePath:   "/bramble",
 			paddingLength: 9,
 		},
-		wantErr: ErrPathTooLong,
+		errContains: "path that is too long",
 	}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := calculatePaddedDirectoryName(tt.args.bramblePath, tt.args.paddingLength)
 			if err != nil {
-				if err != tt.wantErr {
-					t.Errorf("calculatePaddedDirectoryName() got error %q but wanted error %v", err, tt.wantErr)
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("calculatePaddedDirectoryName() got error %q but wanted error to contain %q", err, tt.errContains)
 				}
 				return
 			}

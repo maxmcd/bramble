@@ -17,7 +17,7 @@ hermes_seed = derivation(
     builder="fetch_url",
     environment={
         "decompress": "true",
-        "url": "https://github.com/andrewchambers/hpkgs-seeds/raw/274e167bea337b127c56f4ebdc919268a5a680e7/linux-x86_64-seed.tar.gz",
+        "url": "https://github.com/maxmcd/bramble/releases/download/v0.0.1/linux-x86_64-seed.tar.gz",
         "hash": "a5ce9c155ed09397614646c9717fc7cd94b1023d7b76b618d409e4fefd6e9d39",
     },
 )
