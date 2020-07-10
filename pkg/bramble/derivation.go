@@ -34,7 +34,7 @@ type Derivation struct {
 var _ starlark.Value = &Derivation{}
 
 func (drv *Derivation) String() string {
-	return drv.Outputs["out"].Path
+	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
 }
 func (drv *Derivation) Type() string          { return "Derivation" }
 func (drv *Derivation) Freeze()               {}
@@ -126,7 +126,7 @@ func (drv *Derivation) AssembleSources(directory string) (err error) {
 			return
 		}
 	}
-	drv.Environment["src"] = folderName
+	drv.Environment["src"] = drv.client.StorePath(folderName)
 
 	return nil
 }
@@ -221,20 +221,22 @@ func (drv *Derivation) Build() (err error) {
 			return
 		}
 	} else {
-		builderLocation := drv.client.StorePath(drv.Builder)
+		builderLocation := strings.Replace(drv.Builder, "$bramble_path", drv.client.storePath, -1)
+
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
 			return err
 		}
-		drv.Args[0] = drv.client.StorePath(drv.Environment["src"] + "/simple_builder.sh")
+		drv.Args[0] = drv.Environment["src"] + "/simple_builder.sh"
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = tempDir
 		cmd.Env = []string{}
 		for k, v := range drv.Environment {
+			v = strings.Replace(v, "$bramble_path", drv.client.storePath, -1)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "BRAMBLE_PATH", drv.client.bramblePath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.client.storePath))
 		// cmd.Stdout = os.Stdout
 		// cmd.Stderr = os.Stderr
 		b, err := cmd.CombinedOutput()

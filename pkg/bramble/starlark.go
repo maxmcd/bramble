@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -121,7 +122,7 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 		}
 		drv, ok := value.(*Derivation)
 		if ok {
-			out[ks.GoString()] = drv.Outputs["out"].Path
+			out[ks.GoString()] = drv.String()
 			continue
 		}
 		vs, ok := value.(starlark.String)
@@ -144,4 +145,9 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 	}
 	c.derivations[drv.Name] = drv
 	return drv, nil
+}
+
+func (c *Client) StarlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+	c.log.Debug("load within '", c.scriptLocation.Peek(), "' of module ", module)
+	return c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble.py"))
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/sirupsen/logrus"
+	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
 
@@ -34,6 +35,12 @@ func NewClient() (*Client, error) {
 	}
 	// c.log.SetReportCaller(true)
 	c.log.SetLevel(logrus.DebugLevel)
+
+	resolve.AllowFloat = true
+	resolve.AllowLambda = true
+	resolve.AllowNestedDef = true
+	resolve.AllowRecursion = false
+	resolve.AllowSet = true
 
 	c.thread = &starlark.Thread{Name: "main", Load: c.StarlarkLoadFunc}
 	return c, nil
@@ -66,6 +73,7 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	if err != nil {
 		return
 	}
+	c.log.Debug("globals:", globals)
 	for _, drv := range c.derivations {
 		var exists bool
 		exists, err = drv.CheckForExisting()
@@ -83,14 +91,8 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 			return
 		}
 	}
-	c.log.Debug("globals:", globals)
 	// clear the context of this Run as it might be on an import
 	c.scriptLocation.Pop()
 	c.derivations = make(map[string]*Derivation)
 	return
-}
-
-func (c *Client) StarlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
-	c.log.Debug("load within '", c.scriptLocation.Peek(), "' of module ", module)
-	return c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble.py"))
 }
