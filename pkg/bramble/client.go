@@ -1,10 +1,17 @@
 package bramble
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
@@ -95,4 +102,56 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	c.scriptLocation.Pop()
 	c.derivations = make(map[string]*Derivation)
 	return
+}
+
+func (c *Client) DownloadFile(url string, hash string) (path string, err error) {
+	c.log.Debugf("Downloading url %s", url)
+
+	b, err := hex.DecodeString(hash)
+	if err != nil {
+		err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
+		return
+	}
+	storePrefixHash := bytesToBase32Hash(b)
+	matches, err := filepath.Glob(c.StorePath(storePrefixHash) + "*")
+	if err != nil {
+		err = errors.Wrap(err, "error searching for existing hashed content")
+		return
+	}
+	if len(matches) != 0 {
+		return matches[0], nil
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
+		return
+	}
+	defer resp.Body.Close()
+	file, err := ioutil.TempFile(filepath.Join(c.bramblePath, "tmp"), "")
+	if err != nil {
+		err = errors.Wrap(err, "error creating a temporary file for a download")
+		return
+	}
+	sha256Hash := sha256.New()
+	tee := io.TeeReader(resp.Body, sha256Hash)
+	if _, err = io.Copy(file, tee); err != nil {
+		err = errors.Wrap(err, "error writing to the temporary download file")
+		return
+	}
+	sha256HashBytes := sha256Hash.Sum(nil)
+	hexStringHash := fmt.Sprintf("%x", sha256HashBytes)
+	if hash != hexStringHash {
+		err = errors.Errorf(
+			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
+			url, hash, hexStringHash)
+		// make best effort to save this file, as we'll likely just download it again
+		storePrefixHash = bytesToBase32Hash(sha256HashBytes)
+	}
+	path = c.StorePath(storePrefixHash + "-" + filepath.Base(url))
+	// don't overwrite err if we error here, we want to try and save this, but
+	// still return the incorrect hash error
+	if er := os.Rename(file.Name(), path); er != nil {
+		return "", errors.Wrap(er, "error moving file into store")
+	}
+	return path, err
 }

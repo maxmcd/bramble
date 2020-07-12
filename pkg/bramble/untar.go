@@ -60,13 +60,12 @@ func untar(r io.Reader, dir string) (err error) {
 		mode := fi.Mode()
 
 		switch {
+		// in order for these to work we must be located in the tar output directory
 		case f.Typeflag == tar.TypeSymlink:
-			fmt.Println("symlink", f.Linkname, rel)
 			if err := os.Symlink(f.Linkname, rel); err != nil {
 				return err
 			}
 		case f.Typeflag == tar.TypeLink:
-			fmt.Println("link", f.Linkname, rel)
 			if err := os.Link(f.Linkname, rel); err != nil {
 				return err
 			}

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/pkg/errors"
 )
 
 // CopyFiles takes a list of absolute paths to files and copies them into
@@ -15,18 +17,17 @@ import (
 func CopyFiles(files []string, dest string) error {
 	prefix := CommonPrefix(files)
 	sort.Slice(files, func(i, j int) bool { return len(files[i]) < len(files[j]) })
-	fmt.Println(files)
 	for _, file := range files {
 		destPath := filepath.Join(dest, strings.TrimPrefix(file, prefix))
 
 		fileInfo, err := os.Stat(file)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "error finding source file")
 		}
 
 		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
 		if !ok {
-			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
+			return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
 		}
 
 		switch fileInfo.Mode() & os.ModeType {

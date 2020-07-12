@@ -66,6 +66,7 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 			return
 		}
 	}
+	c.log.Debug("assembling sources in ", c.scriptLocation.Peek())
 	if err = drv.AssembleSources(c.scriptLocation.Peek()); err != nil {
 		return
 	}
@@ -120,6 +121,15 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 			err = errors.Errorf("%s %s expects a dictionary of strings, but got key '%s'", function, param, key.String())
 			return
 		}
+		valBool, ok := value.(starlark.Bool)
+		if ok {
+			out[ks.GoString()] = "true"
+			if valBool == starlark.False {
+				out[ks.GoString()] = "false"
+			}
+			continue
+		}
+
 		drv, ok := value.(*Derivation)
 		if ok {
 			out[ks.GoString()] = drv.String()
@@ -149,5 +159,9 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 
 func (c *Client) StarlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 	c.log.Debug("load within '", c.scriptLocation.Peek(), "' of module ", module)
-	return c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble.py"))
+	dict, err := c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble.py"))
+	if err != nil {
+		c.log.Debugf("%+v", err)
+	}
+	return dict, err
 }

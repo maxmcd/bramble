@@ -62,6 +62,11 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 		if err = os.Symlink("."+storeDirectoryName, filepath.Join(bramblePath, "store")); err != nil {
 			return
 		}
+		// TODO: move this to a common cache directory or somewhere else that this would
+		// be expected to be
+		if err = os.Mkdir(filepath.Join(bramblePath, "tmp"), 0755); err != nil {
+			return
+		}
 	}
 
 	// otherwise, check if the exact store path we need exists

@@ -2,18 +2,16 @@ package bramble
 
 import (
 	"bytes"
-	"compress/gzip"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -86,7 +84,7 @@ func (drv *Derivation) CheckForExisting() (exists bool, err error) {
 	if err != nil {
 		return
 	}
-	drv.client.log.Debug("derivation '" + drv.Name + " evaluates to " + filename)
+	drv.client.log.Debug("derivation " + drv.Name + " evaluates to " + filename)
 	existingDrv, exists, err := drv.client.LoadDerivation(filename)
 	if err != nil {
 		return false, err
@@ -188,6 +186,9 @@ func hashDir(location string) (hash string) {
 
 func (drv *Derivation) Build() (err error) {
 	tempDir, err := drv.createTempDir()
+	if err != nil {
+		return
+	}
 
 	outPath, err := drv.computeOutPath()
 	if err != nil {
@@ -198,38 +199,23 @@ func (drv *Derivation) Build() (err error) {
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
 		}
-		var resp *http.Response
-		resp, err = http.Get(url)
+		hash, ok := drv.Environment["hash"]
+		if !ok {
+			return errors.New("fetch_url requires the environment variable 'hash' to be set")
+		}
+		path, err := drv.client.DownloadFile(url, hash)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-
-		drv.client.log.Debugf("Downloading url %s", url)
-
-		hash := sha256.New()
-		tee := io.TeeReader(resp.Body, hash)
-
-		var gzReader io.ReadCloser
-		gzReader, err = gzip.NewReader(tee)
-		// xzReader, err := xz.NewReader(tee)
-		if err != nil {
-			return err
-		}
-		defer gzReader.Close()
-		if err = os.Mkdir(outPath, 0755); err != nil {
-			return
-		}
-		os.Chdir(outPath)
-		if err = Untar(gzReader, outPath); err != nil {
-			return
+		if err = archiver.Unarchive(path, outPath); err != nil {
+			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
 		builderLocation := strings.Replace(drv.Builder, "$bramble_path", drv.client.storePath, -1)
 
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
-			return err
+			return errors.Wrap(err, "error checking if builder location exists")
 		}
 		drv.Args[0] = drv.Environment["src"] + "/simple_builder.sh"
 		cmd := exec.Command(builderLocation, drv.Args...)
