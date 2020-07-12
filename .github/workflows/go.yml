@@ -22,3 +22,5 @@ jobs:
             ${{ runner.os }}-go-
       - name: Test
         run: go test ./...
+      - name: Build all
+        run: make all

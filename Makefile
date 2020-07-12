@@ -1,5 +1,7 @@
 
 
+all: seed_run simple_run
+
 seed_run:
 	go run main.go hermes-seed.bramble.py
 
