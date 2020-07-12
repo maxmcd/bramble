@@ -2,19 +2,16 @@ package bramble
 
 import (
 	"bytes"
-	"compress/gzip"
-	"crypto/sha256"
-	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -35,37 +32,28 @@ type Derivation struct {
 var _ starlark.Value = &Derivation{}
 
 func (drv *Derivation) String() string {
-	return drv.Outputs["out"].Path
+	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
 }
 func (drv *Derivation) Type() string          { return "Derivation" }
 func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Hash() (uint32, error) { return 0, nil }
 
-func (drv *Derivation) PrettyJson() string {
+func (drv *Derivation) PrettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
 
 func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
 	defer file.Close()
-	hash := sha256.New()
-	if _, err = hash.Write([]byte(name)); err != nil {
+	hasher := NewHasher()
+	if _, err = hasher.Write([]byte(name)); err != nil {
 		return
 	}
-	if _, err = io.Copy(hash, file); err != nil {
+	if _, err = io.Copy(hasher, file); err != nil {
 		return
 	}
-	var buf bytes.Buffer
-	// https://nixos.org/nixos/nix-pills/nix-store-paths.html
-	// Finally the comments tell us to compute the base-32 representation of the
-	// first 160 bits (truncation) of a sha256 of the above string:
-	if _, err = base32.NewEncoder(base32.StdEncoding, &buf).Write(hash.Sum(nil)[:20]); err != nil {
-		return
-	}
-
-	fileHash = strings.ToLower(buf.String())
-	filename = fmt.Sprintf("%s-%s", fileHash, name)
+	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
 	return
 }
 
@@ -96,7 +84,7 @@ func (drv *Derivation) CheckForExisting() (exists bool, err error) {
 	if err != nil {
 		return
 	}
-	drv.client.log.Debug("derivation '" + drv.Name + " evaluates to " + filename)
+	drv.client.log.Debug("derivation " + drv.Name + " evaluates to " + filename)
 	existingDrv, exists, err := drv.client.LoadDerivation(filename)
 	if err != nil {
 		return false, err
@@ -136,7 +124,7 @@ func (drv *Derivation) AssembleSources(directory string) (err error) {
 			return
 		}
 	}
-	drv.Environment["src"] = folderName
+	drv.Environment["src"] = drv.client.StorePath(folderName)
 
 	return nil
 }
@@ -155,18 +143,25 @@ func (drv *Derivation) WriteDerivation() (err error) {
 }
 
 func (drv *Derivation) createTempDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir("", TempDirPrefix)
-	if err != nil {
-		return
-	}
-	// TODO: create output folders and environment variables for other outputs
-	err = os.MkdirAll(filepath.Join(tempDir, "out"), os.ModePerm)
-	return
+	return ioutil.TempDir("", TempDirPrefix)
+}
+
+func (drv *Derivation) computeOutPath() (outPath string, err error) {
+	_, filename, err := drv.ComputeDerivation()
+
+	return filepath.Join(
+		drv.client.storePath,
+		strings.TrimSuffix(filename, ".drv"),
+	), err
 }
 
 func hashDir(location string) (hash string) {
-	shaHash := sha256.New()
+	hasher := NewHasher()
 	location = filepath.Clean(location) + "/" // use the extra / to make the paths relative
+
+	// TODO: this is incomplete, ensure you cover the bits that NAR has
+	// determined are important
+	// https://gist.github.com/jbeda/5c79d2b1434f0018d693
 
 	// TODO: handle common errors like "missing location"
 	// likely still want to ignore errors related to missing symlinks, etc...
@@ -175,25 +170,27 @@ func hashDir(location string) (hash string) {
 	// filepath.Walk orders files in lexical order, so this will be deterministic
 	_ = filepath.Walk(location, func(path string, info os.FileInfo, _ error) error {
 		relativePath := strings.Replace(path, location, "", -1)
-		_, _ = shaHash.Write([]byte(relativePath))
+		_, _ = hasher.Write([]byte(relativePath))
 		f, err := os.Open(path)
 		if err != nil {
 			// we already know this file exists, likely just a symlink that points nowhere
 			fmt.Println(path, err)
 			return nil
 		}
-		_, _ = io.Copy(shaHash, f)
+		_, _ = io.Copy(hasher, f)
 		f.Close()
 		return nil
 	})
-	var buf bytes.Buffer
-	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(shaHash.Sum(nil)[:20])
-	return strings.ToLower(buf.String())
+	return hasher.String()
 }
 
 func (drv *Derivation) Build() (err error) {
 	tempDir, err := drv.createTempDir()
-	outPath := filepath.Join(tempDir, "out")
+	if err != nil {
+		return
+	}
+
+	outPath, err := drv.computeOutPath()
 	if err != nil {
 		return err
 	}
@@ -202,43 +199,34 @@ func (drv *Derivation) Build() (err error) {
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
 		}
-		var resp *http.Response
-		resp, err = http.Get(url)
+		hash, ok := drv.Environment["hash"]
+		if !ok {
+			return errors.New("fetch_url requires the environment variable 'hash' to be set")
+		}
+		path, err := drv.client.DownloadFile(url, hash)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-
-		drv.client.log.Debugf("Downloading url %s", url)
-
-		hash := sha256.New()
-		tee := io.TeeReader(resp.Body, hash)
-
-		var gzReader io.ReadCloser
-		gzReader, err = gzip.NewReader(tee)
-		// xzReader, err := xz.NewReader(tee)
-		if err != nil {
-			return err
-		}
-		defer gzReader.Close()
-		if err = Untar(gzReader, outPath); err != nil {
-			return
+		if err = archiver.Unarchive(path, outPath); err != nil {
+			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
-		builderLocation := drv.client.StorePath(drv.Builder)
+		builderLocation := strings.Replace(drv.Builder, "$bramble_path", drv.client.storePath, -1)
+
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
-			return err
+			return errors.Wrap(err, "error checking if builder location exists")
 		}
-		drv.Args[0] = drv.client.StorePath(drv.Environment["src"] + "/simple_builder.sh")
+		drv.Args[0] = drv.Environment["src"] + "/simple_builder.sh"
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = tempDir
 		cmd.Env = []string{}
 		for k, v := range drv.Environment {
+			v = strings.Replace(v, "$bramble_path", drv.client.storePath, -1)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "BRAMBLE_PATH", drv.client.bramblePath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.client.storePath))
 		// cmd.Stdout = os.Stdout
 		// cmd.Stderr = os.Stderr
 		b, err := cmd.CombinedOutput()

@@ -12,6 +12,6 @@ func TestCopyFiles(t *testing.T) {
 		t.Error(err)
 	}
 	fmt.Println(tmpDir)
-	CopyFiles([]string{"/home/maxm/go/src/github.com/maxmcd/bramble/simple/simple.c", "/home/maxm/go/src/github.com/maxmcd/bramble/simple/simple_builder.sh"},
+	_ = CopyFiles([]string{"/home/maxm/go/src/github.com/maxmcd/bramble/simple/simple.c", "/home/maxm/go/src/github.com/maxmcd/bramble/simple/simple_builder.sh"},
 		tmpDir)
 }

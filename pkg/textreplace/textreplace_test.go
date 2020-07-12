@@ -3,6 +3,7 @@ package textreplace
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"testing"
@@ -23,29 +24,29 @@ var SomeRandomNixPaths = []string{
 	"zzy2an4hplsl06dfl6dgik4zmn7vycvd-hscolour-1.24.4.drv",
 }
 
-func prepNixPaths(prefix string, v []string) (out [][]byte) {
+func prepNixPaths(v []string) (out []string) {
 	for _, path := range v {
-		out = append(out, []byte(prefix+path))
+		out = append(out, "/nix/store/"+path)
 	}
 	return
 }
 
-func GenerateUninterruptedCorpus(values [][]byte, count int) io.Reader {
+func GenerateUninterruptedCorpus(values []string, count int) io.Reader {
 	var buf bytes.Buffer
 	for i := 0; i < count; i++ {
-		_, _ = buf.Write(values[i%len(values)])
+		_, _ = buf.WriteString(values[i%len(values)])
 	}
 	return bytes.NewReader(buf.Bytes())
 }
 
-func GenerateRandomCorpus(values [][]byte) io.Reader {
+func GenerateRandomCorpus(values []string) io.Reader {
 	count := 50
 	chunks := count / (len(values))
 	valueIndex := 0
 	var buf bytes.Buffer
 	b := make([]byte, 1024)
 	for i := 0; i < count; i++ {
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		if i%chunks == 0 {
 			valueLen := len(values[valueIndex])
 			// input can't be larger than the byte array
@@ -60,7 +61,7 @@ func GenerateRandomCorpus(values [][]byte) io.Reader {
 func TestFrameReader(t *testing.T) {
 	lorem := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam pharetra velit sit amet nibh vulputate imperdiet. Pellentesque hendrerit consequat metus.")
 	expectedAnswer := bytes.Replace(lorem, []byte("dolor"), []byte("fishy"), -1)
-	source := bytes.NewBuffer([]byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam pharetra velit sit amet nibh vulputate imperdiet. Pellentesque hendrerit consequat metus."))
+	source := bytes.NewBuffer(lorem)
 
 	out := bytes.Buffer{}
 
@@ -72,10 +73,53 @@ func TestFrameReader(t *testing.T) {
 	assert.Equal(t, out.Bytes(), expectedAnswer)
 }
 
+func ExampleReplaceStringsPrefix() {
+	var output bytes.Buffer
+	_, _, _ = ReplaceStringsPrefix(
+		bytes.NewBuffer([]byte(
+			"something/nix/store/zziylsdvcqgwwwhbspf1agbz0vldxjr3-perl5.30.2-JSON-4.02something"),
+		),
+		&output,
+		[]string{"/nix/store/zziylsdvcqgwwwhbspf1agbz0vldxjr3-perl5.30.2-JSON-4.02"},
+		[]byte("/nix/store/"),
+		[]byte("/tmp/wings/"),
+	)
+
+	fmt.Println(output.String())
+	// Output: something/tmp/wings/zziylsdvcqgwwwhbspf1agbz0vldxjr3-perl5.30.2-JSON-4.02something
+}
+
+func ExampleCopyWithFrames() {
+	// We'd like to replace "dolor" with "fishy" in this text
+	lorem := []byte("Lorem ipsum dolor sit amet")
+
+	// With a buffer size of 15 we would split the input into
+	// []byte("Lorem ipsum dol") and []byte("or sit amet")
+	// and miss the opportunity to replace "dolor"
+	bufferSize := 15
+	expectedAnswer := bytes.Replace(lorem, []byte("dolor"), []byte("fishy"), -1)
+	source := bytes.NewBuffer(lorem)
+
+	out := bytes.Buffer{}
+
+	// if we set a frame size of 5 we'll ensure we see all length 5 segments of text
+	_, _ = CopyWithFrames(&out, source, make([]byte, bufferSize), 5, func(b []byte) error {
+		fmt.Println(string(b))
+		copy(b, bytes.Replace(b, []byte("dolor"), []byte("fishy"), -1))
+		return nil
+	})
+	fmt.Println(bytes.Equal(out.Bytes(), expectedAnswer))
+
+	// Output: Lorem ipsu
+	//  ipsum dolor si
+	// hy sit amety si
+	// true
+}
+
 func TestOverlap(t *testing.T) {
-	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	values := prepNixPaths(SomeRandomNixPaths)
 	var buf bytes.Buffer
-	replacements, _, err := ReplaceStrings(values, []byte("/nix/store/"), []byte("/tmp/wings/"), GenerateUninterruptedCorpus(values, 100), &buf)
+	replacements, _, err := ReplaceStringsPrefix(GenerateUninterruptedCorpus(values, 100), &buf, values, []byte("/nix/store/"), []byte("/tmp/wings/"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -85,20 +129,20 @@ func TestOverlap(t *testing.T) {
 }
 
 func TestGen(t *testing.T) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	input := prepNixPaths(SomeRandomNixPaths)
 	b, err := ioutil.ReadAll(GenerateRandomCorpus(input))
 	if err != nil {
 		t.Error(err)
 	}
 	for _, in := range input {
-		if !bytes.Contains(b, in) {
+		if !bytes.Contains(b, []byte(in)) {
 			t.Errorf("bytes should contain %s but they do not", string(in))
 		}
 	}
 }
 
 func BenchmarkFrameReader(b *testing.B) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	input := prepNixPaths(SomeRandomNixPaths)
 
 	corpus := GenerateRandomCorpus(input)
 
@@ -112,24 +156,24 @@ func BenchmarkFrameReader(b *testing.B) {
 }
 
 func BenchmarkReplace(b *testing.B) {
-	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	values := prepNixPaths(SomeRandomNixPaths)
 
 	corpus := GenerateRandomCorpus(values)
 
 	var buf bytes.Buffer
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
-		_, _, _ = ReplaceStrings(
+		_, _, _ = ReplaceStringsPrefix(
+			corpus, &buf,
 			values,
 			[]byte("/nix/store/"),
-			[]byte("/tmp/wings/"),
-			corpus, &buf)
+			[]byte("/tmp/wings/"))
 		buf.Truncate(0)
 	}
 }
 
 func BenchmarkJustStream(b *testing.B) {
-	input := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	input := prepNixPaths(SomeRandomNixPaths)
 
 	corpus := GenerateRandomCorpus(input)
 
@@ -140,17 +184,17 @@ func BenchmarkJustStream(b *testing.B) {
 }
 
 func BenchmarkUninterruptedReplace(b *testing.B) {
-	values := prepNixPaths("/nix/store/", SomeRandomNixPaths)
+	values := prepNixPaths(SomeRandomNixPaths)
 	corpus := GenerateUninterruptedCorpus(values, 1000)
 
 	var buf bytes.Buffer
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
-		_, _, _ = ReplaceStrings(
+		_, _, _ = ReplaceStringsPrefix(
+			corpus, &buf,
 			values,
 			[]byte("/nix/store/"),
-			[]byte("/tmp/wings/"),
-			corpus, &buf)
+			[]byte("/tmp/wings/"))
 		buf.Truncate(0)
 	}
 }

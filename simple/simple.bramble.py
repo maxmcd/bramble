@@ -1,9 +1,9 @@
-load("../hermes-seed", "hermes_seed")
+load("../seed", "seed")
 
 derivation(
     name="simple",
-    environment={"hermes_seed": hermes_seed},
-    builder="%s/bin/sh" % hermes_seed,
-    args=["./$src/simple_builder.sh"],
+    environment={"seed": seed},
+    builder="%s/bin/sh" % seed,
+    args=["$src/simple_builder.sh"],
     sources=["./simple.c", "simple_builder.sh"],
 )
