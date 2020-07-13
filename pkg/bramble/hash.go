@@ -68,3 +68,7 @@ func hashDir(location string) (hash string) {
 	})
 	return hasher.String()
 }
+
+func IsExecAny(mode os.FileMode) bool {
+	return mode&0111 != 0
+}

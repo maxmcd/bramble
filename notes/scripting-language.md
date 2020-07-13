@@ -26,3 +26,47 @@ this is a free service on top of your github repo similar to the go doc
 ---
 
 We sandbox by running the bramble script as root and then dipping down to either running as a user or running within docker for the build commands. Keep in mind that we want remote build so this separation should be easy.
+
+
+## More examples
+
+Server that runs a cron:
+
+```python
+load("github.com/sleepokay/nosleepuntilcoachella", "checker")
+load("std/runnner", "cron")
+
+
+def check_for_tickets():
+    output = cmd(checker + "/bin/checker").out
+    if "available" in output:
+        cmd("send email to max@")
+
+
+cron(every="4h", check_for_tickets)
+```
+
+Could also add service/server primitives, databases, etc...
+```python
+pg = cmd("postgres", environment={"DB":"OKAYSLEEP"}).async())
+server(pg)
+
+servers = server(cmd("flask", environment={"DB_URL": server.hostname + ":" + pg.port}).async(), count=2)
+```
+
+More scripting examples:
+
+
+```python
+def run_program():
+    cmd("redis").async()
+
+    cmd("flask").print()
+
+    cmd("cat foo.txt").pipe("sort").pipe("unique")
+
+    watch = cmd("watch date")
+    watch.async()
+
+    cmd("curl upload").stdin(watch)
+```
