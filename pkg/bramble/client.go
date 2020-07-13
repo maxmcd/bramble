@@ -24,6 +24,9 @@ type Client struct {
 	derivations map[string]*Derivation
 	thread      *starlark.Thread
 
+	test    bool
+	testURL string
+
 	log            *logrus.Logger
 	scriptLocation StringStack
 }

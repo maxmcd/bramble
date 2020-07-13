@@ -1,0 +1,6 @@
+[[tests]]
+name = "basic"
+bramble_file = "basic.bramble.py"
+  [tests.serve_file]
+    sources = ["./file-links"]
+    destination = "archive.tar.gz"

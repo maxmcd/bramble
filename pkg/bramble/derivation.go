@@ -155,35 +155,6 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 	), err
 }
 
-func hashDir(location string) (hash string) {
-	hasher := NewHasher()
-	location = filepath.Clean(location) + "/" // use the extra / to make the paths relative
-
-	// TODO: this is incomplete, ensure you cover the bits that NAR has
-	// determined are important
-	// https://gist.github.com/jbeda/5c79d2b1434f0018d693
-
-	// TODO: handle common errors like "missing location"
-	// likely still want to ignore errors related to missing symlinks, etc...
-	// likely with very explicit handling
-
-	// filepath.Walk orders files in lexical order, so this will be deterministic
-	_ = filepath.Walk(location, func(path string, info os.FileInfo, _ error) error {
-		relativePath := strings.Replace(path, location, "", -1)
-		_, _ = hasher.Write([]byte(relativePath))
-		f, err := os.Open(path)
-		if err != nil {
-			// we already know this file exists, likely just a symlink that points nowhere
-			fmt.Println(path, err)
-			return nil
-		}
-		_, _ = io.Copy(hasher, f)
-		f.Close()
-		return nil
-	})
-	return hasher.String()
-}
-
 func (drv *Derivation) Build() (err error) {
 	tempDir, err := drv.createTempDir()
 	if err != nil {
@@ -198,6 +169,14 @@ func (drv *Derivation) Build() (err error) {
 		url, ok := drv.Environment["url"]
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
+		}
+		if drv.client.test {
+			url = os.Expand(url, func(i string) string {
+				if i == "test_url" {
+					return drv.client.testURL
+				}
+				return ""
+			})
 		}
 		hash, ok := drv.Environment["hash"]
 		if !ok {
