@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	if err := bramble.Run(); err != nil {
+	if err := bramble.Run(os.Args); err != nil {
 		valueErr, ok := err.(*starlark.EvalError)
 		if ok {
 			fmt.Println(valueErr.Backtrace())
