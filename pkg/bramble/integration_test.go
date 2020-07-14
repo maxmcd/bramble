@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/mholt/archiver/v3"
@@ -47,6 +48,12 @@ func TestIntegrationTests(t *testing.T) {
 				PanicOnErr(err)
 				outPath := filepath.Join(name, test.ServeFile.Destination)
 
+				epoch := time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC)
+				for _, source := range test.ServeFile.Sources {
+					if err = os.Chtimes(source, epoch, epoch); err != nil {
+						PanicOnErr(err)
+					}
+				}
 				err = archiver.Archive(test.ServeFile.Sources, outPath)
 				PanicOnErr(err)
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
