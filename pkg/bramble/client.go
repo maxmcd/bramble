@@ -74,6 +74,25 @@ func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, 
 	return drv, true, json.NewDecoder(f).Decode(drv)
 }
 
+func (c *Client) buildDerivation(drv *Derivation) (err error) {
+	var exists bool
+	exists, err = drv.CheckForExisting()
+	if err != nil {
+		return
+	}
+	if exists {
+		return
+	}
+	// TODO: calculate derivation and check if we already have it
+	if err = drv.Build(); err != nil {
+		return
+	}
+	if err = drv.WriteDerivation(); err != nil {
+		return
+	}
+	return
+}
+
 func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	c.log.Debug("running file ", file)
 	c.scriptLocation.Push(filepath.Dir(file))
@@ -82,24 +101,6 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	})
 	if err != nil {
 		return
-	}
-	c.log.Debug("globals:", globals)
-	for _, drv := range c.derivations {
-		var exists bool
-		exists, err = drv.CheckForExisting()
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			continue
-		}
-		// TODO: calculate derivation and check if we already have it
-		if err = drv.Build(); err != nil {
-			return
-		}
-		if err = drv.WriteDerivation(); err != nil {
-			return
-		}
 	}
 	// clear the context of this Run as it might be on an import
 	c.scriptLocation.Pop()

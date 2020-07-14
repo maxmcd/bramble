@@ -32,6 +32,7 @@ type Derivation struct {
 var _ starlark.Value = &Derivation{}
 
 func (drv *Derivation) String() string {
+	fmt.Println("string requested", drv.Name, drv.Outputs)
 	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
 }
 func (drv *Derivation) Type() string          { return "Derivation" }
@@ -165,6 +166,9 @@ func (drv *Derivation) Build() (err error) {
 	if err != nil {
 		return err
 	}
+	if err = os.MkdirAll(outPath, 0755); err != nil {
+		return
+	}
 	if drv.Builder == "fetch_url" {
 		url, ok := drv.Environment["url"]
 		if !ok {
@@ -190,13 +194,15 @@ func (drv *Derivation) Build() (err error) {
 			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
+		fmt.Println("--------------------")
+		fmt.Println(drv.Builder)
+		fmt.Println("--------------------")
 		builderLocation := strings.Replace(drv.Builder, "$bramble_path", drv.client.storePath, -1)
 
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
 			return errors.Wrap(err, "error checking if builder location exists")
 		}
-		drv.Args[0] = drv.Environment["src"] + "/simple_builder.sh"
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = tempDir
 		cmd.Env = []string{}

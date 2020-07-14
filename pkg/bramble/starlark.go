@@ -153,6 +153,9 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 	if err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
 	}
+	if err = c.buildDerivation(drv); err != nil {
+		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
+	}
 	c.derivations[drv.Name] = drv
 	return drv, nil
 }
