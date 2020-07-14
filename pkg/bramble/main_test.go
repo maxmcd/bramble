@@ -20,16 +20,23 @@ var (
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	code := m.Run()
+
+	// Don't delete if we error, we might want to check the folder contents
+	if code != 0 {
+		os.Exit(code)
+		return
+	}
 	matches, err := filepath.Glob(filepath.Join(os.TempDir(), TestTmpDirPrefix+"*"))
 	if err != nil {
 		panic(err)
 	}
 	_ = matches
-	// for _, dir := range matches {
-	// 	if err = os.RemoveAll(dir); err != nil {
-	// 		panic(err)
-	// 	}
-	// }
+	for _, dir := range matches {
+		if err = os.RemoveAll(dir); err != nil {
+			panic(err)
+		}
+	}
+
 	os.Exit(code)
 }
 

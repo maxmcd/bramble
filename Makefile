@@ -11,6 +11,8 @@ simple_run:
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh
 
+integration_tests:
+	go test github.com/maxmcd/bramble/pkg/bramble -v -run=Integration
 
 test:
 	go test ./...
