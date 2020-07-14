@@ -59,7 +59,7 @@ cd $out
 ./busybox ln -s busybox ln
 %s
 """
-    % command_symlinks,
+    % command_symlinks
 )
 
 
