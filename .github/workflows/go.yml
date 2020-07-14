@@ -15,6 +15,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Test
+        run: ls -lah ./tests/*
+      - name: Test2
+        run: ls -lah ./tests/file-links/*
+      - name: Test3
         run: go test ./...
       - name: Build all
         run: make all
