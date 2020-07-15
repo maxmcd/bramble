@@ -66,10 +66,7 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 			return
 		}
 	}
-	c.log.Debug("assembling sources in ", c.scriptLocation.Peek())
-	if err = drv.AssembleSources(c.scriptLocation.Peek()); err != nil {
-		return
-	}
+	drv.location = c.scriptLocation.Peek()
 	c.log.Debug("Assembled derivation: ", drv.PrettyJSON())
 	return drv, nil
 }
