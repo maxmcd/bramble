@@ -5,7 +5,7 @@ import (
 	"path"
 )
 
-func CommonPrefix(paths []string) string {
+func commonPrefix(paths []string) string {
 	sep := byte(os.PathSeparator)
 	if len(paths) == 0 {
 		return string(sep)

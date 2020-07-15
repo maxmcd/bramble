@@ -14,13 +14,12 @@ import (
 
 // CopyFiles takes a list of absolute paths to files and copies them into
 // another directory, maintaining structure
-func copyFiles(files []string, dest string) (err error) {
+func copyFiles(prefix string, files []string, dest string) (err error) {
 	files, err = expandPathDirectories(files)
 	if err != nil {
 		return err
 	}
 
-	prefix := CommonPrefix(files)
 	sort.Slice(files, func(i, j int) bool { return len(files[i]) < len(files[j]) })
 	for _, file := range files {
 		destPath := filepath.Join(dest, strings.TrimPrefix(file, prefix))
