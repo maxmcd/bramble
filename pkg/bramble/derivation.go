@@ -112,11 +112,12 @@ func (drv *Derivation) assembleSources(destination string) (runLocation string, 
 	for i, src := range sources {
 		sources[i] = filepath.Join(absDir, src)
 	}
+	prefix := commonPrefix(append(sources, absDir))
 
-	if err = copyFiles(sources, destination); err != nil {
+	if err = copyFiles(prefix, sources, destination); err != nil {
 		return
 	}
-	relBramblefileLocation, err := filepath.Rel(CommonPrefix(sources), absDir)
+	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
 		return "", errors.Wrap(err, "error calculating relative bramblefild loc")
 	}
