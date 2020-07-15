@@ -26,7 +26,8 @@ type Derivation struct {
 	Sources     []string
 
 	// internal fields
-	client *Client
+	client   *Client
+	location string
 }
 
 var _ starlark.Value = &Derivation{}
@@ -97,13 +98,13 @@ func (drv *Derivation) CheckForExisting() (exists bool, err error) {
 	return true, nil
 }
 
-func (drv *Derivation) AssembleSources(directory string) (err error) {
+func (drv *Derivation) assembleSources(destination string) (err error) {
 	if len(drv.Sources) == 0 {
 		return nil
 	}
 	sources := drv.Sources
 	drv.Sources = []string{}
-	absDir, err := filepath.Abs(directory)
+	absDir, err := filepath.Abs(drv.location)
 	if err != nil {
 		return err
 	}
@@ -111,22 +112,10 @@ func (drv *Derivation) AssembleSources(directory string) (err error) {
 	for i, src := range sources {
 		sources[i] = filepath.Join(absDir, src)
 	}
-	tmpDir, err := ioutil.TempDir("", TempDirPrefix)
-	if err != nil {
-		return err
-	}
-	if err = CopyFiles(sources, tmpDir); err != nil {
+	if err = CopyFiles(sources, destination); err != nil {
 		return
 	}
-	hash := hashDir(tmpDir)
-	folderName := fmt.Sprintf("%s-source", hash)
-	if !Exists(drv.client.StorePath(folderName)) {
-		if err = os.Rename(tmpDir, drv.client.StorePath(folderName)); err != nil {
-			return
-		}
-	}
-	drv.Environment["src"] = drv.client.StorePath(folderName)
-
+	drv.Environment["src"] = destination
 	return nil
 }
 
@@ -206,13 +195,14 @@ func (drv *Derivation) Build() (err error) {
 			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
+		if err = drv.assembleSources(tempDir); err != nil {
+			return
+		}
+
 		builderLocation := drv.expand(drv.Builder)
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
 			return errors.Wrap(err, "error checking if builder location exists")
-		}
-		for i, arg := range drv.Args {
-			drv.Args[i] = drv.expand(arg)
 		}
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = tempDir
