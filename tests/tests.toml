@@ -2,7 +2,7 @@
 name = "basic"
 bramble_file = "basic.bramble.py"
   [tests.serve_file]
-    sources = ["./file-links"]
+    source = "./file-links"
     destination = "archive.tar.gz"
 
 
@@ -10,5 +10,5 @@ bramble_file = "basic.bramble.py"
 name = "busybox"
 bramble_file = "busybox.bramble.py"
   [tests.serve_file]
-    sources = ["./busybox-x86_64"]
+    source = "./busybox-x86_64"
     destination = "busybox.tar.gz"

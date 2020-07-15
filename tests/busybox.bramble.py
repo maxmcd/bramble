@@ -5,7 +5,7 @@ b = derivation(
     environment={
         "decompress": False,
         "url": "$test_url/busybox.tar.gz",
-        "hash": "bec8db0a33fd71a10387e353118c90f5bc21fe4e771401eb2e5a2299bb8062b2",
+        "hash": "8de53037d8e57daf5030be7c1c944afa849cf3a194962328ddb5478dbbb72533",
     },
 )
 
