@@ -1,14 +1,23 @@
-[[tests]]
-name = "basic"
-bramble_file = "basic.bramble.py"
-  [tests.serve_file]
-    source = "./file-links"
-    destination = "archive.tar.gz"
+# [[tests]]
+# name = "basic"
+# bramble_file = "basic.bramble.py"
+#   [tests.serve_file]
+#     source = "./file-links"
+#     destination = "archive.tar.gz"
+
+
+# [[tests]]
+# name = "busybox"
+# bramble_file = "busybox.bramble.py"
+#   [tests.serve_file]
+#     source = "./busybox-x86_64"
+#     destination = "busybox.tar.gz"
 
 
 [[tests]]
-name = "busybox"
-bramble_file = "busybox.bramble.py"
+name = "nested"
+bramble_file = "./nested-sources/another-folder/nested.bramble.py"
   [tests.serve_file]
+    #  we still need this because nested imports busybox
     source = "./busybox-x86_64"
     destination = "busybox.tar.gz"

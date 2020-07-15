@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -52,6 +53,7 @@ func TestIntegrationTests(t *testing.T) {
 			}
 
 			if _, err := c.Run(filepath.Join(testsDir, test.BrambleFile)); err != nil {
+				fmt.Printf("%+v\n", err)
 				t.Error(err)
 			}
 		})

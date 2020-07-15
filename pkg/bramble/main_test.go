@@ -2,8 +2,6 @@ package bramble
 
 import (
 	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -50,30 +48,6 @@ func PanicOnErr(err error) {
 		fmt.Printf("%+v", err)
 		panic(err)
 	}
-}
-
-func TarGZipTestFiles(files []TestFile) (b []byte, err error) {
-	var buf bytes.Buffer
-	gzw := gzip.NewWriter(&buf)
-	w := tar.NewWriter(gzw)
-	for _, file := range files {
-		file.Header.Size = int64(len(file.Body))
-		if err = w.WriteHeader(file.Header); err != nil {
-			return
-		}
-		if file.Body != nil {
-			if _, err = w.Write(file.Body); err != nil {
-				return
-			}
-		}
-	}
-	if err = w.Close(); err != nil {
-		return
-	}
-	if err = gzw.Close(); err != nil {
-		return
-	}
-	return buf.Bytes(), nil
 }
 
 func NewTestClient(t *testing.T) *Client {
