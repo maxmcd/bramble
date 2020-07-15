@@ -156,6 +156,18 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 	), err
 }
 
+func (drv *Derivation) expand(s string) string {
+	return os.Expand(s, func(i string) string {
+		if i == "bramble_path" {
+			return drv.client.storePath
+		}
+		if v, ok := drv.Environment[i]; ok {
+			return v
+		}
+		return ""
+	})
+}
+
 func (drv *Derivation) Build() (err error) {
 	tempDir, err := drv.createTempDir()
 	if err != nil {
@@ -194,14 +206,13 @@ func (drv *Derivation) Build() (err error) {
 			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
-		fmt.Println("--------------------")
-		fmt.Println(drv.Builder)
-		fmt.Println("--------------------")
-		builderLocation := strings.Replace(drv.Builder, "$bramble_path", drv.client.storePath, -1)
-
+		builderLocation := drv.expand(drv.Builder)
 		// TODO: validate this before build?
 		if _, err := os.Stat(builderLocation); err != nil {
 			return errors.Wrap(err, "error checking if builder location exists")
+		}
+		for i, arg := range drv.Args {
+			drv.Args[i] = drv.expand(arg)
 		}
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = tempDir

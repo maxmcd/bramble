@@ -7,6 +7,6 @@ link_test = derivation(
     environment={
         "decompress": True,
         "url": "$test_url/archive.tar.gz",
-        "hash": "0cb30c37bdb22f19cbfc23bf5a1a7a38bcd3ea449bf7c62534332fc259cd7810",
+        "hash": "4477ff345dd98f37bc728c0683b39fc8c3efe235a716a9763dd44b70721f178a",
     },
 )

@@ -1,17 +1,15 @@
 package bramble
 
 import (
-	"io"
-	"io/ioutil"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/mholt/archiver/v3"
+	"github.com/maxmcd/bramble/pkg/reptar"
 )
 
 type Config struct {
@@ -23,8 +21,8 @@ type Test struct {
 	ServeFile   *ServeFile `toml:"serve_file"`
 }
 type ServeFile struct {
-	Sources     []string `toml:"sources"`
-	Destination string   `toml:"destination"`
+	Source      string `toml:"source"`
+	Destination string `toml:"destination"`
 }
 
 func TestIntegrationTests(t *testing.T) {
@@ -44,22 +42,11 @@ func TestIntegrationTests(t *testing.T) {
 			c.test = true
 
 			if test.ServeFile != nil {
-				name, err := ioutil.TempDir("", TestTmpDirPrefix)
-				PanicOnErr(err)
-				outPath := filepath.Join(name, test.ServeFile.Destination)
-
-				epoch := time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC)
-				for _, source := range test.ServeFile.Sources {
-					if err = os.Chtimes(source, epoch, epoch); err != nil {
-						PanicOnErr(err)
-					}
-				}
-				err = archiver.Archive(test.ServeFile.Sources, outPath)
+				var buf bytes.Buffer
+				err = reptar.GzipReptar(test.ServeFile.Source, &buf)
 				PanicOnErr(err)
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-					f, err := os.Open(outPath)
-					PanicOnErr(err)
-					_, _ = io.Copy(w, f)
+					_, _ = w.Write(buf.Bytes())
 				}))
 				c.testURL = server.URL
 			}

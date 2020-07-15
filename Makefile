@@ -16,3 +16,7 @@ integration_tests:
 
 test:
 	go test ./...
+
+reptar:
+	cd pkg/reptar && docker build -t reptar . \
+	&& docker run -it reptar sh
