@@ -49,13 +49,15 @@ uuencode, vconfig, vi, vlock, volname, w, wall, watch, watchdog, wc, wget, which
 whoami, whois, xargs, xxd, xz, xzcat, yes, zcat, zcip
 """
 command_list = " ".join(commands.strip().split("\n")).split(", ")
+command_list.remove("ln")
 command_symlinks = "\n".join([("./ln -s busybox %s" % c) for c in command_list])
-
+command_symlinks
 script = (
     """
-set -x
-$b/busybox-x86_64 cp $b/busybox-x86_64 $out/busybox
-cd $out
+set -e
+$b/busybox-x86_64 mkdir $out/bin
+$b/busybox-x86_64 cp $b/busybox-x86_64 $out/bin/busybox
+cd $out/bin
 ./busybox ln -s busybox ln
 %s
 """
@@ -63,7 +65,7 @@ cd $out
 )
 
 
-derivation(
+busybox = derivation(
     name="busybox",
     environment={"b": b},
     builder="%s/busybox-x86_64" % b,

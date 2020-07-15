@@ -1,0 +1,6 @@
+[flake8]
+ignore = F821 # ignore all unused variables becuase of load() function
+max-line-length = 100 # black's default
+builtins =
+    derivation,
+    load

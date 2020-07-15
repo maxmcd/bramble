@@ -98,25 +98,34 @@ func (drv *Derivation) CheckForExisting() (exists bool, err error) {
 	return true, nil
 }
 
-func (drv *Derivation) assembleSources(destination string) (err error) {
+func (drv *Derivation) assembleSources(destination string) (runLocation string, err error) {
 	if len(drv.Sources) == 0 {
-		return nil
+		return
 	}
 	sources := drv.Sources
 	drv.Sources = []string{}
 	absDir, err := filepath.Abs(drv.location)
 	if err != nil {
-		return err
+		return
 	}
 	// get absolute paths for all sources
 	for i, src := range sources {
 		sources[i] = filepath.Join(absDir, src)
 	}
-	if err = CopyFiles(sources, destination); err != nil {
+
+	if err = copyFiles(sources, destination); err != nil {
 		return
 	}
+	relBramblefileLocation, err := filepath.Rel(CommonPrefix(sources), absDir)
+	if err != nil {
+		return "", errors.Wrap(err, "error calculating relative bramblefild loc")
+	}
+	runLocation = filepath.Join(destination, relBramblefileLocation)
+	if err = os.MkdirAll(runLocation, 0755); err != nil {
+		return "", errors.Wrap(err, "error making build directory")
+	}
 	drv.Environment["src"] = destination
-	return nil
+	return
 }
 
 func (drv *Derivation) WriteDerivation() (err error) {
@@ -195,17 +204,20 @@ func (drv *Derivation) Build() (err error) {
 			return errors.Wrap(err, "error unarchiving")
 		}
 	} else {
-		if err = drv.assembleSources(tempDir); err != nil {
+		var runLocation string
+		runLocation, err = drv.assembleSources(tempDir)
+		if err != nil {
 			return
 		}
 
 		builderLocation := drv.expand(drv.Builder)
-		// TODO: validate this before build?
+
+		// TODO: probably just want to expand bramble_path here
 		if _, err := os.Stat(builderLocation); err != nil {
 			return errors.Wrap(err, "error checking if builder location exists")
 		}
 		cmd := exec.Command(builderLocation, drv.Args...)
-		cmd.Dir = tempDir
+		cmd.Dir = runLocation
 		cmd.Env = []string{}
 		for k, v := range drv.Environment {
 			v = strings.Replace(v, "$bramble_path", drv.client.storePath, -1)

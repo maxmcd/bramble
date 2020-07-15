@@ -14,12 +14,16 @@ import (
 
 // CopyFiles takes a list of absolute paths to files and copies them into
 // another directory, maintaining structure
-func CopyFiles(files []string, dest string) error {
+func copyFiles(files []string, dest string) (err error) {
+	files, err = expandPathDirectories(files)
+	if err != nil {
+		return err
+	}
+
 	prefix := CommonPrefix(files)
 	sort.Slice(files, func(i, j int) bool { return len(files[i]) < len(files[j]) })
 	for _, file := range files {
 		destPath := filepath.Join(dest, strings.TrimPrefix(file, prefix))
-
 		fileInfo, err := os.Stat(file)
 		if err != nil {
 			return errors.Wrap(err, "error finding source file")
@@ -32,15 +36,15 @@ func CopyFiles(files []string, dest string) error {
 
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
-			if err := CreateIfNotExists(destPath, 0755); err != nil {
+			if err := createDirIfNotExists(destPath, 0755); err != nil {
 				return err
 			}
 		case os.ModeSymlink:
-			if err := CopySymLink(file, destPath); err != nil {
+			if err := copySymLink(file, destPath); err != nil {
 				return err
 			}
 		default:
-			if err := Copy(file, destPath); err != nil {
+			if err := copyFile(file, destPath); err != nil {
 				return err
 			}
 		}
@@ -57,10 +61,27 @@ func CopyFiles(files []string, dest string) error {
 			}
 		}
 	}
-	return nil
+	return
 }
 
-func Copy(srcFile, dstFile string) error {
+// takes a list of paths and adds all files in all subdirectories
+func expandPathDirectories(files []string) (out []string, err error) {
+	for _, file := range files {
+		if err = filepath.Walk(file,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				out = append(out, path)
+				return nil
+			}); err != nil {
+			return
+		}
+	}
+	return
+}
+
+func copyFile(srcFile, dstFile string) error {
 	out, err := os.Create(dstFile)
 	if err != nil {
 		return err
@@ -69,10 +90,10 @@ func Copy(srcFile, dstFile string) error {
 	defer out.Close()
 
 	in, err := os.Open(srcFile)
-	defer in.Close()
 	if err != nil {
 		return err
 	}
+	defer in.Close()
 
 	_, err = io.Copy(out, in)
 	if err != nil {
@@ -82,7 +103,7 @@ func Copy(srcFile, dstFile string) error {
 	return nil
 }
 
-func Exists(filePath string) bool {
+func fileExists(filePath string) bool {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return false
 	}
@@ -90,8 +111,8 @@ func Exists(filePath string) bool {
 	return true
 }
 
-func CreateIfNotExists(dir string, perm os.FileMode) error {
-	if Exists(dir) {
+func createDirIfNotExists(dir string, perm os.FileMode) error {
+	if fileExists(dir) {
 		return nil
 	}
 
@@ -102,7 +123,7 @@ func CreateIfNotExists(dir string, perm os.FileMode) error {
 	return nil
 }
 
-func CopySymLink(source, dest string) error {
+func copySymLink(source, dest string) error {
 	link, err := os.Readlink(source)
 	if err != nil {
 		return err
