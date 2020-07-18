@@ -18,6 +18,6 @@ bramble_file = "busybox.bramble"
 name = "nested"
 bramble_file = "./nested-sources/another-folder/nested.bramble"
   [tests.serve_file]
-    #  we still need this because nested imports busybox
+    #  we still need this because nested.bramble imports busybox
     source = "./busybox-x86_64"
     destination = "busybox.tar.gz"
