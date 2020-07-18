@@ -46,7 +46,7 @@ func Reptar(location string, out io.Writer) (err error) {
 				return fmt.Errorf("%s: readlink: %w", fi.Name(), err)
 			}
 		}
-		// GNU Tar add a slash to the end of directories, but Go removes them
+		// GNU Tar adds a slash to the end of directories, but Go removes them
 		if fi.IsDir() {
 			path += "/"
 		}
