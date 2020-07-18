@@ -160,7 +160,7 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 
 func (c *Client) StarlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 	c.log.Debug("load within '", c.scriptLocation.Peek(), "' of module ", module)
-	dict, err := c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble.py"))
+	dict, err := c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble"))
 	if err != nil {
 		c.log.Debugf("%+v", err)
 	}
