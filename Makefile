@@ -15,7 +15,7 @@ integration_tests:
 	go test github.com/maxmcd/bramble/pkg/bramble -v -run=Integration
 
 test:
-	go test ./...
+	go test -v ./...
 
 reptar:
 	cd pkg/reptar && docker build -t reptar . \

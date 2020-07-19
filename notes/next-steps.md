@@ -1,3 +1,0 @@
- - Use the relative path padding piece, for now just implement it the way we concluded in the post, although good to keep in mind the Spack option
- - Implement dependency scanning and finish the v1 build with patching
- - Hash with a fixed path value

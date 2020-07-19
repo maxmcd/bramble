@@ -81,8 +81,8 @@ func ExampleReplaceStringsPrefix() {
 		),
 		&output,
 		[]string{"/nix/store/zziylsdvcqgwwwhbspf1agbz0vldxjr3-perl5.30.2-JSON-4.02"},
-		[]byte("/nix/store/"),
-		[]byte("/tmp/wings/"),
+		"/nix/store/",
+		"/tmp/wings/",
 	)
 
 	fmt.Println(output.String())
@@ -119,7 +119,7 @@ func ExampleCopyWithFrames() {
 func TestOverlap(t *testing.T) {
 	values := prepNixPaths(SomeRandomNixPaths)
 	var buf bytes.Buffer
-	replacements, _, err := ReplaceStringsPrefix(GenerateUninterruptedCorpus(values, 100), &buf, values, []byte("/nix/store/"), []byte("/tmp/wings/"))
+	replacements, _, err := ReplaceStringsPrefix(GenerateUninterruptedCorpus(values, 100), &buf, values, "/nix/store/", "/tmp/wings/")
 	if err != nil {
 		t.Error(err)
 	}
@@ -166,8 +166,8 @@ func BenchmarkReplace(b *testing.B) {
 		_, _, _ = ReplaceStringsPrefix(
 			corpus, &buf,
 			values,
-			[]byte("/nix/store/"),
-			[]byte("/tmp/wings/"))
+			"/nix/store/",
+			"/tmp/wings/")
 		buf.Truncate(0)
 	}
 }
@@ -193,8 +193,8 @@ func BenchmarkUninterruptedReplace(b *testing.B) {
 		_, _, _ = ReplaceStringsPrefix(
 			corpus, &buf,
 			values,
-			[]byte("/nix/store/"),
-			[]byte("/tmp/wings/"))
+			"/nix/store/",
+			"/tmp/wings/")
 		buf.Truncate(0)
 	}
 }

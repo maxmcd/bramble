@@ -104,7 +104,6 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	}
 	// clear the context of this Run as it might be on an import
 	c.scriptLocation.Pop()
-	c.derivations = make(map[string]*Derivation)
 	return
 }
 

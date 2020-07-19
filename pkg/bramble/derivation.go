@@ -11,9 +11,18 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/bramble/pkg/textreplace"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
+)
+
+var (
+	// BramblePrefixOfRecord is the prefix we use when hashing the build output
+	// this allows us to get a consistent hash even if we're building in a
+	// different location
+	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
 )
 
 type Derivation struct {
@@ -33,7 +42,6 @@ type Derivation struct {
 var _ starlark.Value = &Derivation{}
 
 func (drv *Derivation) String() string {
-	fmt.Println("string requested", drv.Name, drv.Outputs)
 	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
 }
 func (drv *Derivation) Type() string          { return "Derivation" }
@@ -210,7 +218,6 @@ func (drv *Derivation) Build() (err error) {
 		if err != nil {
 			return
 		}
-
 		builderLocation := drv.expand(drv.Builder)
 
 		// TODO: probably just want to expand bramble_path here
@@ -226,18 +233,23 @@ func (drv *Derivation) Build() (err error) {
 		}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.client.storePath))
-		// cmd.Stdout = os.Stdout
-		// cmd.Stderr = os.Stderr
-		b, err := cmd.CombinedOutput()
-		fmt.Println(string(b))
-		if err != nil {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err = cmd.Run(); err != nil {
 			return err
 		}
 	}
 
-	hashString := hashDir(outPath)
+	hashString, err := drv.hashAndScanDirectory(outPath)
+	if err != nil {
+		return
+	}
 	folderName := hashString + "-" + drv.Name
 	drv.Outputs["out"] = Output{Path: folderName}
+
+	fmt.Println("--------------------------")
+	fmt.Println(drv.client.storePath)
+	fmt.Println("--------------------------")
 
 	newPath := drv.client.StorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
@@ -251,4 +263,43 @@ func (drv *Derivation) Build() (err error) {
 
 type Output struct {
 	Path string
+}
+
+func (drv *Derivation) hashAndScanDirectory(location string) (hashString string, err error) {
+	var storeValues []string
+	old := drv.client.storePath
+	new := BramblePrefixOfRecord
+
+	for _, derivation := range drv.client.derivations {
+		storeValues = append(storeValues, strings.Replace(derivation.String(), "$bramble_path", old, 1))
+	}
+
+	errChan := make(chan error)
+	resultChan := make(chan map[string]struct{})
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		if err := reptar.Reptar(location, pipeWriter); err != nil {
+			errChan <- err
+		}
+		if err = pipeWriter.Close(); err != nil {
+			errChan <- err
+		}
+	}()
+	hasher := NewHasher()
+	go func() {
+		replacements, matches, err := textreplace.ReplaceStringsPrefix(pipeReader, hasher, storeValues, old, new)
+		fmt.Println(replacements, matches, err)
+		if err != nil {
+			errChan <- err
+		}
+		resultChan <- matches
+	}()
+	select {
+	case err := <-errChan:
+		return "", err
+	case result := <-resultChan:
+		fmt.Println(result)
+		return hasher.String(), nil
+	}
 }
