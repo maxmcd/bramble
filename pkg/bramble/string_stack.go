@@ -1,10 +1,10 @@
 package bramble
 
-type StringStack struct {
+type stringStack struct {
 	store []string
 }
 
-func (ss *StringStack) Pop() string {
+func (ss *stringStack) Pop() string {
 	n := len(ss.store) - 1
 	if n < 0 {
 		return ""
@@ -13,7 +13,7 @@ func (ss *StringStack) Pop() string {
 	ss.store = ss.store[:n]
 	return out
 }
-func (ss *StringStack) Peek() string {
+func (ss *stringStack) Peek() string {
 	n := len(ss.store) - 1
 	if n < 0 {
 		return ""
@@ -21,6 +21,6 @@ func (ss *StringStack) Peek() string {
 	return ss.store[n]
 }
 
-func (ss *StringStack) Push(v string) {
+func (ss *stringStack) Push(v string) {
 	ss.store = append(ss.store, v)
 }

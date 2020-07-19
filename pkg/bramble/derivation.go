@@ -19,16 +19,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
-var (
-	// BramblePrefixOfRecord is the prefix we use when hashing the build output
-	// this allows us to get a consistent hash even if we're building in a
-	// different location
-	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
-)
-
+// Derivation is the basic building block of a Bramble build
 type Derivation struct {
 	Name             string
-	Outputs          map[string]Output
+	Outputs          map[string]DerivationOutput
 	Builder          string
 	Platform         string
 	Args             []string
@@ -41,11 +35,17 @@ type Derivation struct {
 	location string
 }
 
-type Output struct {
+// DerivationOutput tracks the build outputs. Outputs are not included in the
+// Derivation hash. The path tracks the output location in the bramble store
+// and Dependencies tracks the bramble outputs that are runtime dependencies.
+type DerivationOutput struct {
 	Path         string
 	Dependencies []string
 }
 
+// InputDerivation is one of the derivation inputs. Path is the location of
+// the derivation, output is the name of the specific output this derivation
+// uses for the build
 type InputDerivation struct {
 	Path   string
 	Output string
@@ -61,7 +61,7 @@ func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Hash() (uint32, error) { return 0, nil }
 
-func (drv *Derivation) PrettyJSON() string {
+func (drv *Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
@@ -91,7 +91,7 @@ func (drv *Derivation) calculateInputDerivations() (err error) {
 	return nil
 }
 
-func (drv *Derivation) ComputeDerivation() (fileBytes []byte, filename string, err error) {
+func (drv *Derivation) computeDerivation() (fileBytes []byte, filename string, err error) {
 	fileBytes, err = json.Marshal(drv)
 	if err != nil {
 		return
@@ -113,8 +113,8 @@ func (drv *Derivation) ComputeDerivation() (fileBytes []byte, filename string, e
 	return
 }
 
-func (drv *Derivation) CheckForExisting() (exists bool, err error) {
-	_, filename, err := drv.ComputeDerivation()
+func (drv *Derivation) checkForExisting() (exists bool, err error) {
+	_, filename, err := drv.computeDerivation()
 	if err != nil {
 		return
 	}
@@ -161,14 +161,14 @@ func (drv *Derivation) assembleSources(destination string) (runLocation string, 
 	return
 }
 
-func (drv *Derivation) WriteDerivation() (err error) {
-	fileBytes, filename, err := drv.ComputeDerivation()
+func (drv *Derivation) writeDerivation() (err error) {
+	fileBytes, filename, err := drv.computeDerivation()
 	if err != nil {
 		return
 	}
-	fileLocation := filepath.Join(drv.client.StorePath(), filename)
-	_, doesnotExistErr := os.Stat(fileLocation)
-	if doesnotExistErr != nil {
+	fileLocation := drv.client.joinStorePath(filename)
+
+	if !fileExists(fileLocation) {
 		return ioutil.WriteFile(fileLocation, fileBytes, 0444)
 	}
 	return nil
@@ -179,7 +179,7 @@ func (drv *Derivation) createTempDir() (tempDir string, err error) {
 }
 
 func (drv *Derivation) computeOutPath() (outPath string, err error) {
-	_, filename, err := drv.ComputeDerivation()
+	_, filename, err := drv.computeDerivation()
 
 	return filepath.Join(
 		drv.client.storePath,
@@ -199,7 +199,7 @@ func (drv *Derivation) expand(s string) string {
 	})
 }
 
-func (drv *Derivation) Build() (err error) {
+func (drv *Derivation) build() (err error) {
 	tempDir, err := drv.createTempDir()
 	if err != nil {
 		return
@@ -269,9 +269,9 @@ func (drv *Derivation) Build() (err error) {
 		return
 	}
 	folderName := hashString + "-" + drv.Name
-	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
+	drv.Outputs["out"] = DerivationOutput{Path: folderName, Dependencies: matches}
 
-	newPath := drv.client.StorePath() + "/" + folderName
+	newPath := drv.client.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
 	drv.client.log.Debug("Output at ", newPath)
 	if doesnotExistErr != nil {
