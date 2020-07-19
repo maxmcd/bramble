@@ -17,7 +17,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-// Client is the bramble client. $BRAMBLE_PATH must be set to an absolute path when initializing
+// Client is the bramble client.
 type Client struct {
 	bramblePath string
 	storePath   string
@@ -28,7 +28,7 @@ type Client struct {
 	testURL string
 
 	log            *logrus.Logger
-	scriptLocation StringStack
+	scriptLocation stringStack
 }
 
 func init() {
@@ -39,7 +39,11 @@ func init() {
 	resolve.AllowSet = true
 }
 
+// NewClient creates a new client. When initialized this function checks if the
+// bramble store exists and creates it if it does not.
 func NewClient() (*Client, error) {
+	// TODO: don't run on this on every command run, shouldn't be needed to
+	// just print health information
 	bramblePath, storePath, err := ensureBramblePath()
 	if err != nil {
 		return nil, err
@@ -54,16 +58,17 @@ func NewClient() (*Client, error) {
 	// c.log.SetReportCaller(true)
 	c.log.SetLevel(logrus.DebugLevel)
 
-	c.thread = &starlark.Thread{Name: "main", Load: c.StarlarkLoadFunc}
+	c.thread = &starlark.Thread{Name: "main", Load: c.starlarkLoadFunc}
 	return c, nil
 }
 
-func (c *Client) StorePath(v ...string) string {
+func (c *Client) joinStorePath(v ...string) string {
 	return filepath.Join(append([]string{c.storePath}, v...)...)
 }
 
+// Load derivation will load and parse a derivation from the bramble store1
 func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := c.StorePath(filename)
+	fileLocation := c.joinStorePath(filename)
 	_, err = os.Stat(fileLocation)
 	if err != nil {
 		return nil, false, nil
@@ -78,27 +83,27 @@ func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, 
 
 func (c *Client) buildDerivation(drv *Derivation) (err error) {
 	var exists bool
-	exists, err = drv.CheckForExisting()
+	exists, err = drv.checkForExisting()
 	if err != nil {
 		return
 	}
 	if exists {
 		return
 	}
-	if err = drv.Build(); err != nil {
+	if err = drv.build(); err != nil {
 		return
 	}
-	if err = drv.WriteDerivation(); err != nil {
+	if err = drv.writeDerivation(); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Client) ShellCommand(args []string) (err error) {
+func (c *Client) shellCommand(args []string) (err error) {
 	panic("unimplemented")
 }
 
-func (c *Client) BuildCommand(args []string) (err error) {
+func (c *Client) buildCommand(args []string) (err error) {
 	if len(args) == 0 {
 		return errors.New("the build command takes a positional argument")
 	}
@@ -106,11 +111,13 @@ func (c *Client) BuildCommand(args []string) (err error) {
 	return
 }
 
+// Run runs a file given a path. Returns the global variable values from that
+// file. Run will recursively run imported files.
 func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	c.log.Debug("running file ", file)
 	c.scriptLocation.Push(filepath.Dir(file))
 	globals, err = starlark.ExecFile(c.thread, file, nil, starlark.StringDict{
-		"derivation": starlark.NewBuiltin("derivation", c.StarlarkDerivation),
+		"derivation": starlark.NewBuiltin("derivation", c.starlarkDerivation),
 	})
 	if err != nil {
 		return
@@ -120,6 +127,8 @@ func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
 	return
 }
 
+// DownloadFile downloads a file into the store. Must include an expected hash
+// of the downloaded file as a hex string of a  sha256 hash
 func (c *Client) DownloadFile(url string, hash string) (path string, err error) {
 	c.log.Debugf("Downloading url %s", url)
 
@@ -129,7 +138,7 @@ func (c *Client) DownloadFile(url string, hash string) (path string, err error) 
 		return
 	}
 	storePrefixHash := bytesToBase32Hash(b)
-	matches, err := filepath.Glob(c.StorePath(storePrefixHash) + "*")
+	matches, err := filepath.Glob(c.joinStorePath(storePrefixHash) + "*")
 	if err != nil {
 		err = errors.Wrap(err, "error searching for existing hashed content")
 		return
@@ -163,7 +172,7 @@ func (c *Client) DownloadFile(url string, hash string) (path string, err error) 
 		// make best effort to save this file, as we'll likely just download it again
 		storePrefixHash = bytesToBase32Hash(sha256HashBytes)
 	}
-	path = c.StorePath(storePrefixHash + "-" + filepath.Base(url))
+	path = c.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
 	// don't overwrite err if we error here, we want to try and save this, but
 	// still return the incorrect hash error
 	if er := os.Rename(file.Name(), path); er != nil {

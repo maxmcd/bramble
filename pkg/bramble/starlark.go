@@ -23,7 +23,7 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 		funcName: "derivation",
 	}
 	drv = &Derivation{
-		Outputs:     map[string]Output{"out": {}},
+		Outputs:     map[string]DerivationOutput{"out": {}},
 		Environment: map[string]string{},
 		client:      c,
 	}
@@ -142,7 +142,7 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 	return
 }
 
-func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (c *Client) starlarkDerivation(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
@@ -157,8 +157,8 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 	if err = c.buildDerivation(drv); err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
 	}
-	c.log.Debug("Completed derivation: ", drv.PrettyJSON())
-	_, filename, err := drv.ComputeDerivation()
+	c.log.Debug("Completed derivation: ", drv.prettyJSON())
+	_, filename, err := drv.computeDerivation()
 	if err != nil {
 		return
 	}
@@ -166,7 +166,7 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 	return drv, nil
 }
 
-func (c *Client) StarlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+func (c *Client) starlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 	c.log.Debug("load within '", c.scriptLocation.Peek(), "' of module ", module)
 	dict, err := c.Run(filepath.Join(c.scriptLocation.Peek(), module+".bramble"))
 	if err != nil {

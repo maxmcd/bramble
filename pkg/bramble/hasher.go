@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"os"
 	"strings"
 )
 
+// Hasher is used to compute path hash values. Hasher implements io.Writer and
+// takes a sha256 hash of the input bytes. The output string is a lowercase
+// base32 representation of the first 160 bits of the hash
 type Hasher struct {
 	hash hash.Hash
 }
@@ -31,16 +33,12 @@ func (h *Hasher) String() string {
 
 // bytesToBase32Hash copies nix here
 // https://nixos.org/nixos/nix-pills/nix-store-paths.html
-// Finally the comments tell us to compute the base-32 representation of the
+// Finally the comments tell us to compute the base32 representation of the
 // first 160 bits (truncation) of a sha256 of the above string:
 func bytesToBase32Hash(b []byte) string {
 	var buf bytes.Buffer
 	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(b[:20])
 	return strings.ToLower(buf.String())
-}
-
-func IsExecAny(mode os.FileMode) bool {
-	return mode&0111 != 0
 }
 
 func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {

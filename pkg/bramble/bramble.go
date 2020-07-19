@@ -1,22 +1,19 @@
+// bramble bramble bramble
 package bramble
 
-import (
-	"fmt"
+import "github.com/pkg/errors"
+
+var (
+	TempDirPrefix         = "bramble-"
+	PathPaddingCharacters = "bramble_store_padding"
+	PathPaddingLength     = 50
+
+	// BramblePrefixOfRecord is the prefix we use when hashing the build output
+	// this allows us to get a consistent hash even if we're building in a
+	// different location
+	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
 )
 
 var (
-	TempDirPrefix = "bramble-"
+	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
-
-func Run(args []string) (err error) {
-	client, err := NewClient()
-	if err != nil {
-		fmt.Printf("%+v", err)
-		return err
-	}
-	_, err = client.Run(args[1])
-	if err != nil {
-		fmt.Printf("%+v", err)
-	}
-	return
-}

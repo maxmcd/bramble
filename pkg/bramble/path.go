@@ -9,14 +9,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var (
-	// TODO: improve and document these error messages
-
-	ErrStoreDoesNotExist  = errors.New("calculated store path doesn't exist, did the location change?")
-	PathPaddingCharacters = "bramble_store_padding"
-	PaddingLength         = 50
-)
-
 func ensureBramblePath() (bramblePath, storePath string, err error) {
 	bramblePath = os.Getenv("BRAMBLE_PATH")
 	if bramblePath == "" {
@@ -47,7 +39,7 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 	}
 
 	var storeDirectoryName string
-	storeDirectoryName, err = calculatePaddedDirectoryName(bramblePath, PaddingLength)
+	storeDirectoryName, err = calculatePaddedDirectoryName(bramblePath, PathPaddingLength)
 	if err != nil {
 		return
 	}
