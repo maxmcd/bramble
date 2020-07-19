@@ -1,7 +1,6 @@
 package bramble
 
 import (
-	"archive/tar"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -16,7 +15,6 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	// call flag.Parse() here if TestMain uses flags
 	code := m.Run()
 
 	// Don't delete if we error, we might want to check the folder contents
@@ -36,11 +34,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
-}
-
-type TestFile struct {
-	Header *tar.Header
-	Body   []byte
 }
 
 func PanicOnErr(err error) {

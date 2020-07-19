@@ -4,6 +4,14 @@ Bramble is a functional build system inspired by [nix](https://nixos.org/).
 
 Bramble is currently a work-in-progress. Feel free to read the corresponding blog post for context and background: https://maxmcd.com/posts/lets-build-a-nix-guix
 
+Current Project goals:
+ - Easy to use and understand
+ - Run nothing as root
+ - Provide primitives and tools to create reproducible builds (might with the previous goal)
+ - First class support for building docker images
+ - Binary relocation/renaming
+ - (more to come)
+
 ## Core Concepts
 
 ### Derivations
@@ -50,6 +58,6 @@ If I set `$BRAMBLE_PATH` to `/tmp/bramble` it creates the following store path:
 ```
 /tmp/bramble/bramble_store_padding/bramble_store_
 ```
-Both are 50 characters long.
+Both are 49 characters long.
 
 You can read more about [Strategies for Binary Relocation In Functional Build Systems](https://maxmcd.com/posts/strategies-for-binary-relocation/)

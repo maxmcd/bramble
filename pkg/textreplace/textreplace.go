@@ -2,14 +2,22 @@ package textreplace
 
 import (
 	"bytes"
+	"errors"
 	"io"
+)
+
+var (
+	ErrNotSameLength = errors.New("old and new prefixes must be the same length")
 )
 
 // ReplaceStringsPrefix replaces the prefix of matching strings in a byte
 // stream. All values to be replaced must have the same prefix and that
 // prefix must be the same length as the new value.
-func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, old []byte, new []byte) (
+func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, old string, new string) (
 	replacements int, matches map[string]struct{}, err error) {
+	if len(old) != len(new) {
+		return 0, nil, ErrNotSameLength
+	}
 	longestValueLength := 0
 	for _, in := range values {
 		if len(in) > longestValueLength {
@@ -21,7 +29,7 @@ func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, o
 		j := 0
 		for {
 		BEGIN:
-			i := bytes.Index(b[j:], old)
+			i := bytes.Index(b[j:], []byte(old))
 			if i < 0 {
 				break
 			}
