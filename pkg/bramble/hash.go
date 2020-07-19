@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base32"
+	"fmt"
 	"hash"
+	"io"
 	"os"
 	"strings"
 )
@@ -39,4 +41,17 @@ func bytesToBase32Hash(b []byte) string {
 
 func IsExecAny(mode os.FileMode) bool {
 	return mode&0111 != 0
+}
+
+func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
+	defer file.Close()
+	hasher := NewHasher()
+	if _, err = hasher.Write([]byte(name)); err != nil {
+		return
+	}
+	if _, err = io.Copy(hasher, file); err != nil {
+		return
+	}
+	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
+	return
 }
