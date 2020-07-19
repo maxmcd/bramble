@@ -31,6 +31,14 @@ type Client struct {
 	scriptLocation StringStack
 }
 
+func init() {
+	resolve.AllowFloat = true
+	resolve.AllowLambda = true
+	resolve.AllowNestedDef = true
+	resolve.AllowRecursion = false
+	resolve.AllowSet = true
+}
+
 func NewClient() (*Client, error) {
 	bramblePath, storePath, err := ensureBramblePath()
 	if err != nil {
@@ -45,12 +53,6 @@ func NewClient() (*Client, error) {
 	}
 	// c.log.SetReportCaller(true)
 	c.log.SetLevel(logrus.DebugLevel)
-
-	resolve.AllowFloat = true
-	resolve.AllowLambda = true
-	resolve.AllowNestedDef = true
-	resolve.AllowRecursion = false
-	resolve.AllowSet = true
 
 	c.thread = &starlark.Thread{Name: "main", Load: c.StarlarkLoadFunc}
 	return c, nil
@@ -89,6 +91,18 @@ func (c *Client) buildDerivation(drv *Derivation) (err error) {
 	if err = drv.WriteDerivation(); err != nil {
 		return
 	}
+	return
+}
+
+func (c *Client) ShellCommand(args []string) (err error) {
+	panic("unimplemented")
+}
+
+func (c *Client) BuildCommand(args []string) (err error) {
+	if len(args) == 0 {
+		return errors.New("the build command takes a positional argument")
+	}
+	_, err = c.Run(args[0])
 	return
 }
 
