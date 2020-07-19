@@ -83,7 +83,6 @@ func (c *Client) buildDerivation(drv *Derivation) (err error) {
 	if exists {
 		return
 	}
-	// TODO: calculate derivation and check if we already have it
 	if err = drv.Build(); err != nil {
 		return
 	}

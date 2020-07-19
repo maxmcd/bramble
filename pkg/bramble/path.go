@@ -79,7 +79,6 @@ func ensureBramblePath() (bramblePath, storePath string, err error) {
 }
 
 func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeDirectoryName string, err error) {
-	fmt.Println(bramblePath, paddingLength)
 	paddingLen := paddingLength -
 		len(bramblePath) - // parent folder lengths
 		1 - // slash before directory

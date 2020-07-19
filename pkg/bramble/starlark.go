@@ -68,7 +68,6 @@ func (c *Client) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Derivati
 		}
 	}
 	drv.location = c.scriptLocation.Peek()
-	c.log.Debug("Assembled derivation: ", drv.PrettyJSON())
 	return drv, nil
 }
 
@@ -151,10 +150,19 @@ func (c *Client) StarlarkDerivation(thread *starlark.Thread, fn *starlark.Builti
 	if err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
 	}
+	if err = drv.calculateInputDerivations(); err != nil {
+		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
+	}
+	c.log.Debugf("Building derivation %q", drv.Name)
 	if err = c.buildDerivation(drv); err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: c.thread.CallStack()}
 	}
-	c.derivations[drv.Name] = drv
+	c.log.Debug("Completed derivation: ", drv.PrettyJSON())
+	_, filename, err := drv.ComputeDerivation()
+	if err != nil {
+		return
+	}
+	c.derivations[filename] = drv
 	return drv, nil
 }
 

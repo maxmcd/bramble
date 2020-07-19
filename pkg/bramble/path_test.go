@@ -1,7 +1,6 @@
 package bramble
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,7 +75,6 @@ func Test_calculatePaddedDirectoryName(t *testing.T) {
 				return
 			}
 			fullPath := filepath.Join(tt.args.bramblePath, got) + "/"
-			fmt.Println(fullPath)
 			if len(fullPath) != tt.args.paddingLength {
 				t.Errorf("calculatePaddedDirectoryName() output path %q is len '%v' should be %d", fullPath, len(fullPath), tt.args.paddingLength)
 			}

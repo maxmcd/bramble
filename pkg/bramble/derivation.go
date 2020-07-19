@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/reptar"
@@ -26,17 +27,28 @@ var (
 )
 
 type Derivation struct {
-	Name        string
-	Outputs     map[string]Output
-	Builder     string
-	Platform    string
-	Args        []string
-	Environment map[string]string
-	Sources     []string
+	Name             string
+	Outputs          map[string]Output
+	Builder          string
+	Platform         string
+	Args             []string
+	Environment      map[string]string
+	Sources          []string
+	InputDerivations []InputDerivation
 
 	// internal fields
 	client   *Client
 	location string
+}
+
+type Output struct {
+	Path         string
+	Dependencies []string
+}
+
+type InputDerivation struct {
+	Path   string
+	Output string
 }
 
 var _ starlark.Value = &Derivation{}
@@ -54,17 +66,29 @@ func (drv *Derivation) PrettyJSON() string {
 	return string(b)
 }
 
-func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
-	defer file.Close()
-	hasher := NewHasher()
-	if _, err = hasher.Write([]byte(name)); err != nil {
+func (drv *Derivation) calculateInputDerivations() (err error) {
+	// TODO: is this the best way to do this? presumaby in nix it's a language
+	// feature
+
+	fileBytes, err := json.Marshal(drv)
+	if err != nil {
 		return
 	}
-	if _, err = io.Copy(hasher, file); err != nil {
-		return
+	for location, derivation := range drv.client.derivations {
+		// TODO: check all outputs, not just the default
+		if bytes.Contains(fileBytes, []byte(derivation.String())) {
+			drv.InputDerivations = append(drv.InputDerivations, InputDerivation{
+				Path:   location,
+				Output: "out",
+			})
+		}
 	}
-	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
-	return
+	sort.Slice(drv.InputDerivations, func(i, j int) bool {
+		id := drv.InputDerivations[i]
+		jd := drv.InputDerivations[j]
+		return id.Path+id.Output < jd.Path+id.Output
+	})
+	return nil
 }
 
 func (drv *Derivation) ComputeDerivation() (fileBytes []byte, filename string, err error) {
@@ -240,16 +264,12 @@ func (drv *Derivation) Build() (err error) {
 		}
 	}
 
-	hashString, err := drv.hashAndScanDirectory(outPath)
+	matches, hashString, err := drv.hashAndScanDirectory(outPath)
 	if err != nil {
 		return
 	}
 	folderName := hashString + "-" + drv.Name
-	drv.Outputs["out"] = Output{Path: folderName}
-
-	fmt.Println("--------------------------")
-	fmt.Println(drv.client.storePath)
-	fmt.Println("--------------------------")
+	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
 
 	newPath := drv.client.StorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
@@ -261,11 +281,7 @@ func (drv *Derivation) Build() (err error) {
 	return
 }
 
-type Output struct {
-	Path string
-}
-
-func (drv *Derivation) hashAndScanDirectory(location string) (hashString string, err error) {
+func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
 	var storeValues []string
 	old := drv.client.storePath
 	new := BramblePrefixOfRecord
@@ -288,8 +304,7 @@ func (drv *Derivation) hashAndScanDirectory(location string) (hashString string,
 	}()
 	hasher := NewHasher()
 	go func() {
-		replacements, matches, err := textreplace.ReplaceStringsPrefix(pipeReader, hasher, storeValues, old, new)
-		fmt.Println(replacements, matches, err)
+		_, matches, err := textreplace.ReplaceStringsPrefix(pipeReader, hasher, storeValues, old, new)
 		if err != nil {
 			errChan <- err
 		}
@@ -297,9 +312,11 @@ func (drv *Derivation) hashAndScanDirectory(location string) (hashString string,
 	}()
 	select {
 	case err := <-errChan:
-		return "", err
+		return nil, "", err
 	case result := <-resultChan:
-		fmt.Println(result)
-		return hasher.String(), nil
+		for k := range result {
+			matches = append(matches, strings.Replace(k, drv.client.storePath, "$bramble_path", 1))
+		}
+		return matches, hasher.String(), nil
 	}
 }
