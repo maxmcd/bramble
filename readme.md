@@ -1,113 +1,63 @@
 # Bramble
 
-nix + go + docker
+Bramble is a functional build system inspired by [nix](https://nixos.org/).
 
-A nix-style build system that:
- - has great cache characteristics
- - is open to all (third party or private packages are first class)
- - has first class support for building docker images
- - uses starlark as a build language
- - maybe uses GOPATH style resource caching
+Bramble is currently a work-in-progress. Feel free to read the corresponding blog post for context and background: https://maxmcd.com/posts/lets-build-a-nix-guix
 
+Current Project goals:
+ - Easy to use and understand
+ - Run nothing as root
+ - Provide primitives and tools to create reproducible builds (might with the previous goal)
+ - First class support for building docker images
+ - Binary relocation/renaming
+ - (more to come)
 
-# Imports and dependencies
+## Core Concepts
 
-```python
-# loads the file random.bramble
-random = load("github.com/maxmcd/brambles", "random")
+### Derivations
 
-# now we have access to a bash program
-print(random.bash)
+Bramble uses [starlark](https://docs.bazel.build/versions/master/skylark/language.html) as its configuration language.
 
-
-# like go, would make sense that we have a minimal "stdlib"
-build_python_package, numpy = load("languages/python", "build_python_package", "numpy")
-# this would help with package bloat, something people could point at, but would also have
-# to be somewhat opinionated.
-
-
-# imagine also since go relies on "one package per dir" we would either need to come up
-# with a single valid filename like bazel's BUILD or switch to pointing to
-# exact filenames, like so:
-load("languages/python.bramble", "build_python_package")
-load("github.com/maxmcd/brambles/random.bramble", "random")
-
-# let's think about how this would work with sibling files:
-
-# pointing at files:
-python = load("./python.bramble")
-# or
-random_string = load("./random.bramble", "string")
-random = load("./random.bramble")
-print(random.string)
-
-# this is hard now because the api now uses file names. we could use the
-# default.nix approach. yeah that could be flexible
-
-# could be loading the ./python/default.bramble
-# could be loading ./python.bramble
-python = load("./python")
-# or
-random_string = load("./random.bramble", "string")
-random = load("./random.bramble")
-print(random.string)
-```
-
-# Content hashes
+Derivations are the core building block of Bramble. They describe how how to build a specific package. Here is a simple derivation that downloads a file:
 
 ```python
-# loads the file random.bramble
-random = load("github.com/maxmcd/brambles", "random")
-```
-
-TODO
-
-
-# Derivation
-
-<!-- derivation {
-  name = "simple";
-  builder = "${bash}/bin/bash";
-  args = [ ./simple_builder.sh ];
-  inherit gcc coreutils;
-  src = ./simple.c;
-  system = builtins.currentSystem;
-} -->
-```python
-bash, gcc, coreutils = load("core", ["bash", "gcc", "coreutils"])
-
-build(
-    name = "simple",
-    builder = "{bash}/bin/bash".format(bash) or bash+"/bin/bash",
-    args = "./builder.sh",
-    include = [gcc, coreutils],
-    src = "./simple.c",
+seed = derivation(
+    name="seed",
+    builder="fetch_url",
+    environment={
+        "decompress": True,
+        "url": "https://github.com/maxmcd/bramble/releases/download/v0.0.1/linux-x86_64-seed.tar.gz",
+        "hash": "111005a76fa66c148799a8fb67fb784ac47944fcba791efe7599128bbd5884ac",
+    },
 )
 ```
 
+And here's a slightly more complicated one that compiles a simple c program:
 
 ```python
+load("../seed", "seed")
 
-
-
-
-build = load("build")
-
-ruby = load("languages/ruby")
-
-build(
-    runtimeDependencies = [ruby],
-    build =
+derivation(
+    name="simple",
+    environment={"seed": seed},
+    builder="%s/bin/sh" % seed,
+    args=["./simple_builder.sh"],
+    sources=["./simple.c", "simple_builder.sh"],
 )
-
-
-def build_script(env):
-    files = env.fetch_url(url="", hash="asd")
-
-    env.script("""
-    mv {files} ./
-    cargo build ./
-    """.format(files))
-
-
 ```
+
+### Store
+
+Bramble stores build artifacts at `$BRAMBLE_STORE` or at `$HOME/bramble`. The path is padded out to a fixed length so that cached build outputs can be relocated to a different users home folder.
+
+As an example, when I initialize Bramble on my computer the store path is at:
+```
+/home/maxm/bramble/bramble_store_padding/bramble_
+```
+If I set `$BRAMBLE_PATH` to `/tmp/bramble` it creates the following store path:
+```
+/tmp/bramble/bramble_store_padding/bramble_store_
+```
+Both are 49 characters long.
+
+You can read more about [Strategies for Binary Relocation In Functional Build Systems](https://maxmcd.com/posts/strategies-for-binary-relocation/)
