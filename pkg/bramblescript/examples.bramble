@@ -1,0 +1,29 @@
+"""
+Bramblescript examples
+"""
+
+
+# runs a command once
+cmd("ls -lah").pipe("sort")
+
+s = session()
+s.env("FOO", "bar")
+s.unset("FOO")
+
+# runs and gives stdout as a string
+s.cmd("df -h").stdout
+s.cmd("df -h").combined_output
+s.cmd("dh -h").stderr
+
+# Assign stdin, can take stdout or just assignment
+s.cmd("dh -h").stdin = other.stdout
+s.cmd("dh -h").stdin = other.stderr
+s.cmd("dh -h").stdin = other.combined_output
+s.cmd("dh -h").stdin = other
+
+for line in s.cmd("df -h").stdout:
+    print(line)
+
+cmd("foo").or("echo failed")
+
+cmd("foo", stdin=bar, dir="../", env={"FOO":"BAR"})
