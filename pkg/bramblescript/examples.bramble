@@ -2,21 +2,21 @@
 Bramblescript examples
 """
 
-cmd("ls -lah")
-cmd("ls", "-lah")
-cmd(["ls", "-lah"])
+cmd("ls -lah")  # done
+cmd("ls", "-lah")  # done
+cmd(["ls", "-lah"])  # done
 
 # runs a command once
 cmd("ls -lah").pipe("sort")
 
-s = session()
+s = session()1
 s.env("FOO", "bar")
 s.unset("FOO")
 
 # runs and gives stdout as a string
-s.cmd("df -h").stdout()
-s.cmd("df -h").combined_output()
-s.cmd("dh -h").stderr()
+s.cmd("df -h").stdout()  # done
+s.cmd("df -h").combined_output()  # done
+s.cmd("dh -h").stderr()  # done
 
 # Assign stdin, can take stdout or just assignment
 s.cmd("dh -h").stdin = other.stdout
@@ -24,9 +24,9 @@ s.cmd("dh -h").stdin = other.stderr
 s.cmd("dh -h").stdin = other.combined_output
 s.cmd("dh -h").stdin = other
 
-for line in s.cmd("df -h").stdout:
+for line in s.cmd("df -h").stdout:  # done
     print(line)
 
-cmd("foo").or("echo failed")
+cmd("foo").if_err("echo failed")  # done
 
-cmd("foo", stdin=bar, dir="../", env={"FOO":"BAR"})
+cmd("foo", stdin=bar, dir="../", env={"FOO": "BAR"})
