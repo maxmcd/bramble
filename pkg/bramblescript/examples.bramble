@@ -2,6 +2,9 @@
 Bramblescript examples
 """
 
+cmd("ls -lah")
+cmd("ls", "-lah")
+cmd(["ls", "-lah"])
 
 # runs a command once
 cmd("ls -lah").pipe("sort")
@@ -11,9 +14,9 @@ s.env("FOO", "bar")
 s.unset("FOO")
 
 # runs and gives stdout as a string
-s.cmd("df -h").stdout
-s.cmd("df -h").combined_output
-s.cmd("dh -h").stderr
+s.cmd("df -h").stdout()
+s.cmd("df -h").combined_output()
+s.cmd("dh -h").stderr()
 
 # Assign stdin, can take stdout or just assignment
 s.cmd("dh -h").stdin = other.stdout
