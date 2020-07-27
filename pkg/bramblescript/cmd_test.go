@@ -14,33 +14,31 @@ func TestStarlarkCmd(t *testing.T) {
 		errContains string
 		returnValue string
 	}{
-		{
-			script:      "cmd()",
-			errContains: "missing 1 required positional argument",
-		},
-		{
-			script:      "cmd([])",
-			errContains: "be empty",
-		},
-		{
-			script:      "cmd([1])",
-			errContains: ErrIncorrectType{is: "int", shouldBe: "string"}.Error(),
-		},
-		{
-			script:      `b=cmd(["ls", "-lah"])`,
-			returnValue: `<cmd 'ls' ['-lah']>`,
-		},
-		{
-			script:      `b=cmd("ls -lah")`,
-			returnValue: `<cmd 'ls' ['-lah']>`,
-		},
-		{
-			script:      `b=cmd("ls", "-lah")`,
-			returnValue: `<cmd 'ls' ['-lah']>`,
-		},
+		{script: "cmd()",
+			errContains: "missing 1 required positional argument"},
+		{script: "cmd([])",
+			errContains: "be empty"},
+		{script: `cmd("")`,
+			errContains: "be empty"},
+		{script: `cmd("    ")`,
+			errContains: `"    "`},
+		{script: "cmd([1])",
+			errContains: ErrIncorrectType{is: "int", shouldBe: "string"}.Error()},
+		{script: `b=cmd(["ls", "-lah"])`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
+		{script: `b=cmd("ls -lah")`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
+		{script: `b=cmd("ls -lah")`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
+		{script: `b=cmd("ls \"-lah\"")`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
+		{script: `b=cmd("ls '-lah'")`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
+		{script: `b=cmd("ls", "-lah")`,
+			returnValue: `<cmd 'ls' ['-lah']>`},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.script, func(t *testing.T) {
 			thread := &starlark.Thread{Name: "main"}
 			globals, err := starlark.ExecFile(thread, tt.name+".bramble", tt.script, starlark.StringDict{
 				"cmd": starlark.NewBuiltin("derivation", StarlarkCmd),
@@ -51,7 +49,7 @@ func TestStarlarkCmd(t *testing.T) {
 				}
 				assert.Contains(t, err.Error(), tt.errContains)
 				if tt.errContains == "" {
-					t.Error(err)
+					t.Error(err, tt.script)
 					return
 				}
 			}

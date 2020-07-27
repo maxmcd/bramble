@@ -1,12 +1,16 @@
 package bramblescript
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/kballard/go-shellquote"
+	"github.com/moby/moby/pkg/stdcopy"
 	"go.starlark.net/starlark"
 )
 
@@ -14,6 +18,8 @@ type Cmd struct {
 	exec.Cmd
 	name   string
 	frozen bool
+
+	out *bytes.Buffer
 }
 
 func (c *Cmd) String() string {
@@ -33,6 +39,24 @@ func (c *Cmd) Type() string          { return "cmd" }
 func (c *Cmd) Freeze()               { c.frozen = false }
 func (c *Cmd) Truth() starlark.Bool  { return c != nil }
 func (c *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
+
+func (c *Cmd) stdout() (stdout starlark.String, err error) {
+	var buf bytes.Buffer
+	_, err = stdcopy.StdCopy(&buf, ioutil.Discard, c.out)
+	return starlark.String(buf.String()), err
+}
+
+func (c *Cmd) stderr() (stderr starlark.String, err error) {
+	var buf bytes.Buffer
+	_, err = stdcopy.StdCopy(ioutil.Discard, &buf, c.out)
+	return starlark.String(buf.String()), err
+}
+
+func (c *Cmd) combinedOutput() (combined starlark.String, err error) {
+	var buf bytes.Buffer
+	_, err = stdcopy.StdCopy(&buf, &buf, c.out)
+	return starlark.String(buf.String()), err
+}
 
 func (c *Cmd) addArgumentToCmd(count int, value starlark.Value) (err error) {
 	var stringValue string
@@ -69,17 +93,34 @@ func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 	}
 
 	// it's cmd(["grep", "-v"])
-	if args.Len() == 1 && args.Index(0).Type() == "list" {
-		args, err := starlarkListToListOfStrings(args.Index(0))
-		if err != nil {
-			return nil, err
+	if args.Len() == 1 {
+		var words []string
+		if args.Index(0).Type() == "list" {
+			words, err = starlarkListToListOfStrings(args.Index(0))
+			if err != nil {
+				return nil, err
+			}
+			if len(words) == 0 {
+				return nil, errors.New("if the first argument is a list it can't be empty")
+			}
+		} else if args.Index(0).Type() == "string" {
+			starlarkCmd := args.Index(0).(starlark.String).GoString()
+			if starlarkCmd == "" {
+				return nil, errors.New("if the first argument is a string it can't be empty")
+			}
+			words, err = shellquote.Split(starlarkCmd)
+			if err != nil {
+				return
+			}
+			if len(words) == 0 {
+				// whitespace bash characters will be removed by shellquote,
+				// add them back for correct error message
+				words = append(words, starlarkCmd)
+			}
 		}
-		if len(args) == 0 {
-			return nil, errors.New("if the first argument is a list it can't be empty")
-		}
-		cmd.name = args[0]
-		if len(args) > 1 {
-			cmd.Args = args[1:]
+		cmd.name = words[0]
+		if len(words) > 1 {
+			cmd.Args = words[1:]
 		}
 	} else {
 		iterator := args.Iterate()
@@ -105,7 +146,10 @@ func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 		}
 		cmd.Path = lp
 	}
+	cmd.out = bytes.NewBuffer(nil)
 
+	cmd.Stdout = stdcopy.NewStdWriter(cmd.out, stdcopy.Stdout)
+	cmd.Stderr = stdcopy.NewStdWriter(cmd.out, stdcopy.Stderr)
 	return &cmd, cmd.Start()
 }
 
