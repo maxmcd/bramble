@@ -1,13 +1,13 @@
 package bramblescript
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/moby/moby/pkg/stdcopy"
@@ -16,65 +16,79 @@ import (
 
 type Cmd struct {
 	exec.Cmd
-	name   string
-	frozen bool
+	frozen   bool
+	finished bool
+	err      error
+	out      io.ReadCloser
+}
 
-	out *bytes.Buffer
+var (
+	_ starlark.Value    = new(Cmd)
+	_ starlark.HasAttrs = new(Cmd)
+)
+
+func (c *Cmd) name() string {
+	if len(c.Args) == 0 {
+		return ""
+	}
+	return c.Args[0]
 }
 
 func (c *Cmd) String() string {
 	s := fmt.Sprintf
 	var sb strings.Builder
 	sb.WriteString("<cmd")
-	sb.WriteString(s(" '%s'", c.name))
-	if len(c.Args) > 0 {
+	sb.WriteString(s(" '%s'", c.name()))
+	if len(c.Args) > 1 {
 		sb.WriteString(" ['")
-		sb.WriteString(strings.Join(c.Args, `', '`))
+		sb.WriteString(strings.Join(c.Args[1:], `', '`))
 		sb.WriteString("']")
 	}
 	sb.WriteString(">")
 	return sb.String()
 }
 func (c *Cmd) Type() string          { return "cmd" }
-func (c *Cmd) Freeze()               { c.frozen = false }
+func (c *Cmd) Freeze()               { c.frozen = true }
 func (c *Cmd) Truth() starlark.Bool  { return c != nil }
 func (c *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
 
-func (c *Cmd) stdout() (stdout starlark.String, err error) {
-	var buf bytes.Buffer
-	_, err = stdcopy.StdCopy(&buf, ioutil.Discard, c.out)
-	return starlark.String(buf.String()), err
+func (c *Cmd) Attr(name string) (val starlark.Value, err error) {
+	switch name {
+	case "stdout":
+		return ByteStream{kind: Stdout, cmd: c}, nil
+	case "stderr":
+		return ByteStream{kind: Stderr, cmd: c}, nil
+	case "combined_output":
+		return ByteStream{kind: Stdout | Stderr, cmd: c}, nil
+	case "if_err":
+		return IfErr{cmd: c}, nil
+	case "pipe":
+		return Pipe{cmd: c}, nil
+	}
+	return nil, nil
+}
+func (c *Cmd) AttrNames() []string {
+	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe", "stdin"}
 }
 
-func (c *Cmd) stderr() (stderr starlark.String, err error) {
-	var buf bytes.Buffer
-	_, err = stdcopy.StdCopy(ioutil.Discard, &buf, c.out)
-	return starlark.String(buf.String()), err
-}
-
-func (c *Cmd) combinedOutput() (combined starlark.String, err error) {
-	var buf bytes.Buffer
-	_, err = stdcopy.StdCopy(&buf, &buf, c.out)
-	return starlark.String(buf.String()), err
-}
-
-func (c *Cmd) addArgumentToCmd(count int, value starlark.Value) (err error) {
+func (c *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
 	var stringValue string
 	switch v := value.(type) {
 	case starlark.String:
 		stringValue = v.GoString()
+	case starlark.Int:
+		stringValue = v.String()
+	default:
+		return errors.Errorf("don't know how to cast type %q into a command argument", v.Type())
 	}
 
-	if count == 0 {
-		c.name = stringValue
-	} else {
-		c.Args = append(c.Args, stringValue)
-	}
+	c.Args = append(c.Args, stringValue)
 	return nil
 }
 
-// StarlarkCmd defines the cmd() starlark function.
-func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargsList []starlark.Tuple) (v starlark.Value, err error) {
+// NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
+// immediately if it can't find the cmd
+func NewCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader) (v *Cmd, err error) {
 	// if input is an array we use the first item as the cmd
 	// if input is just args we use them as cmd+args
 	// if input is just a string we parse it as a shell command
@@ -94,13 +108,12 @@ func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 
 	// it's cmd(["grep", "-v"])
 	if args.Len() == 1 {
-		var words []string
 		if args.Index(0).Type() == "list" {
-			words, err = starlarkListToListOfStrings(args.Index(0))
+			cmd.Args, err = starlarkListToListOfStrings(args.Index(0))
 			if err != nil {
 				return nil, err
 			}
-			if len(words) == 0 {
+			if len(cmd.Args) == 0 {
 				return nil, errors.New("if the first argument is a list it can't be empty")
 			}
 		} else if args.Index(0).Type() == "string" {
@@ -108,30 +121,24 @@ func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 			if starlarkCmd == "" {
 				return nil, errors.New("if the first argument is a string it can't be empty")
 			}
-			words, err = shellquote.Split(starlarkCmd)
+			cmd.Args, err = shellquote.Split(starlarkCmd)
 			if err != nil {
 				return
 			}
-			if len(words) == 0 {
+			if len(cmd.Args) == 0 {
 				// whitespace bash characters will be removed by shellquote,
 				// add them back for correct error message
-				words = append(words, starlarkCmd)
+				cmd.Args = []string{starlarkCmd}
 			}
-		}
-		cmd.name = words[0]
-		if len(words) > 1 {
-			cmd.Args = words[1:]
 		}
 	} else {
 		iterator := args.Iterate()
 		defer iterator.Done()
-		var count int
 		var val starlark.Value
 		for iterator.Next(&val) {
-			if err := cmd.addArgumentToCmd(count, val); err != nil {
+			if err := cmd.addArgumentToCmd(val); err != nil {
 				return nil, err
 			}
-			count++
 		}
 	}
 
@@ -139,23 +146,35 @@ func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 	// stdin
 	// dir
 	// env
-	if filepath.Base(cmd.name) == cmd.name {
+	name := cmd.name()
+	if filepath.Base(name) == name {
 		var lp string
-		if lp, err = exec.LookPath(cmd.name); err != nil {
+		if lp, err = exec.LookPath(name); err != nil {
 			return nil, err
 		}
 		cmd.Path = lp
 	}
-	cmd.out = bytes.NewBuffer(nil)
 
-	cmd.Stdout = stdcopy.NewStdWriter(cmd.out, stdcopy.Stdout)
-	cmd.Stderr = stdcopy.NewStdWriter(cmd.out, stdcopy.Stderr)
-	return &cmd, cmd.Start()
+	// TODO: this is an infinite buffer, would be nice if we could
+	// create backpressure
+	buffPipe := newBufferedPipe(4096 * 16)
+	buffPipe.cmd = &cmd
+	cmd.out = buffPipe
+	if stdin != nil {
+		cmd.Stdin = *stdin
+	}
+	cmd.Stdout = stdcopy.NewStdWriter(buffPipe, stdcopy.Stdout)
+	cmd.Stderr = stdcopy.NewStdWriter(buffPipe, stdcopy.Stderr)
+	err = cmd.Start()
+	go func() {
+		cmd.err = cmd.Wait()
+		cmd.finished = true
+		cmd.out.Close()
+	}()
+	return &cmd, err
 }
 
-// func starlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargsList []starlark.Tuple) (cmd Cmd, v starlark.Value, err error) {
-// 	cmd, v, err = starlarkCmd(thread, fn, args, kwargsList)
-// 	cmd.Stdout
-// 	cmd.Run()
-// 	return
-// }
+// StarlarkCmd defines the cmd() starlark function.
+func StarlarkCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargsList []starlark.Tuple) (v starlark.Value, err error) {
+	return NewCmd(args, kwargsList, nil)
+}
