@@ -2,6 +2,10 @@
 
 all: seed_run simple_run
 
+
+bramblescript_shell:
+	go run . script
+
 seed_run:
 	go run . build seed.bramble
 

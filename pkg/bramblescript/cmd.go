@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -20,6 +21,9 @@ type Cmd struct {
 	finished bool
 	err      error
 	out      io.ReadCloser
+
+	wg      *sync.WaitGroup
+	reading bool
 }
 
 var (
@@ -55,11 +59,11 @@ func (c *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable")
 func (c *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
 	case "stdout":
-		return ByteStream{kind: Stdout, cmd: c}, nil
+		return ByteStream{stdout: true, cmd: c}, nil
 	case "stderr":
-		return ByteStream{kind: Stderr, cmd: c}, nil
+		return ByteStream{stderr: true, cmd: c}, nil
 	case "combined_output":
-		return ByteStream{kind: Stdout | Stderr, cmd: c}, nil
+		return ByteStream{stdout: true, stderr: true, cmd: c}, nil
 	case "if_err":
 		return IfErr{cmd: c}, nil
 	case "pipe":
@@ -155,8 +159,9 @@ func NewCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader) 
 		cmd.Path = lp
 	}
 
-	// TODO: this is an infinite buffer, would be nice if we could
-	// create backpressure
+	cmd.wg = &sync.WaitGroup{}
+	cmd.wg.Add(1)
+
 	buffPipe := newBufferedPipe(4096 * 16)
 	buffPipe.cmd = &cmd
 	cmd.out = buffPipe
@@ -170,6 +175,7 @@ func NewCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader) 
 		cmd.err = cmd.Wait()
 		cmd.finished = true
 		cmd.out.Close()
+		cmd.wg.Done()
 	}()
 	return &cmd, err
 }

@@ -1,0 +1,19 @@
+#!/usr/bin/env -S bramble script
+
+
+def remove_empty(arr):
+    return [a for a in arr if a != ""]
+
+
+def total_bytes_in_folder():
+    total = 0
+    for line in cmd("ls -Rla ..").stdout:
+        rows = remove_empty(line.split(" "))
+        if len(rows) < 3:
+            continue
+        if "d" not in rows[0]:
+            total += int(rows[4])
+    print(total, "bytes")
+
+
+total_bytes_in_folder()
