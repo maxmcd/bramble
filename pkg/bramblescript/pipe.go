@@ -3,10 +3,7 @@ package bramblescript
 import (
 	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 
-	"github.com/moby/moby/pkg/stdcopy"
 	"go.starlark.net/starlark"
 )
 
@@ -29,13 +26,10 @@ func (pipe Pipe) Freeze()               { /*TODO*/ }
 func (pipe Pipe) Truth() starlark.Bool  { return pipe.cmd.Truth() }
 func (pipe Pipe) Hash() (uint32, error) { return 0, errors.New("bytestream is unhashable") }
 func (pipe Pipe) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	reader, writer := io.Pipe()
-	go func() {
-		_, _ = stdcopy.StdCopy(writer, ioutil.Discard, pipe.cmd.out)
-		reader.Close()
-		writer.Close()
-	}()
-	var stdin io.Reader = reader
+	reader, err := pipe.cmd.Reader(true, false)
+	if err != nil {
+		return
+	}
 	// set the input of this command to the output of the previous command
-	return NewCmd(args, kwargs, &stdin)
+	return NewCmd(args, kwargs, &reader)
 }

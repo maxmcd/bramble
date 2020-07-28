@@ -11,8 +11,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/maxmcd/bramble/pkg/bramblescript"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.starlark.net/repl"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -101,6 +103,21 @@ func (c *Client) buildDerivation(drv *Derivation) (err error) {
 
 func (c *Client) shellCommand(args []string) (err error) {
 	panic("unimplemented")
+}
+
+func (c *Client) scriptCommand(args []string) (err error) {
+	thread := &starlark.Thread{Name: ""}
+	builtins := starlark.StringDict{
+		"cmd": starlark.NewBuiltin("cmd", bramblescript.StarlarkCmd),
+	}
+	if len(args) != 0 {
+		if _, err := starlark.ExecFile(thread, args[0], nil, builtins); err != nil {
+			return err
+		}
+	} else {
+		repl.REPL(thread, builtins)
+	}
+	return nil
 }
 
 func (c *Client) buildCommand(args []string) (err error) {

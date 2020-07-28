@@ -2,24 +2,18 @@ package bramblescript
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 
-	"github.com/moby/moby/pkg/stdcopy"
 	"go.starlark.net/starlark"
 )
 
-const (
-	Stdout uint8 = 0x01
-	Stderr uint8 = 0x02
-)
-
 type ByteStream struct {
-	cmd  *Cmd
-	kind uint8
+	cmd    *Cmd
+	stdout bool
+	stderr bool
 }
 
 var (
@@ -29,28 +23,25 @@ var (
 )
 
 func (bs ByteStream) Name() string {
-	if bs.kind&Stdout != 0 && bs.kind&Stderr != 0 {
+	if bs.stdout && bs.stderr {
 		return "combined_output"
 	}
-	if bs.kind&Stderr != 0 {
+	if bs.stderr {
 		return "stderr"
 	}
 	return "stdout"
 }
 func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	// TODO: ensure this is safe to call multiple times
+	reader, err := bs.cmd.Reader(bs.stdout, bs.stderr)
+	if err != nil {
+		return
+	}
 
-	var buf bytes.Buffer
-	var stdout io.Writer = ioutil.Discard
-	var stderr io.Writer = ioutil.Discard
-	if bs.kind&Stdout != 0 {
-		stdout = &buf
+	b, err := ioutil.ReadAll(reader)
+	if err == io.ErrClosedPipe {
+		err = nil
 	}
-	if bs.kind&Stderr != 0 {
-		stderr = &buf
-	}
-	_, err = stdcopy.StdCopy(stdout, stderr, bs.cmd.out)
-	return starlark.String(buf.String()), err
+	return starlark.String(string(b)), err
 }
 
 func (bs ByteStream) String() string {
@@ -63,24 +54,14 @@ func (bs ByteStream) Truth() starlark.Bool  { return bs.cmd.Truth() }
 func (bs ByteStream) Hash() (uint32, error) { return 0, errors.New("bytestream is unhashable") }
 
 func (bs ByteStream) Iterate() starlark.Iterator {
-	reader, writer := io.Pipe()
-	var stdout io.Writer = ioutil.Discard
-	var stderr io.Writer = ioutil.Discard
-	if bs.kind&Stdout != 0 {
-		stdout = writer
+	reader, _ := bs.cmd.Reader(bs.stdout, bs.stderr)
+	bsi := byteStreamIterator{
+		bs: bs,
 	}
-	if bs.kind&Stderr != 0 {
-		stderr = writer
+	if reader != nil {
+		bsi.buf = bufio.NewReader(reader)
 	}
-	go func() {
-		_, _ = stdcopy.StdCopy(stdout, stderr, bs.cmd.out)
-		_ = reader.Close()
-		_ = writer.Close()
-	}()
-	return byteStreamIterator{
-		bs:  bs,
-		buf: bufio.NewReader(reader),
-	}
+	return bsi
 }
 
 type byteStreamIterator struct {

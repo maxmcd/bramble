@@ -33,6 +33,11 @@ func RunCLI() {
 			synopsis: "Drop into a shell with selected packages loaded",
 			run:      client.shellCommand,
 		}.factory(),
+		"script": command{
+			help:     `Usage: bramble script [options] <path>`,
+			synopsis: "Bramblescript",
+			run:      client.scriptCommand,
+		}.factory(),
 	}
 	exitStatus, err := c.Run()
 	if err != nil {
