@@ -32,7 +32,7 @@ var (
 )
 
 func (c *Cmd) name() string {
-	if len(c.Args) == 0 {
+	if c == nil || len(c.Args) == 0 {
 		return ""
 	}
 	return c.Args[0]
@@ -51,8 +51,13 @@ func (c *Cmd) String() string {
 	sb.WriteString(">")
 	return sb.String()
 }
+func (c *Cmd) Freeze() {
+	// TODO: don't implement functionality that does nothing
+	if c != nil {
+		c.frozen = true
+	}
+}
 func (c *Cmd) Type() string          { return "cmd" }
-func (c *Cmd) Freeze()               { c.frozen = true }
 func (c *Cmd) Truth() starlark.Bool  { return c != nil }
 func (c *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
 
@@ -72,22 +77,21 @@ func (c *Cmd) Attr(name string) (val starlark.Value, err error) {
 	return nil, nil
 }
 func (c *Cmd) AttrNames() []string {
-	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe", "stdin"}
+	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe"}
+}
+
+func (c *Cmd) Wait() error {
+	c.wg.Wait()
+	return c.err
 }
 
 func (c *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
-	var stringValue string
-	switch v := value.(type) {
-	case starlark.String:
-		stringValue = v.GoString()
-	case starlark.Int:
-		stringValue = v.String()
-	default:
-		return errors.Errorf("don't know how to cast type %q into a command argument", v.Type())
+	val, err := valueToString(value)
+	if err != nil {
+		return
 	}
-
-	c.Args = append(c.Args, stringValue)
-	return nil
+	c.Args = append(c.Args, val)
+	return
 }
 
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
@@ -98,12 +102,12 @@ func NewCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader) 
 	// if input is just a string we parse it as a shell command
 
 	cmd := Cmd{}
-	// TODO: might want CommandContext
-
-	kwargs := map[string]starlark.Value{}
-	for _, kwarg := range kwargsList {
-		kwargs[kwarg.Index(0).(*starlark.String).GoString()] = kwarg.Index(1)
+	kwargs, err := kwargsToStringDict(kwargsList)
+	if err != nil {
+		return nil, err
 	}
+	// TODO
+	_ = kwargs
 
 	// cmd() isn't allowed
 	if args.Len() == 0 {
@@ -172,7 +176,7 @@ func NewCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader) 
 	cmd.Stderr = stdcopy.NewStdWriter(buffPipe, stdcopy.Stderr)
 	err = cmd.Start()
 	go func() {
-		cmd.err = cmd.Wait()
+		cmd.err = cmd.Cmd.Wait()
 		cmd.finished = true
 		cmd.out.Close()
 		cmd.wg.Done()

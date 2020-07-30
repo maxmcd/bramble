@@ -114,9 +114,9 @@ func (c *Client) scriptCommand(args []string) (err error) {
 		if _, err := starlark.ExecFile(thread, args[0], nil, builtins); err != nil {
 			return err
 		}
-	} else {
-		repl.REPL(thread, builtins)
+		return nil
 	}
+	repl.REPL(thread, builtins)
 	return nil
 }
 

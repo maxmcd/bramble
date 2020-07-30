@@ -9,7 +9,7 @@ cmd(["ls", "-lah"])  # done
 # runs a command once
 cmd("ls -lah").pipe("sort")
 
-s = session()1
+s = session()
 s.env("FOO", "bar")
 s.unset("FOO")
 
@@ -30,3 +30,22 @@ for line in s.cmd("df -h").stdout:  # done
 cmd("foo").if_err("echo failed")  # done
 
 cmd("foo", stdin=bar, dir="../", env={"FOO": "BAR"})
+
+
+# We can't chain abstracted commands
+
+
+def cat(path, **kwargs):
+    return cmd("cat", path, **kwargs)
+
+
+def grep(*args, **kwargs):
+    return cmd("grep", *args, **kwargs)
+
+
+grep("foo", stdin=cat(path))
+
+# oh we could allow the first function to be a callback, interesting
+cat("file").pipe(grep, "foo")
+
+# grep just has to be a function that can take a stdin
