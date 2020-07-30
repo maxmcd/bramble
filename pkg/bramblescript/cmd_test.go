@@ -6,6 +6,11 @@ import (
 
 func TestStarlarkCmd(t *testing.T) {
 	tests := []scriptTest{
+		{script: `
+c = cmd("ls")
+b = [getattr(c, x) for x in dir(c)]
+		`,
+			returnValue: ""},
 		{script: "cmd()",
 			errContains: "missing 1 required positional argument"},
 		{script: "cmd([])",
@@ -16,8 +21,6 @@ func TestStarlarkCmd(t *testing.T) {
 			errContains: `"    "`},
 		{script: "cmd([1])",
 			errContains: ErrIncorrectType{is: "int", shouldBe: "string"}.Error()},
-		{script: `b=dir(cmd("ls"))`,
-			returnValue: `["combined_output", "if_err", "pipe", "stderr", "stdin", "stdout"]`},
 		{script: `b=cmd(["ls", "-lah"])`,
 			returnValue: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls -lah")`,
