@@ -4,8 +4,8 @@ import "testing"
 
 func TestByteStream(t *testing.T) {
 	tests := []scriptTest{
-		{script: `b=cmd("ls", "-notathing").stdout()`,
-			errContains: `1`},
+		{script: `b=cmd("ls", "notathing").stdout()`,
+			errContains: `exit`},
 		{script: `b=cmd("echo","hi").stdout()`,
 			returnValue: `"hi\n"`},
 		{script: `b=cmd("echo", "hi").combined_output()`,
