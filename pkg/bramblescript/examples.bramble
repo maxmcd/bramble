@@ -1,47 +1,64 @@
+#!/usr/bin/env -S bramble script
+
 """
 Bramblescript examples
 """
 
-cmd("ls -lah")  # done
-cmd("ls", "-lah")  # done
-cmd(["ls", "-lah"])  # done
+cmd("ls -lah")
+cmd("ls", "-lah")
+cmd(["ls", "-lah"])
 
-# runs a command once
+# you can pipe commands into other commands
 cmd("ls -lah").pipe("sort")
 
-
-
-# runs and gives stdout as a string
-cmd("df -h").stdout()  # done
-cmd("df -h").combined_output()  # done
-cmd("dh -h").stderr()  # done
-
-# Pass stdin to another command
-cmd("dh -h" stdin=other.combined_output)
-cmd("dh -h" stdin=other)
-
-for line in s.cmd("df -h").stdout:  # done
-    print(line)
-
-cmd("foo").if_err("echo failed")  # done
-
-cmd("foo", stdin=bar, dir="../", env={"FOO": "BAR"}, clear_env=True)
-
-
-# We can't chain abstracted commands
-
-
-def cat(path, **kwargs):
-    return cmd("cat", path, **kwargs)
-
-
+# pipe can also take a callback
 def grep(*args, **kwargs):
     return cmd("grep", *args, **kwargs)
 
 
-grep("foo", stdin=cat(path))
+# Additional arguments are passed to the callback
+cmd("ls -lah").pipe(grep, "foo")
 
-# oh we could allow the first function to be a callback, interesting
-cat("file").pipe(grep, "foo")
 
-# grep just has to be a function that can take a stdin
+# runs and gives stdout as a string
+cmd("df -h").stdout()
+cmd("df -h").combined_output()
+cmd("dh -h").stderr()
+
+
+# cmd has various methods and attributes
+sleep = cmd("sleep 10")
+# kill the command
+sleep.kill()
+# or wait for the command to end
+cmd("echo").wait()
+# and get the exit code, if there is one
+cmd("ls").exit_code
+
+
+# Pass stdin to another command
+cmd("dh -h", stdin=sleep.combined_output)
+# passing the command will pass stdout
+cmd("dh -h", stdin=sleep)
+
+
+def all_lines():
+    # iterate on stout or sterr to process each line
+    for line in cmd("df -h").stdout:
+        print(line)
+
+
+all_lines()
+
+# fail over to other commands
+cmd("foo").if_err("echo failed")
+
+# the cmd() function takes various perameters
+cmd(
+    "foo",
+    stdin=sleep,
+    dir="../",
+    env={"FOO": "BAR", "X": "Y"},
+    clear_env=True,
+    ignore_failure=True,
+)

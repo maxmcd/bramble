@@ -1,8 +1,5 @@
 
 
-all: seed_run simple_run
-
-
 bramblescript_shell:
 	go run . script
 
@@ -24,3 +21,8 @@ test:
 reptar:
 	cd pkg/reptar && docker build -t reptar . \
 	&& docker run -it reptar sh
+
+bramblescripts_to_test:
+	go install
+	pkg/bramblescript/run.bramble
+	pkg/bramblescript/examples.bramble

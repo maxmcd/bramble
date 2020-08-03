@@ -1,11 +1,11 @@
 package bramblescript
 
 import (
-	"errors"
 	"io"
 	"io/ioutil"
 
 	"github.com/moby/moby/pkg/stdcopy"
+	"github.com/pkg/errors"
 )
 
 type cmdReader struct {
