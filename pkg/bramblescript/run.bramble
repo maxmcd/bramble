@@ -7,7 +7,7 @@ def remove_empty(arr):
 
 def total_bytes_in_folder():
     total = 0
-    for line in cmd("ls -Rla ..").stdout:
+    for line in cmd("ls -Rla .").stdout:
         rows = remove_empty(line.split(" "))
         if len(rows) < 3:
             continue

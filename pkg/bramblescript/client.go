@@ -114,7 +114,6 @@ func newCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader, 
 		cmd.wg.Done()
 	}()
 	return &cmd, err
-
 }
 
 // StarlarkCmd defines the cmd() starlark function.

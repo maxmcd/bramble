@@ -28,8 +28,7 @@ def run():
 		if "cmd_test" in line:
 			response = line
 	return response
-b = run()
-		`,
+b = run()`,
 			returnValue: `"cmd_test.go"`},
 		{script: `
 def run():
@@ -37,8 +36,7 @@ def run():
 	for line in c.combined_output:
 		if "cmd_test" in line:
 			return line
-b = run()
-					`,
+b = run()`,
 			returnValue: `"cmd_test.go"`},
 	}
 	runTest(t, tests)
