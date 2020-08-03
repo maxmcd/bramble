@@ -107,9 +107,12 @@ func (c *Client) shellCommand(args []string) (err error) {
 
 func (c *Client) scriptCommand(args []string) (err error) {
 	thread := &starlark.Thread{Name: ""}
-	builtins := starlark.StringDict{
-		"cmd": starlark.NewBuiltin("cmd", bramblescript.StarlarkCmd),
+	// TODO: run from location of script
+	wd, err := os.Getwd()
+	if err != nil {
+		return
 	}
+	builtins := bramblescript.Builtins(wd)
 	if len(args) != 0 {
 		if _, err := starlark.ExecFile(thread, args[0], nil, builtins); err != nil {
 			return err

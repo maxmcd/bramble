@@ -4,6 +4,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
-var Builtins = starlark.StringDict{
-	"cmd": starlark.NewBuiltin("cmd", StarlarkCmd),
+func Builtins(dir string) starlark.StringDict {
+	client := NewClient(dir)
+	return starlark.StringDict{
+		"cmd": starlark.NewBuiltin("cmd", client.StarlarkCmd),
+	}
+
 }
