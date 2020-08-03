@@ -31,66 +31,90 @@ var (
 	_ starlark.HasAttrs = new(Cmd)
 )
 
-func (c *Cmd) name() string {
-	if c == nil || len(c.Args) == 0 {
+func (cmd *Cmd) name() string {
+	if cmd == nil || len(cmd.Args) == 0 {
 		return ""
 	}
-	return c.Args[0]
+	return cmd.Args[0]
 }
 
-func (c *Cmd) String() string {
+func (cmd *Cmd) String() string {
 	s := fmt.Sprintf
 	var sb strings.Builder
 	sb.WriteString("<cmd")
-	sb.WriteString(s(" '%s'", c.name()))
-	if len(c.Args) > 1 {
+	sb.WriteString(s(" '%s'", cmd.name()))
+	if len(cmd.Args) > 1 {
 		sb.WriteString(" ['")
-		sb.WriteString(strings.Join(c.Args[1:], `', '`))
+		sb.WriteString(strings.Join(cmd.Args[1:], `', '`))
 		sb.WriteString("']")
 	}
 	sb.WriteString(">")
 	return sb.String()
 }
-func (c *Cmd) Freeze() {
+func (cmd *Cmd) Freeze() {
 	// TODO: don't implement functionality that does nothing
-	if c != nil {
-		c.frozen = true
+	if cmd != nil {
+		cmd.frozen = true
 	}
 }
-func (c *Cmd) Type() string          { return "cmd" }
-func (c *Cmd) Truth() starlark.Bool  { return c != nil }
-func (c *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
+func (cmd *Cmd) Type() string          { return "cmd" }
+func (cmd *Cmd) Truth() starlark.Bool  { return cmd != nil }
+func (cmd *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
 
-func (c *Cmd) Attr(name string) (val starlark.Value, err error) {
+func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
 	case "stdout":
-		return ByteStream{stdout: true, cmd: c}, nil
+		return ByteStream{stdout: true, cmd: cmd}, nil
 	case "stderr":
-		return ByteStream{stderr: true, cmd: c}, nil
+		return ByteStream{stderr: true, cmd: cmd}, nil
 	case "combined_output":
-		return ByteStream{stdout: true, stderr: true, cmd: c}, nil
+		return ByteStream{stdout: true, stderr: true, cmd: cmd}, nil
 	case "if_err":
-		return IfErr{cmd: c}, nil
+		return IfErr{cmd: cmd}, nil
 	case "pipe":
-		return Pipe{cmd: c}, nil
+		return Pipe{cmd: cmd}, nil
+	case "kill":
+		return Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
+	case "wait":
+		return Callable{ThisName: "wait", ParentName: "cmd", Callable: cmd.starlarkWait}, nil
 	}
 	return nil, nil
 }
-func (c *Cmd) AttrNames() []string {
-	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe"}
+func (cmd *Cmd) AttrNames() []string {
+	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe", "kill", "wait"}
 }
 
-func (c *Cmd) Wait() error {
-	c.wg.Wait()
-	return c.err
+func (cmd *Cmd) Wait() error {
+	cmd.wg.Wait()
+	return cmd.err
 }
 
-func (c *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
+func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
 	val, err := valueToString(value)
 	if err != nil {
 		return
 	}
-	c.Args = append(c.Args, val)
+	cmd.Args = append(cmd.Args, val)
+	return
+}
+
+func (cmd *Cmd) starlarkWait(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	return starlark.None, cmd.Wait()
+}
+
+func (cmd *Cmd) Kill(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	if err = starlark.UnpackArgs("kill", args, kwargs); err != nil {
+		return
+	}
+	val = starlark.None
+	if cmd.finished {
+		return
+	}
+	if cmd.Process != nil {
+		if err = cmd.Process.Kill(); err != nil {
+			return
+		}
+	}
 	return
 }
 

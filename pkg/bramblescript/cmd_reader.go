@@ -37,11 +37,11 @@ func (er *errReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (c *Cmd) Reader(stdout, stderr bool) (io.Reader, error) {
-	if c.reading {
+func (cmd *Cmd) Reader(stdout, stderr bool) (io.Reader, error) {
+	if cmd.reading {
 		return nil, errors.New("can't read from command output twice")
 	}
-	c.reading = true
+	cmd.reading = true
 	reader, writer := io.Pipe()
 	var stdoutWriter io.Writer = ioutil.Discard
 	var stderrWriter io.Writer = ioutil.Discard
@@ -53,7 +53,7 @@ func (c *Cmd) Reader(stdout, stderr bool) (io.Reader, error) {
 	}
 	er := &errReader{r: reader}
 	go func() {
-		_, err := stdcopy.StdCopy(stdoutWriter, stderrWriter, &cmdReader{rc: c.out, cmd: c})
+		_, err := stdcopy.StdCopy(stdoutWriter, stderrWriter, &cmdReader{rc: cmd.out, cmd: cmd})
 		er.err = err
 		_ = writer.Close()
 		_ = reader.Close()
