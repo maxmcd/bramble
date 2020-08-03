@@ -25,7 +25,7 @@ for line in s.cmd("df -h").stdout:  # done
 
 cmd("foo").if_err("echo failed")  # done
 
-cmd("foo", stdin=bar, dir="../", env={"FOO": "BAR"})
+cmd("foo", stdin=bar, dir="../", env={"FOO": "BAR"}, clear_env=True)
 
 
 # We can't chain abstracted commands

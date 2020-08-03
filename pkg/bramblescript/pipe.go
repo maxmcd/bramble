@@ -31,5 +31,5 @@ func (pipe Pipe) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwar
 		return
 	}
 	// set the input of this command to the output of the previous command
-	return NewCmd(args, kwargs, &reader)
+	return newCmd(args, kwargs, &reader, pipe.cmd.Dir)
 }
