@@ -5,6 +5,5 @@ import (
 )
 
 var Builtins = starlark.StringDict{
-	"cmd":     starlark.NewBuiltin("cmd", StarlarkCmd),
-	"session": starlark.NewBuiltin("session", StarlarkSesssion),
+	"cmd": starlark.NewBuiltin("cmd", StarlarkCmd),
 }
