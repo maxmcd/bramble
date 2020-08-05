@@ -22,6 +22,7 @@ func runTest(t *testing.T, tests []scriptTest) {
 			if err != nil || tt.errContains != "" {
 				if err == nil {
 					t.Error("error is nil")
+					return
 				}
 				assert.Contains(t, err.Error(), tt.errContains)
 				if tt.errContains == "" {

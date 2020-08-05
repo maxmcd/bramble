@@ -44,3 +44,11 @@ c.kill()`},
 	}
 	runTest(t, tests)
 }
+
+func TestPipe(t *testing.T) {
+	tests := []scriptTest{
+		{script: `b=cmd("echo 'these are words'").pipe("tr ' ' '\n'").pipe("grep these").stdout()`,
+			returnValue: `"these\n"`},
+	}
+	runTest(t, tests)
+}
