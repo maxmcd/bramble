@@ -22,20 +22,12 @@ type bufferedPipe struct {
 	closed    bool
 	rCond     sync.Cond
 	wCond     sync.Cond
-
-	cmd *Cmd
-
-	// TODO add reference to CMD here and return EOF
-	// if the buffer is empty and the process is dead?
 }
 
 func (p *bufferedPipe) Read(b []byte) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for {
-		if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() && len(p.buf) == 0 {
-			return 0, io.EOF
-		}
 		if p.closed && len(p.buf) == 0 {
 			return 0, io.EOF
 		}

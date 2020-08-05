@@ -32,12 +32,10 @@ func (bs ByteStream) Name() string {
 	return "stdout"
 }
 func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	reader, err := bs.cmd.Reader(bs.stdout, bs.stderr)
-	if err != nil {
+	if err = bs.cmd.setOutput(bs.stdout, bs.stderr); err != nil {
 		return
 	}
-
-	b, err := ioutil.ReadAll(reader)
+	b, err := ioutil.ReadAll(bs.cmd)
 	if err == io.ErrClosedPipe {
 		err = nil
 	}
@@ -54,12 +52,12 @@ func (bs ByteStream) Truth() starlark.Bool  { return bs.cmd.Truth() }
 func (bs ByteStream) Hash() (uint32, error) { return 0, errors.New("bytestream is unhashable") }
 
 func (bs ByteStream) Iterate() starlark.Iterator {
-	reader, _ := bs.cmd.Reader(bs.stdout, bs.stderr)
+	err := bs.cmd.setOutput(bs.stdout, bs.stderr)
 	bsi := byteStreamIterator{
 		bs: bs,
 	}
-	if reader != nil {
-		bsi.buf = bufio.NewReader(reader)
+	if err == nil {
+		bsi.buf = bufio.NewReader(bs.cmd)
 	}
 	return bsi
 }
@@ -70,6 +68,9 @@ type byteStreamIterator struct {
 }
 
 func (bsi byteStreamIterator) Next(p *starlark.Value) bool {
+	if bsi.buf == nil {
+		return false
+	}
 	str, err := bsi.buf.ReadString('\n')
 	if err == io.EOF || err == io.ErrClosedPipe {
 		return false
@@ -78,7 +79,6 @@ func (bsi byteStreamIterator) Next(p *starlark.Value) bool {
 		// TODO: something better here? certain errors we care about?
 		panic(err)
 	}
-
 	*p = starlark.String(str[:len(str)-1])
 	return true
 }

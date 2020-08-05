@@ -4,6 +4,10 @@
 Bramblescript examples
 """
 
+# print debug output of all the commands that are being run
+cmd.debug()
+
+
 cmd("ls -lah")
 cmd("ls", "-lah")
 cmd(["ls", "-lah"])
@@ -33,7 +37,7 @@ sleep.kill()
 # or wait for the command to end
 cmd("echo").wait()
 # and get the exit code, if there is one
-cmd("ls").exit_code
+cmd("ls ").exit_code
 
 
 # Pass stdin to another command
@@ -55,10 +59,15 @@ cmd("foo").if_err("echo failed")
 
 # the cmd() function takes various perameters
 cmd(
-    "foo",
+    "echo",
     stdin=sleep,
     dir="../",
     env={"FOO": "BAR", "X": "Y"},
     clear_env=True,
     ignore_failure=True,
+    print_output=True
 )
+
+
+# you can change directories
+cmd.cd("..")
