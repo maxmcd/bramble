@@ -55,7 +55,7 @@ def all_lines():
 all_lines()
 
 # fail over to other commands
-cmd("ls notathing").if_err("echo failed")
+cmd("ls notathing ").if_err("echo failed")
 
 # the cmd() function takes various perameters
 cmd(
