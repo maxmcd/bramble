@@ -33,5 +33,5 @@ func (ie IfErr) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwarg
 	}
 
 	// if there is an error we run the command in or instead
-	return newCmd(args, kwargs, nil, ie.cmd.Dir)
+	return newCmd(thread, args, kwargs, nil, ie.cmd.Dir)
 }

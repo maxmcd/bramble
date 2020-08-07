@@ -64,25 +64,46 @@ func (cmd *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
-	case "stdout":
-		return ByteStream{stdout: true, cmd: cmd}, nil
-	case "stderr":
-		return ByteStream{stderr: true, cmd: cmd}, nil
 	case "combined_output":
 		return ByteStream{stdout: true, stderr: true, cmd: cmd}, nil
+	case "exit_code":
+		return cmd.ExitCode(), nil
 	case "if_err":
 		return IfErr{cmd: cmd}, nil
-	case "pipe":
-		return Pipe{cmd: cmd}, nil
 	case "kill":
 		return Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
+	case "pipe":
+		return Pipe{cmd: cmd}, nil
+	case "stderr":
+		return ByteStream{stderr: true, cmd: cmd}, nil
+	case "stdout":
+		return ByteStream{stdout: true, cmd: cmd}, nil
 	case "wait":
 		return Callable{ThisName: "wait", ParentName: "cmd", Callable: cmd.starlarkWait}, nil
 	}
 	return nil, nil
 }
 func (cmd *Cmd) AttrNames() []string {
-	return []string{"stdout", "stderr", "combined_output", "if_err", "pipe", "kill", "wait"}
+	return []string{
+		"combined_output",
+		"exit_code",
+		"if_err",
+		"kill",
+		"pipe",
+		"stderr",
+		"stdout",
+		"wait",
+	}
+}
+
+func (cmd *Cmd) ExitCode() starlark.Value {
+	if cmd.ProcessState != nil {
+		code := cmd.ProcessState.ExitCode()
+		if code > -1 {
+			return starlark.MakeInt(code)
+		}
+	}
+	return starlark.None
 }
 
 func (cmd *Cmd) Wait() error {
@@ -121,9 +142,13 @@ func (cmd *Cmd) Kill(thread *starlark.Thread, args starlark.Tuple, kwargs []star
 	return
 }
 
+type callInternalable interface {
+	CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error)
+}
+
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
-func newCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader, dir string) (v *Cmd, err error) {
+func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader, dir string) (val starlark.Value, err error) {
 	// if input is an array we use the first item as the cmd
 	// if input is just args we use them as cmd+args
 	// if input is just a string we parse it as a shell command
@@ -140,6 +165,12 @@ func newCmd(args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader, 
 	// cmd() isn't allowed
 	if args.Len() == 0 {
 		return nil, errors.New("cmd() missing 1 required positional argument")
+	}
+
+	if args.Index(0).Type() == "function" {
+		fn := args.Index(0).(callInternalable)
+
+		return fn.CallInternal(thread, args[1:], kwargsList)
 	}
 
 	// it's cmd(["grep", "-v"])
@@ -228,7 +259,6 @@ func (cmd *Cmd) setOutput(stdout, stderr bool) (err error) {
 
 func (cmd *Cmd) Read(p []byte) (n int, err error) {
 	n, err = cmd.ss.Read(p)
-	logger.Printf("%s read bytes %x %v", cmd.String(), p[:n], err)
 	cmd.lock.Lock()
 	defer cmd.lock.Unlock()
 	if cmd.err != nil {

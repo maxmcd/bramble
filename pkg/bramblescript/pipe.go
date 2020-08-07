@@ -27,8 +27,8 @@ func (pipe Pipe) Freeze()               { /*TODO*/ }
 func (pipe Pipe) Truth() starlark.Bool  { return pipe.cmd.Truth() }
 func (pipe Pipe) Hash() (uint32, error) { return 0, errors.New("pipe is unhashable") }
 func (pipe Pipe) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	pipe.cmd.setOutput(true, false)
+	_ = pipe.cmd.setOutput(true, false)
 	var r io.Reader = pipe.cmd
 	// set the input of this command to the output of the previous command
-	return newCmd(args, kwargs, &r, pipe.cmd.Dir)
+	return newCmd(thread, args, kwargs, &r, pipe.cmd.Dir)
 }
