@@ -27,7 +27,7 @@ cmd("ls -lah").pipe(grep, "foo")
 # runs and gives stdout as a string
 cmd("df -h").stdout()
 cmd("df -h").combined_output()
-cmd("dh -h").stderr()
+cmd("df -h").stderr()
 
 
 # cmd has various methods and attributes
@@ -41,13 +41,13 @@ cmd("ls ").exit_code
 
 
 # Pass stdin to another command
-cmd("dh -h", stdin=sleep.combined_output)
+cmd("df -h", stdin=sleep.combined_output)
 # passing the command will pass stdout
-cmd("dh -h", stdin=sleep)
+cmd("df -h", stdin=sleep)
 
 
 def all_lines():
-    # iterate on stout or sterr to process each line
+    # iterate on stout or stderr to process each line
     for line in cmd("df -h").stdout:
         print(line)
 
@@ -55,7 +55,7 @@ def all_lines():
 all_lines()
 
 # fail over to other commands
-cmd("foo").if_err("echo failed")
+cmd("ls notathing").if_err("echo failed")
 
 # the cmd() function takes various perameters
 cmd(
@@ -65,7 +65,7 @@ cmd(
     env={"FOO": "BAR", "X": "Y"},
     clear_env=True,
     ignore_failure=True,
-    print_output=True
+    print_output=True,
 )
 
 

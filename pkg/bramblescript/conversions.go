@@ -9,7 +9,7 @@ import (
 func kwargsToStringDict(kwargsList []starlark.Tuple) (kwargs starlark.StringDict, err error) {
 	kwargs = starlark.StringDict{}
 	for _, kwarg := range kwargsList {
-		keyString := kwarg.Index(0).(*starlark.String).GoString()
+		keyString := kwarg.Index(0).(starlark.String).GoString()
 		if _, ok := kwargs[keyString]; ok {
 			return nil, errors.New("keyword argument repeated")
 		}

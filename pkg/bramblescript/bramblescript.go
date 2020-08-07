@@ -2,8 +2,8 @@ package bramblescript
 
 import (
 	"errors"
+	"io/ioutil"
 	"log"
-	"os"
 
 	"go.starlark.net/starlark"
 )
@@ -14,12 +14,12 @@ var (
 )
 
 func init() {
-	logger = log.New(os.Stdout, "", 0)
+	logger = log.New(ioutil.Discard, "", 0)
 }
 
 func Builtins(dir string) starlark.StringDict {
 	client := NewClient(dir)
 	return starlark.StringDict{
-		"cmd": starlark.NewBuiltin("cmd", client.StarlarkCmd),
+		"cmd": client,
 	}
 }
