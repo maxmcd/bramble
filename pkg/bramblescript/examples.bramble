@@ -43,7 +43,7 @@ cmd("ls ").exit_code
 # Pass stdin to another command
 cmd("df -h", stdin=sleep.combined_output)
 # passing the command will pass stdout
-cmd("df -h", stdin=sleep)
+cmd("df -h", stdin=cmd("echo"))
 
 
 def all_lines():
@@ -60,7 +60,7 @@ cmd("ls notathing ").if_err("echo failed")
 # the cmd() function takes various perameters
 cmd(
     "echo",
-    stdin=sleep,
+    stdin=cmd("echo"),
     dir="../",
     env={"FOO": "BAR", "X": "Y"},
     clear_env=True,
