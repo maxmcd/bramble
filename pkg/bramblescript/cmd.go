@@ -2,7 +2,6 @@ package bramblescript
 
 import (
 	"fmt"
-	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -121,7 +120,7 @@ func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
 }
 
 func (cmd *Cmd) starlarkWait(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	return starlark.None, cmd.Wait()
+	return cmd, cmd.Wait()
 }
 
 func (cmd *Cmd) Kill(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
@@ -146,9 +145,27 @@ type callInternalable interface {
 	CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error)
 }
 
+func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
+	switch v := val.(type) {
+	case *Cmd:
+		if err = v.setOutput(true, false); err != nil {
+			return
+		}
+		cmd.Stdin = v
+	case ByteStream:
+		if err = v.cmd.setOutput(v.stdout, v.stderr); err != nil {
+			return
+		}
+		cmd.Stdin = v.cmd
+	default:
+		return errors.Errorf("can't take type %t for stdin", v)
+	}
+	return nil
+}
+
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
-func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.Tuple, stdin *io.Reader, dir string) (val starlark.Value, err error) {
+func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
 	// if input is an array we use the first item as the cmd
 	// if input is just args we use them as cmd+args
 	// if input is just a string we parse it as a shell command
@@ -169,7 +186,7 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.
 
 	if args.Index(0).Type() == "function" {
 		fn := args.Index(0).(callInternalable)
-
+		kwargsList = append(kwargsList, starlark.Tuple{starlark.String("stdin"), stdin})
 		return fn.CallInternal(thread, args[1:], kwargsList)
 	}
 
@@ -209,6 +226,11 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.
 		}
 	}
 
+	if stdinKwarg, ok := kwargs["stdin"]; ok {
+		if err = attachStdin(&cmd, stdinKwarg); err != nil {
+			return
+		}
+	}
 	// kwargs:
 	// stdin
 	// dir
@@ -227,7 +249,7 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.
 
 	cmd.ss, cmd.Stdout, cmd.Stderr = NewStandardStream()
 	if stdin != nil {
-		cmd.Stdin = *stdin
+		cmd.Stdin = stdin
 	}
 	err = cmd.Start()
 	logger.Println(cmd.String(), "started")
