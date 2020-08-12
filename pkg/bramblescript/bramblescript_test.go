@@ -36,6 +36,7 @@ func runTest(t *testing.T, tests []scriptTest) {
 			b, ok := globals["b"]
 			if !ok {
 				t.Errorf("%q doesn't output global value b", tt.script)
+				return
 			}
 			assert.Equal(t, tt.returnValue, b.String())
 		})
