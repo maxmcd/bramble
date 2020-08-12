@@ -54,6 +54,7 @@ type InputDerivation struct {
 var _ starlark.Value = &Derivation{}
 
 func (drv *Derivation) String() string {
+	// TODO: we're overriding this for our own purposes. could be confusing
 	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
 }
 func (drv *Derivation) Type() string          { return "Derivation" }

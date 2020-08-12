@@ -24,5 +24,5 @@ reptar:
 
 bramblescripts_to_test:
 	go install
-	bramble script pkg/bramblescript/run.bramble
+	bramble script pkg/bramblescript/examples/run.bramble
 	bramble script pkg/bramblescript/examples.bramble
