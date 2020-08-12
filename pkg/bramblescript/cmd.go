@@ -69,11 +69,11 @@ func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	case "exit_code":
 		return cmd.ExitCode(), nil
 	case "if_err":
-		return IfErr{cmd: cmd}, nil
+		return Callable{ThisName: "if_err", ParentName: "cmd", Callable: cmd.IfErr}, nil
 	case "kill":
 		return Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
 	case "pipe":
-		return Pipe{cmd: cmd}, nil
+		return Callable{ThisName: "pipe", ParentName: "cmd", Callable: cmd.Pipe}, nil
 	case "stderr":
 		return ByteStream{stderr: true, cmd: cmd}, nil
 	case "stdout":
@@ -83,6 +83,7 @@ func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	}
 	return nil, nil
 }
+
 func (cmd *Cmd) AttrNames() []string {
 	return []string{
 		"combined_output",
@@ -109,6 +110,21 @@ func (cmd *Cmd) ExitCode() starlark.Value {
 func (cmd *Cmd) Wait() error {
 	cmd.wg.Wait()
 	return cmd.err
+}
+
+func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	// If there's no error we ignore the 'or' call
+	if err := cmd.Wait(); err == nil {
+		return cmd, nil
+	}
+
+	// if there is an error we run the command in or instead
+	return newCmd(thread, args, kwargs, nil, cmd.Dir)
+}
+
+func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	_ = cmd.setOutput(true, false)
+	return newCmd(thread, args, kwargs, cmd, cmd.Dir)
 }
 
 func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
