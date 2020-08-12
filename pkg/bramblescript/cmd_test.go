@@ -76,12 +76,24 @@ b=cmd("echo hi").pipe(grep, "hi").stdout().strip()
 
 func TestArgs(t *testing.T) {
 	tests := []scriptTest{
+		{script: `b=cmd("grep hi", stdin=cmd("echo hi")).combined_output()`,
+			returnValue: `"hi\n"`},
 		{script: `b=cmd("grep hi", stdin="hi").combined_output()`,
 			returnValue: `"hi\n"`},
 		{script: `b=cmd("env", clear_env=True).combined_output()`,
 			returnValue: `""`},
 		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).combined_output()`,
 			returnValue: `"foo=bar\nbaz=1\n"`},
+	}
+	runTest(t, tests)
+}
+
+func TestIfErr(t *testing.T) {
+	tests := []scriptTest{
+		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
+			returnValue: `"hi\n"`},
+		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
+			returnValue: `"hi\n"`},
 	}
 	runTest(t, tests)
 }

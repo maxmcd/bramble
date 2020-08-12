@@ -6,18 +6,6 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func kwargsToStringDict(kwargsList []starlark.Tuple) (kwargs starlark.StringDict, err error) {
-	kwargs = starlark.StringDict{}
-	for _, kwarg := range kwargsList {
-		keyString := kwarg.Index(0).(starlark.String).GoString()
-		if _, ok := kwargs[keyString]; ok {
-			return nil, errors.New("keyword argument repeated")
-		}
-		kwargs[keyString] = kwarg.Index(1)
-	}
-	return
-}
-
 func starlarkListToListOfStrings(listValue starlark.Value) (out []string, err error) {
 	list, ok := listValue.(*starlark.List)
 	if !ok {
