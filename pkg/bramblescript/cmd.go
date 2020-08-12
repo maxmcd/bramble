@@ -1,6 +1,7 @@
 package bramblescript
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -157,6 +158,8 @@ func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
 			return
 		}
 		cmd.Stdin = v.cmd
+	case starlark.String:
+		cmd.Stdin = bytes.NewBufferString(v.GoString())
 	default:
 		return errors.Errorf("can't take type %t for stdin", v)
 	}
@@ -165,19 +168,48 @@ func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
 
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
-func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
+func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
 	// if input is an array we use the first item as the cmd
 	// if input is just args we use them as cmd+args
 	// if input is just a string we parse it as a shell command
 
 	cmd := Cmd{}
 	cmd.Dir = dir
-	kwargs, err := kwargsToStringDict(kwargsList)
-	if err != nil {
-		return nil, err
+
+	var stdinKwarg starlark.Value
+	var dirKwarg starlark.String
+	var envKwarg *starlark.Dict
+	var clearEnvKwarg starlark.Bool
+	var ignoreFailureKwarg starlark.Bool
+	var printOutputKwarg starlark.Bool
+	if err = starlark.UnpackArgs("f", nil, kwargs,
+		"stdin?", &stdinKwarg,
+		"dir?", &dirKwarg,
+		"env?", &envKwarg,
+		"clear_env?", &clearEnvKwarg,
+		"ignore_failure?", &ignoreFailureKwarg,
+		"print_output?", &printOutputKwarg,
+	); err != nil {
+		return
 	}
-	// TODO
-	_ = kwargs
+
+	if clearEnvKwarg == starlark.True {
+		cmd.Env = []string{}
+	}
+	if envKwarg != nil {
+		for _, key := range envKwarg.Keys() {
+			envVal, _, _ := envKwarg.Get(key)
+			keyString, err := valueToString(key)
+			if err != nil {
+				return nil, err
+			}
+			valString, err := valueToString(envVal)
+			if err != nil {
+				return nil, err
+			}
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", keyString, valString))
+		}
+	}
 
 	// cmd() isn't allowed
 	if args.Len() == 0 {
@@ -186,8 +218,8 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.
 
 	if args.Index(0).Type() == "function" {
 		fn := args.Index(0).(callInternalable)
-		kwargsList = append(kwargsList, starlark.Tuple{starlark.String("stdin"), stdin})
-		return fn.CallInternal(thread, args[1:], kwargsList)
+		kwargs = append(kwargs, starlark.Tuple{starlark.String("stdin"), stdin})
+		return fn.CallInternal(thread, args[1:], kwargs)
 	}
 
 	// it's cmd(["grep", "-v"])
@@ -226,7 +258,7 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargsList []starlark.
 		}
 	}
 
-	if stdinKwarg, ok := kwargs["stdin"]; ok {
+	if stdinKwarg != nil {
 		if err = attachStdin(&cmd, stdinKwarg); err != nil {
 			return
 		}
