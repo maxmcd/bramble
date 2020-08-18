@@ -60,7 +60,7 @@ func (cmd *Cmd) Freeze() {
 }
 func (cmd *Cmd) Type() string          { return "cmd" }
 func (cmd *Cmd) Truth() starlark.Bool  { return cmd != nil }
-func (cmd *Cmd) Hash() (uint32, error) { return 0, errors.New("cmd is unhashable") }
+func (cmd *Cmd) Hash() (uint32, error) { return 0, ErrUnhashable("cmd") }
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
