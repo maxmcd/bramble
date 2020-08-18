@@ -1,4 +1,4 @@
-load("../seed", "seed")
+load("../../seed/seed", "seed")
 
 derivation(
     name="simple",
