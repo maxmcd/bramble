@@ -10,3 +10,9 @@ type ErrIncorrectType struct {
 func (eit ErrIncorrectType) Error() string {
 	return fmt.Sprintf("incorrect type of %q, should be %q", eit.is, eit.shouldBe)
 }
+
+type ErrUnhashable string
+
+func (err ErrUnhashable) Error() string {
+	return fmt.Sprintf("%s is unhashable", err)
+}

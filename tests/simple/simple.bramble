@@ -2,8 +2,8 @@ load("../../seed/seed", "seed")
 
 derivation(
     name="simple",
-    environment={"seed": seed},
-    builder="%s/bin/sh" % seed,
+    environment={"seed": seed.out},
+    builder="%s/bin/sh" % seed.out,
     args=["./simple_builder.sh"],
     sources=["./simple.c", "simple_builder.sh"],
 )

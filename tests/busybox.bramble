@@ -67,7 +67,7 @@ cd $out/bin
 
 busybox = derivation(
     name="busybox",
-    environment={"b": b},
-    builder="%s/busybox-x86_64" % b,
+    environment={"b": b.out},
+    builder="%s/busybox-x86_64" % b.out,
     args=["sh", "-c", script],
 )

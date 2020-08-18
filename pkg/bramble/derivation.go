@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/maxmcd/bramble/pkg/bramblescript"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/textreplace"
 	"github.com/mholt/archiver/v3"
@@ -51,16 +52,35 @@ type InputDerivation struct {
 	Output string
 }
 
-var _ starlark.Value = &Derivation{}
+var (
+	_ starlark.Value    = new(Derivation)
+	_ starlark.HasAttrs = new(Derivation)
+)
 
 func (drv *Derivation) String() string {
 	// TODO: we're overriding this for our own purposes. could be confusing
-	return fmt.Sprintf("$bramble_path/%s", drv.Outputs["out"].Path)
+	return fmt.Sprintf("<derivation %q>", drv.Name)
 }
-func (drv *Derivation) Type() string          { return "Derivation" }
+
+func (drv *Derivation) Type() string          { return "derivation" }
 func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv *Derivation) Hash() (uint32, error) { return 0, nil }
+func (drv *Derivation) Hash() (uint32, error) { return 0, bramblescript.ErrUnhashable("cmd") }
+
+func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
+	output, ok := drv.Outputs[name]
+	if ok {
+		return starlark.String(fmt.Sprintf("$bramble_path/%s", output.Path)), nil
+	}
+	return nil, nil
+}
+
+func (drv *Derivation) AttrNames() (out []string) {
+	for name := range drv.Outputs {
+		out = append(out, name)
+	}
+	return
+}
 
 func (drv *Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
@@ -152,7 +172,7 @@ func (drv *Derivation) assembleSources(destination string) (runLocation string, 
 	}
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
-		return "", errors.Wrap(err, "error calculating relative bramblefild loc")
+		return "", errors.Wrap(err, "error calculating relative bramblefile loc")
 	}
 	runLocation = filepath.Join(destination, relBramblefileLocation)
 	if err = os.MkdirAll(runLocation, 0755); err != nil {
@@ -175,7 +195,7 @@ func (drv *Derivation) writeDerivation() (err error) {
 	return nil
 }
 
-func (drv *Derivation) createTempDir() (tempDir string, err error) {
+func (drv *Derivation) createBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir("", TempDirPrefix)
 }
 
@@ -201,7 +221,7 @@ func (drv *Derivation) expand(s string) string {
 }
 
 func (drv *Derivation) build() (err error) {
-	tempDir, err := drv.createTempDir()
+	buildDir, err := drv.createBuildDir()
 	if err != nil {
 		return
 	}
@@ -239,7 +259,7 @@ func (drv *Derivation) build() (err error) {
 		}
 	} else {
 		var runLocation string
-		runLocation, err = drv.assembleSources(tempDir)
+		runLocation, err = drv.assembleSources(buildDir)
 		if err != nil {
 			return
 		}

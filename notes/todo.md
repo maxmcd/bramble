@@ -1,4 +1,4 @@
-- switch to `bramble foo` run sytax
+- switch to `bramble foo` run syntax
 - figure out how tests work and are imported
 - imports are modules with methods, imports are folders not files
 - disallow global function calls in scripts, scripts are only run as methods, needed for derivations and bramblescript
