@@ -1,4 +1,4 @@
-package bramblescript
+package starutil
 
 import (
 	"github.com/pkg/errors"
@@ -6,7 +6,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func starlarkListToListOfStrings(listValue starlark.Value) (out []string, err error) {
+func ListToListOfStrings(listValue starlark.Value) (out []string, err error) {
 	list, ok := listValue.(*starlark.List)
 	if !ok {
 		return nil, ErrIncorrectType{is: listValue.Type(), shouldBe: "list"}
@@ -16,7 +16,7 @@ func starlarkListToListOfStrings(listValue starlark.Value) (out []string, err er
 	var val starlark.Value
 	for iterator.Next(&val) {
 		var strValue string
-		strValue, err = valueToString(val)
+		strValue, err = ValueToString(val)
 		if err != nil {
 			return
 		}
@@ -25,7 +25,7 @@ func starlarkListToListOfStrings(listValue starlark.Value) (out []string, err er
 	return
 }
 
-func valueToString(val starlark.Value) (out string, err error) {
+func ValueToString(val starlark.Value) (out string, err error) {
 	switch v := val.(type) {
 	case starlark.String:
 		out = v.GoString()
