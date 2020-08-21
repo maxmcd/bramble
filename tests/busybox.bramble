@@ -2,7 +2,7 @@
 b = derivation(
     name="busybox_download",
     builder="fetch_url",
-    environment={
+    env={
         "decompress": False,
         "url": "$test_url/busybox.tar.gz",
         "hash": "8de53037d8e57daf5030be7c1c944afa849cf3a194962328ddb5478dbbb72533",
@@ -67,7 +67,7 @@ cd $out/bin
 
 busybox = derivation(
     name="busybox",
-    environment={"b": b.out},
+    env={"b": b.out},
     builder="%s/busybox-x86_64" % b.out,
     args=["sh", "-c", script],
 )

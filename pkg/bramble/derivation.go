@@ -27,7 +27,7 @@ type Derivation struct {
 	Builder          string
 	Platform         string
 	Args             []string
-	Environment      map[string]string
+	Env              map[string]string
 	Sources          []string
 	InputDerivations []InputDerivation
 
@@ -178,7 +178,7 @@ func (drv *Derivation) assembleSources(destination string) (runLocation string, 
 	if err = os.MkdirAll(runLocation, 0755); err != nil {
 		return "", errors.Wrap(err, "error making build directory")
 	}
-	drv.Environment["src"] = destination
+	drv.Env["src"] = destination
 	return
 }
 
@@ -213,7 +213,7 @@ func (drv *Derivation) expand(s string) string {
 		if i == "bramble_path" {
 			return drv.client.storePath
 		}
-		if v, ok := drv.Environment[i]; ok {
+		if v, ok := drv.Env[i]; ok {
 			return v
 		}
 		return ""
@@ -234,7 +234,7 @@ func (drv *Derivation) build() (err error) {
 		return
 	}
 	if drv.Builder == "fetch_url" {
-		url, ok := drv.Environment["url"]
+		url, ok := drv.Env["url"]
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
 		}
@@ -246,7 +246,7 @@ func (drv *Derivation) build() (err error) {
 				return ""
 			})
 		}
-		hash, ok := drv.Environment["hash"]
+		hash, ok := drv.Env["hash"]
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'hash' to be set")
 		}
@@ -272,7 +272,7 @@ func (drv *Derivation) build() (err error) {
 		cmd := exec.Command(builderLocation, drv.Args...)
 		cmd.Dir = runLocation
 		cmd.Env = []string{}
-		for k, v := range drv.Environment {
+		for k, v := range drv.Env {
 			v = strings.Replace(v, "$bramble_path", drv.client.storePath, -1)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}

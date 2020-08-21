@@ -17,6 +17,8 @@ https://www.youtube.com/watch?v=8M6yvJC00J4&feature=youtu.be&t=782
 
 # Notes
 
+Multiple outputs: https://releases.nixos.org/nix-dev/2010-April/004180.html
+
 Source of mkDerivation: https://github.com/NixOS/nixpkgs/blob/master/pkgs/stdenv/generic/make-derivation.nix
 
 Derivation with multiple outputs:
