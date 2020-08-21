@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -43,9 +44,9 @@ func (client *CmdClient) Hash() (uint32, error) {
 func (client *CmdClient) Attr(name string) (val starlark.Value, err error) {
 	switch name {
 	case "cd":
-		return Callable{ThisName: "cmd", ParentName: "cmd", Callable: client.CD}, nil
+		return starutil.Callable{ThisName: "cmd", ParentName: "cmd", Callable: client.CD}, nil
 	case "debug":
-		return Callable{ThisName: "debug", ParentName: "debug", Callable: client.Debug}, nil
+		return starutil.Callable{ThisName: "debug", ParentName: "debug", Callable: client.Debug}, nil
 	}
 	return nil, nil
 }

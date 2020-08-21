@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/kballard/go-shellquote"
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 
 	"go.starlark.net/starlark"
@@ -60,7 +61,7 @@ func (cmd *Cmd) Freeze() {
 }
 func (cmd *Cmd) Type() string          { return "cmd" }
 func (cmd *Cmd) Truth() starlark.Bool  { return cmd != nil }
-func (cmd *Cmd) Hash() (uint32, error) { return 0, ErrUnhashable("cmd") }
+func (cmd *Cmd) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
@@ -69,17 +70,17 @@ func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	case "exit_code":
 		return cmd.ExitCode(), nil
 	case "if_err":
-		return Callable{ThisName: "if_err", ParentName: "cmd", Callable: cmd.IfErr}, nil
+		return starutil.Callable{ThisName: "if_err", ParentName: "cmd", Callable: cmd.IfErr}, nil
 	case "kill":
-		return Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
+		return starutil.Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
 	case "pipe":
-		return Callable{ThisName: "pipe", ParentName: "cmd", Callable: cmd.Pipe}, nil
+		return starutil.Callable{ThisName: "pipe", ParentName: "cmd", Callable: cmd.Pipe}, nil
 	case "stderr":
 		return ByteStream{stderr: true, cmd: cmd}, nil
 	case "stdout":
 		return ByteStream{stdout: true, cmd: cmd}, nil
 	case "wait":
-		return Callable{ThisName: "wait", ParentName: "cmd", Callable: cmd.starlarkWait}, nil
+		return starutil.Callable{ThisName: "wait", ParentName: "cmd", Callable: cmd.starlarkWait}, nil
 	}
 	return nil, nil
 }
@@ -128,7 +129,7 @@ func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []star
 }
 
 func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
-	val, err := valueToString(value)
+	val, err := starutil.ValueToString(value)
 	if err != nil {
 		return
 	}
@@ -215,11 +216,11 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tupl
 	if envKwarg != nil {
 		for _, key := range envKwarg.Keys() {
 			envVal, _, _ := envKwarg.Get(key)
-			keyString, err := valueToString(key)
+			keyString, err := starutil.ValueToString(key)
 			if err != nil {
 				return nil, err
 			}
-			valString, err := valueToString(envVal)
+			valString, err := starutil.ValueToString(envVal)
 			if err != nil {
 				return nil, err
 			}
@@ -241,7 +242,7 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tupl
 	// it's cmd(["grep", "-v"])
 	if args.Len() == 1 {
 		if args.Index(0).Type() == "list" {
-			cmd.Args, err = starlarkListToListOfStrings(args.Index(0))
+			cmd.Args, err = starutil.ListToListOfStrings(args.Index(0))
 			if err != nil {
 				return nil, err
 			}

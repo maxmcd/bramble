@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/maxmcd/bramble/pkg/bramblescript"
 	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
@@ -65,7 +65,7 @@ func (drv *Derivation) String() string {
 func (drv *Derivation) Type() string          { return "derivation" }
 func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv *Derivation) Hash() (uint32, error) { return 0, bramblescript.ErrUnhashable("cmd") }
+func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
 
 func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
 	output, ok := drv.Outputs[name]

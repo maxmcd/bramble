@@ -1,4 +1,4 @@
-package bramblescript
+package starutil
 
 import "fmt"
 
@@ -14,5 +14,5 @@ func (eit ErrIncorrectType) Error() string {
 type ErrUnhashable string
 
 func (err ErrUnhashable) Error() string {
-	return fmt.Sprintf("%s is unhashable", err)
+	return fmt.Sprintf("%s is unhashable", string(err))
 }
