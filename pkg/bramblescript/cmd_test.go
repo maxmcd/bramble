@@ -22,8 +22,6 @@ b = [getattr(c, x) for x in dir(c)]
 		{script: `b=[getattr(cmd("echo"), x) for x in dir(cmd("echo"))]`,
 			returnValue: ``},
 		{script: `cmd("sleep 2").kill()`},
-		{script: "cmd([1])",
-			errContains: ErrIncorrectType{is: "int", shouldBe: "string"}.Error()},
 		{script: `b=cmd(["ls", "-lah"])`,
 			returnValue: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls -lah")`,
@@ -94,6 +92,16 @@ func TestIfErr(t *testing.T) {
 			returnValue: `"hi\n"`},
 		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
 			returnValue: `"hi\n"`},
+	}
+	runTest(t, tests)
+}
+
+func TestCallable(t *testing.T) {
+	tests := []scriptTest{
+		{script: `b=cmd("ls").pipe`,
+			returnValue: `<attribute 'pipe' of 'cmd'>`},
+		{script: `b=type(cmd("ls").if_err)`,
+			returnValue: `"builtin_function_or_method"`},
 	}
 	runTest(t, tests)
 }

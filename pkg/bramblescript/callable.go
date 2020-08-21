@@ -24,7 +24,7 @@ func (callable Callable) String() string {
 	return fmt.Sprintf("<attribute '%s' of '%s'>", callable.Name(), callable.ParentName)
 }
 
-func (callable Callable) Type() string          { return callable.Name() }
+func (callable Callable) Type() string          { return "builtin_function_or_method" }
 func (callable Callable) Freeze()               {}
 func (callable Callable) Truth() starlark.Bool  { return true }
 func (callable Callable) Hash() (uint32, error) { return 0, errors.New("unhashable") }
