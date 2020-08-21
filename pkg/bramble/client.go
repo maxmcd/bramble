@@ -34,9 +34,11 @@ type Client struct {
 }
 
 func init() {
-	resolve.AllowFloat = true
-	resolve.AllowLambda = true
-	resolve.AllowNestedDef = true
+	// It's easier to start giving away free coffee than it is to take away
+	// free coffee
+	resolve.AllowFloat = false
+	resolve.AllowLambda = false
+	resolve.AllowNestedDef = false
 	resolve.AllowRecursion = false
 	resolve.AllowSet = true
 }

@@ -15,11 +15,12 @@ func starlarkListToListOfStrings(listValue starlark.Value) (out []string, err er
 	defer iterator.Done()
 	var val starlark.Value
 	for iterator.Next(&val) {
-		str, ok := val.(starlark.String)
-		if !ok {
-			return nil, ErrIncorrectType{is: val.Type(), shouldBe: "string"}
+		var strValue string
+		strValue, err = valueToString(val)
+		if err != nil {
+			return
 		}
-		out = append(out, str.GoString())
+		out = append(out, strValue)
 	}
 	return
 }
