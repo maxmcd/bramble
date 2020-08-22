@@ -4,70 +4,65 @@
 Bramblescript examples
 """
 
-# print debug output of all the commands that are being run
-cmd.debug()
 
+def main():
 
-cmd("ls -lah")
-cmd("ls", "-lah")
-cmd(["ls", "-lah"])
+    # print debug output of all the commands that are being run
+    cmd.debug()
 
-# you can pipe commands into other commands
-cmd("ls -lah").pipe("sort")
+    cmd("ls -lah")
+    cmd("ls", "-lah")
+    cmd(["ls", "-lah"])
 
-# pipe can also take a callback
-def grep(*args, **kwargs):
-    return cmd("grep", *args, **kwargs)
+    # you can pipe commands into other commands
+    cmd("ls -lah").pipe("sort")
 
+    # pipe can also take a callback
+    def grep(*args, **kwargs):
+        return cmd("grep", *args, **kwargs)
 
-# Additional arguments are passed to the callback
-cmd("ls -lah").pipe(grep, "foo")
+    # Additional arguments are passed to the callback
+    cmd("ls -lah").pipe(grep, "foo")
 
+    # runs and gives stdout as a string
+    cmd("df -h").stdout()
+    cmd("df -h").output()
+    cmd("df -h").stderr()
 
-# runs and gives stdout as a string
-cmd("df -h").stdout()
-cmd("df -h").combined_output()
-cmd("df -h").stderr()
+    # cmd has various methods and attributes
+    sleep = cmd("sleep 10")
+    # kill the command
+    sleep.kill()
+    # or wait for the command to end
+    cmd("echo").wait()
+    # and get the exit code, if there is one
+    cmd("ls ").exit_code
 
+    # Pass stdin to another command
+    cmd("df -h", stdin=sleep.output)
+    # passing the command will pass stdout
+    cmd("df -h", stdin=cmd("echo"))
 
-# cmd has various methods and attributes
-sleep = cmd("sleep 10")
-# kill the command
-sleep.kill()
-# or wait for the command to end
-cmd("echo").wait()
-# and get the exit code, if there is one
-cmd("ls ").exit_code
+    def all_lines():
+        # iterate on stout or stderr to process each line
+        for line in cmd("df -h").stdout:
+            print(line)
 
+    all_lines()
 
-# Pass stdin to another command
-cmd("df -h", stdin=sleep.combined_output)
-# passing the command will pass stdout
-cmd("df -h", stdin=cmd("echo"))
+    # fail over to other commands
+    cmd("ls notathing ").if_err("echo failed")
 
+    # the cmd() function takes various perameters
+    cmd(
+        "echo",
+        stdin=cmd("echo"),
+        dir="../",
+        env={"FOO": "BAR", "X": "Y"},
+        clear_env=True,
+        ignore_failure=True,
+        print_output=True,
+    )
 
-def all_lines():
-    # iterate on stout or stderr to process each line
-    for line in cmd("df -h").stdout:
-        print(line)
-
-
-all_lines()
-
-# fail over to other commands
-cmd("ls notathing ").if_err("echo failed")
-
-# the cmd() function takes various perameters
-cmd(
-    "echo",
-    stdin=cmd("echo"),
-    dir="../",
-    env={"FOO": "BAR", "X": "Y"},
-    clear_env=True,
-    ignore_failure=True,
-    print_output=True,
-)
-
-
-# you can change directories
-cmd.cd("..")
+    # you can change directories
+    cmd.cd("..")

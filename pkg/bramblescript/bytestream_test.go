@@ -14,7 +14,7 @@ func TestByteStream(t *testing.T) {
 			returnValue: `<attribute 'stdout' of 'cmd'>`},
 		{script: `b=type(cmd("echo","hi").stdout)`,
 			returnValue: `"bytestream"`},
-		{script: `b=cmd("echo", "hi").combined_output()`,
+		{script: `b=cmd("echo", "hi").output()`,
 			returnValue: `"hi\n"`},
 		{script: `b=cmd("echo", "hi").stderr()`,
 			returnValue: `""`},
@@ -22,8 +22,8 @@ func TestByteStream(t *testing.T) {
 			returnValue: `<attribute 'stderr' of 'cmd'>`},
 		{script: `b=cmd("echo", "hi").stdout`,
 			returnValue: `<attribute 'stdout' of 'cmd'>`},
-		{script: `b=cmd("echo", "hi").combined_output`,
-			returnValue: `<attribute 'combined_output' of 'cmd'>`},
+		{script: `b=cmd("echo", "hi").output`,
+			returnValue: `<attribute 'output' of 'cmd'>`},
 		{script: `b=cmd("echo", 1).stdout()`,
 			returnValue: `"1\n"`},
 		{script: `
@@ -39,7 +39,7 @@ b = run()`,
 		{script: `
 def run():
 	c = cmd("ls")
-	for line in c.combined_output:
+	for line in c.output:
 		if "cmd_test" in line:
 			return line
 b = run()`,

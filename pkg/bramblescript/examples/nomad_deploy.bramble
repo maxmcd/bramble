@@ -14,7 +14,7 @@ def main(args):
 
     plan = cmd("nomad job plan -", stdin=contents).wait()
 
-    out = plan.combined_output()
+    out = plan.output()
 
     print(out)
     # ask for confirmation?

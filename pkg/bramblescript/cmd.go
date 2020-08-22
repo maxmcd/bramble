@@ -65,7 +65,7 @@ func (cmd *Cmd) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd")
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
-	case "combined_output":
+	case "output":
 		return ByteStream{stdout: true, stderr: true, cmd: cmd}, nil
 	case "exit_code":
 		return cmd.ExitCode(), nil
@@ -87,7 +87,7 @@ func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 
 func (cmd *Cmd) AttrNames() []string {
 	return []string{
-		"combined_output",
+		"output",
 		"exit_code",
 		"if_err",
 		"kill",
@@ -186,6 +186,7 @@ func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
 func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
+	fmt.Println(args)
 	// if input is an array we use the first item as the cmd
 	// if input is just args we use them as cmd+args
 	// if input is just a string we parse it as a shell command

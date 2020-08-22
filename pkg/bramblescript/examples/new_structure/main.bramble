@@ -1,0 +1,16 @@
+"""tour of some features and limitations"""
+
+
+def ls():
+    assert.eq(1, 1)
+    assert.ne(1, 2)
+    return run_and_print("ls", *os.args)
+
+
+def get_something():
+    print("What is your name?")
+    thing = os.input()
+
+    # clear previous line
+    print("\033[A                             \033[A")
+    print("hello %s" % thing)

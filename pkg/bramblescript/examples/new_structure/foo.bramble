@@ -1,0 +1,9 @@
+"""run and print"""
+
+
+def run_and_print(*args, **kwargs):
+    print(*args)
+    runner = cmd(*args, **kwargs)
+    out = runner.output()
+    print(out)
+    return runner
