@@ -14,12 +14,12 @@ def main():
     # how to set this token?
     token = "?????"
     vault = vault_cmd(token)
-    values = list(vault("list", "auth/token/accessors").combined_output)
+    values = list(vault("list", "auth/token/accessors").output)
     manager_tokens = []
     for value in values:
         if (
             "default manager"
-            in vault("token", "lookup", "-accessor", value).combined_output()
+            in vault("token", "lookup", "-accessor", value).output()
         ):
             manager_tokens.append(value)
     for token in manager_tokens:

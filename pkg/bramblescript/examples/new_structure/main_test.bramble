@@ -1,0 +1,5 @@
+
+
+def test_ls():
+    ran = ls()
+    assert.eq(ran.exit_code, 0)

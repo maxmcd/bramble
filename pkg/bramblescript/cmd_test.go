@@ -74,13 +74,13 @@ b=cmd("echo hi").pipe(grep, "hi").stdout().strip()
 
 func TestArgs(t *testing.T) {
 	tests := []scriptTest{
-		{script: `b=cmd("grep hi", stdin=cmd("echo hi")).combined_output()`,
+		{script: `b=cmd("grep hi", stdin=cmd("echo hi")).output()`,
 			returnValue: `"hi\n"`},
-		{script: `b=cmd("grep hi", stdin="hi").combined_output()`,
+		{script: `b=cmd("grep hi", stdin="hi").output()`,
 			returnValue: `"hi\n"`},
-		{script: `b=cmd("env", clear_env=True).combined_output()`,
+		{script: `b=cmd("env", clear_env=True).output()`,
 			returnValue: `""`},
-		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).combined_output()`,
+		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).output()`,
 			returnValue: `"foo=bar\nbaz=1\n"`},
 	}
 	runTest(t, tests)

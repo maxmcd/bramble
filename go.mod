@@ -2,6 +2,8 @@ module github.com/maxmcd/bramble
 
 go 1.14
 
+replace go.starlark.net => github.com/maxmcd/starlark-go v0.0.0-20200822192901-a316eb6407de
+
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51

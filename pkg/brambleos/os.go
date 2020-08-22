@@ -1,4 +1,4 @@
-package os
+package brambleos
 
 import (
 	"bufio"
@@ -27,27 +27,27 @@ func (os OS) AttrNames() []string {
 		"input",
 	}
 }
+
+func makeArgs() (starlark.Value, error) {
+	out := []starlark.Value{}
+	if len(goos.Args) >= 3 {
+		for _, arg := range goos.Args[3:] {
+			out = append(out, starlark.String(arg))
+		}
+	}
+	return starlark.NewList(out), nil
+}
+
 func (os OS) Attr(name string) (val starlark.Value, err error) {
 	switch name {
 	case "args":
-		return starutil.Callable{ThisName: "args", ParentName: "os", Callable: os.args}, nil
+		return makeArgs()
 	case "error":
 		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
 	case "input":
 		return starutil.Callable{ThisName: "input", ParentName: "os", Callable: os.input}, nil
 	}
 	return nil, nil
-}
-
-func (os OS) args(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	if err = starlark.UnpackArgs("args", args, kwargs); err != nil {
-		return
-	}
-	out := []starlark.Value{}
-	for _, arg := range goos.Args {
-		out = append(out, starlark.String(arg))
-	}
-	return starlark.NewList(out), nil
 }
 
 func (os OS) error(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

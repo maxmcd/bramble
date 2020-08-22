@@ -24,7 +24,7 @@ var (
 
 func (bs ByteStream) Name() string {
 	if bs.stdout && bs.stderr {
-		return "combined_output"
+		return "output"
 	}
 	if bs.stderr {
 		return "stderr"
