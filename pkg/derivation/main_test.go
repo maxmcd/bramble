@@ -1,4 +1,4 @@
-package bramble
+package derivation
 
 import (
 	"fmt"
@@ -43,11 +43,11 @@ func PanicOnErr(err error) {
 	}
 }
 
-func NewTestClient(t *testing.T) *Client {
+func NewTestClient(t *testing.T) *Module {
 	dir, err := ioutil.TempDir("", TestTmpDirPrefix)
 	assert.NoError(t, err)
 	os.Setenv("BRAMBLE_PATH", dir)
-	c, err := NewClient()
+	c, err := NewModule()
 	assert.NoError(t, err)
 	return c
 }

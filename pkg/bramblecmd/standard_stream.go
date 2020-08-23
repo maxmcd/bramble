@@ -1,4 +1,4 @@
-package bramblescript
+package bramblecmd
 
 import (
 	"io"

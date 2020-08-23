@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/maxmcd/bramble/pkg/bramblescript"
+	"github.com/maxmcd/bramble/pkg/bramblecmd"
 )
 
 func main() {
@@ -17,9 +17,9 @@ func main() {
 func run() (err error) {
 	switch os.Args[1] {
 	case "run":
-		return bramblescript.Run(os.Args[2])
+		return bramblecmd.Run(os.Args[2])
 	case "test":
-		return bramblescript.Test()
+		return bramblecmd.Test()
 	}
 	return fmt.Errorf("command %q not found", os.Args[1])
 }
