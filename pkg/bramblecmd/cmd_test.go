@@ -60,14 +60,6 @@ def echo(*args, **kwargs):
 b=echo("hi").stdout().strip()
 `,
 			returnValue: `"hi"`},
-		{script: `
-cmd.debug()
-def grep(*args, **kwargs):
-  return cmd("grep", *args, **kwargs)
-
-b=cmd("echo hi").pipe(grep, "hi").stdout().strip()
-`,
-			returnValue: `"hi"`},
 	}
 	runTest(t, tests)
 }

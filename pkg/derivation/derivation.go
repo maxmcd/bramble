@@ -32,7 +32,7 @@ type Derivation struct {
 	InputDerivations []InputDerivation
 
 	// internal fields
-	client      *Module
+	client      *Function
 	bramblePath string
 	location    string
 }

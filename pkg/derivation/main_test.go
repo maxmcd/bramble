@@ -43,7 +43,7 @@ func PanicOnErr(err error) {
 	}
 }
 
-func NewTestClient(t *testing.T) *Module {
+func NewTestFunction(t *testing.T) *Function {
 	dir, err := ioutil.TempDir("", TestTmpDirPrefix)
 	assert.NoError(t, err)
 	os.Setenv("BRAMBLE_PATH", dir)
