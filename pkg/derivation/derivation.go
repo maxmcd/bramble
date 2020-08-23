@@ -1,4 +1,4 @@
-package bramble
+package derivation
 
 import (
 	"bytes"
@@ -32,8 +32,9 @@ type Derivation struct {
 	InputDerivations []InputDerivation
 
 	// internal fields
-	client   *Client
-	location string
+	client      *Module
+	bramblePath string
+	location    string
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

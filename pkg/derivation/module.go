@@ -1,4 +1,4 @@
-package bramble
+package derivation
 
 import (
 	"crypto/sha256"
@@ -11,16 +11,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/maxmcd/bramble/pkg/bramblescript"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"go.starlark.net/repl"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
 
-// Client is the bramble client.
-type Client struct {
+// Module is the derivation module
+type Module struct {
 	bramblePath string
 	storePath   string
 	derivations map[string]*Derivation
@@ -33,6 +31,10 @@ type Client struct {
 	scriptLocation stringStack
 }
 
+//var (
+//	_ starlark.Value = new(Module)
+//)
+
 func init() {
 	// It's easier to start giving away free coffee than it is to take away
 	// free coffee
@@ -43,17 +45,18 @@ func init() {
 	resolve.AllowSet = true
 }
 
-// NewClient creates a new client. When initialized this function checks if the
+// NewModule creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewClient() (*Client, error) {
+func NewModule() (*Module, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
 	bramblePath, storePath, err := ensureBramblePath()
 	if err != nil {
 		return nil, err
 	}
-	// TODO: check that the store directory structure is accurate and make directories if needed
-	c := &Client{
+	// TODO: check that the store directory structure is accurate and make
+	// directories if needed
+	c := &Module{
 		log:         logrus.New(),
 		bramblePath: bramblePath,
 		storePath:   storePath,
@@ -66,13 +69,13 @@ func NewClient() (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{c.storePath}, v...)...)
+func (m *Module) joinStorePath(v ...string) string {
+	return filepath.Join(append([]string{m.storePath}, v...)...)
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
-func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := c.joinStorePath(filename)
+func (m *Module) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	fileLocation := m.joinStorePath(filename)
 	_, err = os.Stat(fileLocation)
 	if err != nil {
 		return nil, false, nil
@@ -85,7 +88,7 @@ func (c *Client) LoadDerivation(filename string) (drv *Derivation, exists bool, 
 	return drv, true, json.NewDecoder(f).Decode(drv)
 }
 
-func (c *Client) buildDerivation(drv *Derivation) (err error) {
+func (m *Module) buildDerivation(drv *Derivation) (err error) {
 	var exists bool
 	exists, err = drv.checkForExisting()
 	if err != nil {
@@ -103,56 +106,10 @@ func (c *Client) buildDerivation(drv *Derivation) (err error) {
 	return
 }
 
-func (c *Client) shellCommand(args []string) (err error) {
-	panic("unimplemented")
-}
-
-func (c *Client) scriptCommand(args []string) (err error) {
-	thread := &starlark.Thread{Name: ""}
-	// TODO: run from location of script
-	wd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	builtins := bramblescript.Builtins(wd)
-	if len(args) != 0 {
-		if _, err := starlark.ExecFile(thread, args[0], nil, builtins); err != nil {
-			return err
-		}
-		return nil
-	}
-	repl.REPL(thread, builtins)
-	return nil
-}
-
-func (c *Client) buildCommand(args []string) (err error) {
-	if len(args) == 0 {
-		return errors.New("the build command takes a positional argument")
-	}
-	_, err = c.Run(args[0])
-	return
-}
-
-// Run runs a file given a path. Returns the global variable values from that
-// file. Run will recursively run imported files.
-func (c *Client) Run(file string) (globals starlark.StringDict, err error) {
-	c.log.Debug("running file ", file)
-	c.scriptLocation.Push(filepath.Dir(file))
-	globals, err = starlark.ExecFile(c.thread, file, nil, starlark.StringDict{
-		"derivation": starlark.NewBuiltin("derivation", c.starlarkDerivation),
-	})
-	if err != nil {
-		return
-	}
-	// clear the context of this Run as it might be on an import
-	c.scriptLocation.Pop()
-	return
-}
-
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
-func (c *Client) DownloadFile(url string, hash string) (path string, err error) {
-	c.log.Debugf("Downloading url %s", url)
+func (m *Module) DownloadFile(url string, hash string) (path string, err error) {
+	m.log.Debugf("Downloading url %s", url)
 
 	b, err := hex.DecodeString(hash)
 	if err != nil {
@@ -160,7 +117,7 @@ func (c *Client) DownloadFile(url string, hash string) (path string, err error) 
 		return
 	}
 	storePrefixHash := bytesToBase32Hash(b)
-	matches, err := filepath.Glob(c.joinStorePath(storePrefixHash) + "*")
+	matches, err := filepath.Glob(m.joinStorePath(storePrefixHash) + "*")
 	if err != nil {
 		err = errors.Wrap(err, "error searching for existing hashed content")
 		return
@@ -174,7 +131,7 @@ func (c *Client) DownloadFile(url string, hash string) (path string, err error) 
 		return
 	}
 	defer resp.Body.Close()
-	file, err := ioutil.TempFile(filepath.Join(c.bramblePath, "tmp"), "")
+	file, err := ioutil.TempFile(filepath.Join(m.bramblePath, "tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a download")
 		return
@@ -194,7 +151,7 @@ func (c *Client) DownloadFile(url string, hash string) (path string, err error) 
 		// make best effort to save this file, as we'll likely just download it again
 		storePrefixHash = bytesToBase32Hash(sha256HashBytes)
 	}
-	path = c.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
+	path = m.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
 	// don't overwrite err if we error here, we want to try and save this, but
 	// still return the incorrect hash error
 	if er := os.Rename(file.Name(), path); er != nil {
