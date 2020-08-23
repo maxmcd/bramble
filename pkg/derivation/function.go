@@ -11,14 +11,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
 
-// Module is the derivation module
-type Module struct {
+// Function is the function that creates derivations
+type Function struct {
 	bramblePath string
 	storePath   string
 	derivations map[string]*Derivation
@@ -31,9 +32,17 @@ type Module struct {
 	scriptLocation stringStack
 }
 
-//var (
-//	_ starlark.Value = new(Module)
-//)
+var (
+	_ starlark.Value    = new(Function)
+	_ starlark.Callable = new(Function)
+)
+
+func (f *Function) Freeze()               {}
+func (f *Function) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("module") }
+func (f *Function) Name() string          { return f.String() }
+func (f *Function) String() string        { return `<built-in function cmd>` }
+func (f *Function) Truth() starlark.Bool  { return true }
+func (f *Function) Type() string          { return "module" }
 
 func init() {
 	// It's easier to start giving away free coffee than it is to take away
@@ -47,7 +56,7 @@ func init() {
 
 // NewModule creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewModule() (*Module, error) {
+func NewModule() (*Function, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
 	bramblePath, storePath, err := ensureBramblePath()
@@ -56,7 +65,7 @@ func NewModule() (*Module, error) {
 	}
 	// TODO: check that the store directory structure is accurate and make
 	// directories if needed
-	c := &Module{
+	c := &Function{
 		log:         logrus.New(),
 		bramblePath: bramblePath,
 		storePath:   storePath,
@@ -69,26 +78,42 @@ func NewModule() (*Module, error) {
 	return c, nil
 }
 
-func (m *Module) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{m.storePath}, v...)...)
+// Run runs a file given a path. Returns the global variable values from that
+// file. Run will recursively run imported files.
+func (f *Function) Run(file string) (globals starlark.StringDict, err error) {
+	f.log.Debug("running file ", file)
+	f.scriptLocation.Push(filepath.Dir(file))
+	globals, err = starlark.ExecFile(f.thread, file, nil, starlark.StringDict{
+		"derivation": f,
+	})
+	if err != nil {
+		return
+	}
+	// clear the context of this Run as it might be on an import
+	f.scriptLocation.Pop()
+	return
+}
+
+func (f *Function) joinStorePath(v ...string) string {
+	return filepath.Join(append([]string{f.storePath}, v...)...)
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
-func (m *Module) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := m.joinStorePath(filename)
+func (f *Function) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	fileLocation := f.joinStorePath(filename)
 	_, err = os.Stat(fileLocation)
 	if err != nil {
 		return nil, false, nil
 	}
-	f, err := os.Open(fileLocation)
+	file, err := os.Open(fileLocation)
 	if err != nil {
 		return nil, true, err
 	}
 	drv = &Derivation{}
-	return drv, true, json.NewDecoder(f).Decode(drv)
+	return drv, true, json.NewDecoder(file).Decode(drv)
 }
 
-func (m *Module) buildDerivation(drv *Derivation) (err error) {
+func (f *Function) buildDerivation(drv *Derivation) (err error) {
 	var exists bool
 	exists, err = drv.checkForExisting()
 	if err != nil {
@@ -108,8 +133,8 @@ func (m *Module) buildDerivation(drv *Derivation) (err error) {
 
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
-func (m *Module) DownloadFile(url string, hash string) (path string, err error) {
-	m.log.Debugf("Downloading url %s", url)
+func (f *Function) DownloadFile(url string, hash string) (path string, err error) {
+	f.log.Debugf("Downloading url %s", url)
 
 	b, err := hex.DecodeString(hash)
 	if err != nil {
@@ -117,7 +142,7 @@ func (m *Module) DownloadFile(url string, hash string) (path string, err error) 
 		return
 	}
 	storePrefixHash := bytesToBase32Hash(b)
-	matches, err := filepath.Glob(m.joinStorePath(storePrefixHash) + "*")
+	matches, err := filepath.Glob(f.joinStorePath(storePrefixHash) + "*")
 	if err != nil {
 		err = errors.Wrap(err, "error searching for existing hashed content")
 		return
@@ -131,7 +156,7 @@ func (m *Module) DownloadFile(url string, hash string) (path string, err error) 
 		return
 	}
 	defer resp.Body.Close()
-	file, err := ioutil.TempFile(filepath.Join(m.bramblePath, "tmp"), "")
+	file, err := ioutil.TempFile(filepath.Join(f.bramblePath, "tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a download")
 		return
@@ -151,11 +176,35 @@ func (m *Module) DownloadFile(url string, hash string) (path string, err error) 
 		// make best effort to save this file, as we'll likely just download it again
 		storePrefixHash = bytesToBase32Hash(sha256HashBytes)
 	}
-	path = m.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
+	path = f.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
 	// don't overwrite err if we error here, we want to try and save this, but
 	// still return the incorrect hash error
 	if er := os.Rename(file.Name(), path); er != nil {
 		return "", errors.Wrap(er, "error moving file into store")
 	}
 	return path, err
+}
+
+func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	if args.Len() > 0 {
+		return nil, errors.New("builtin function build() takes no positional arguments")
+	}
+	drv, err := f.newDerivationFromKWArgs(kwargs)
+	if err != nil {
+		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+	}
+	if err = drv.calculateInputDerivations(); err != nil {
+		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+	}
+	f.log.Debugf("Building derivation %q", drv.Name)
+	if err = f.buildDerivation(drv); err != nil {
+		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+	}
+	f.log.Debug("Completed derivation: ", drv.prettyJSON())
+	_, filename, err := drv.computeDerivation()
+	if err != nil {
+		return
+	}
+	f.derivations[filename] = drv
+	return drv, nil
 }
