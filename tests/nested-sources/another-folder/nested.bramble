@@ -1,27 +1,28 @@
-load("../../busybox", "busybox")
+load("github.com/maxmcd/bramble/tests/busybox", "busybox")
 
 
-derivation(
-    name="nested2",
-    builder="%s/bin/sh" % busybox.out,
-    env={"PATH": "%s/bin" % busybox.out},
-    sources=["../file.txt", "../script.sh"],
-    args=["../script.sh"],
-)
+def nested():
+    bb = busybox()
+    derivation(
+        name="nested2",
+        builder="%s/bin/sh" % bb.out,
+        env={"PATH": "%s/bin" % bb.out},
+        sources=["../file.txt", "../script.sh"],
+        args=["../script.sh"],
+    )
 
-derivation(
-    name="nested",
-    env={"PATH": "%s/bin" % busybox.out},
-    builder="%s/bin/sh" % busybox.out,
-    sources=["../"],
-    args=["../script.sh"],
-)
+    derivation(
+        name="nested",
+        env={"PATH": "%s/bin" % bb.out},
+        builder="%s/bin/sh" % bb.out,
+        sources=["../"],
+        args=["../script.sh"],
+    )
 
-
-derivation(
-    name="nested3",
-    builder="%s/bin/sh" % busybox.out,
-    env={"PATH": "%s/bin" % busybox.out},
-    sources=["../script2.sh"],
-    args=["../script2.sh"],
-)
+    derivation(
+        name="nested3",
+        builder="%s/bin/sh" % bb.out,
+        env={"PATH": "%s/bin" % bb.out},
+        sources=["../script2.sh"],
+        args=["../script2.sh"],
+    )

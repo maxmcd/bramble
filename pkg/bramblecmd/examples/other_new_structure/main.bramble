@@ -1,0 +1,5 @@
+load("github.com/maxmcd/bramble/pkg/bramblecmd/examples/new_structure/main", foo="ls")
+
+
+def main():
+    foo()
