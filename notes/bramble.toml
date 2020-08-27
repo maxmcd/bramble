@@ -1,10 +1,4 @@
 
 
-# this is a package
-[package]
+[module]
 name = "github.com/maxmcd/bramble/notes"
-description = "hellooooo"
-
-
-# this configured what packages are available in this
-packages = ["github.com/maxmcd/bramble/simple", "./"]

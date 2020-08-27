@@ -26,3 +26,7 @@ bramblescripts_to_test:
 	go install
 	bramble script pkg/bramblescript/examples/run.bramble
 	bramble script pkg/bramblescript/examples.bramble
+
+refactor_check:
+	go install
+	cd pkg/bramblecmd/examples/other_new_structure && bramble run main:main

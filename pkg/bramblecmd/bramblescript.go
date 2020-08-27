@@ -19,6 +19,6 @@ func init() {
 
 func Builtins(dir string) starlark.StringDict {
 	return starlark.StringDict{
-		"cmd": NewClient(),
+		"cmd": NewFunction(),
 	}
 }

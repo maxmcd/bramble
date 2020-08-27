@@ -54,9 +54,9 @@ func init() {
 	resolve.AllowSet = true
 }
 
-// NewModule creates a new client. When initialized this function checks if the
+// NewFunction creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewModule() (*Function, error) {
+func NewFunction(thread *starlark.Thread) (*Function, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
 	bramblePath, storePath, err := ensureBramblePath()
@@ -65,17 +65,17 @@ func NewModule() (*Function, error) {
 	}
 	// TODO: check that the store directory structure is accurate and make
 	// directories if needed
-	c := &Function{
+	fn := &Function{
 		log:         logrus.New(),
 		bramblePath: bramblePath,
 		storePath:   storePath,
 		derivations: make(map[string]*Derivation),
 	}
 	// c.log.SetReportCaller(true)
-	c.log.SetLevel(logrus.DebugLevel)
+	fn.log.SetLevel(logrus.DebugLevel)
 
-	c.thread = &starlark.Thread{Name: "main", Load: c.starlarkLoadFunc}
-	return c, nil
+	fn.thread = thread
+	return fn, nil
 }
 
 // Run runs a file given a path. Returns the global variable values from that

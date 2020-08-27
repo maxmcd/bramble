@@ -17,10 +17,16 @@ import (
 	"go.starlark.net/starlarktest"
 )
 
+var (
+	ErrRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
+	ErrModuleDoesNotExist       = errors.New("module doesn't exist")
+)
+
 // RunCLI runs the cli with os.Args
 func RunCLI() {
 	c := cli.NewCLI("bramble", "0.0.1")
 	c.Args = os.Args[1:]
+	b := Bramble{}
 	c.Commands = map[string]cli.CommandFactory{
 		"run": command{
 			help: `Usage: bramble run [options] [module]:<function> [args...]
@@ -28,12 +34,12 @@ func RunCLI() {
   Run a function
 			`,
 			synopsis: "Run a bramble function",
-			run:      run,
+			run:      b.run,
 		}.factory(),
 		"test": command{
 			help:     `Usage: bramble test [path]`,
 			synopsis: "Run bramble tests",
-			run:      test,
+			run:      b.test,
 		}.factory(),
 	}
 	exitStatus, err := c.Run()
@@ -42,7 +48,7 @@ func RunCLI() {
 		if ok {
 			fmt.Println(valueErr.Backtrace())
 		} else {
-			fmt.Println(err)
+			fmt.Printf("%+v\n", err)
 		}
 	}
 	os.Exit(exitStatus)
@@ -67,11 +73,59 @@ func (c *command) Run(args []string) int {
 		if ok {
 			fmt.Println(valueErr.Backtrace())
 		} else {
-			fmt.Println(err)
+			fmt.Printf("%+v\n", err)
 		}
 		return 1
 	}
 	return 0
+}
+
+type Bramble struct {
+	thread         *starlark.Thread
+	predeclared    starlark.StringDict
+	config         Config
+	configLocation string
+}
+
+func (b *Bramble) init() (err error) {
+	if b.configLocation != "" {
+		return errors.New("can't initialize Bramble twice")
+	}
+	// ensures we have a bramble.toml in the current or parent dir
+	b.config, b.configLocation, err = findConfig()
+	if err != nil {
+		return
+	}
+
+	b.thread = &starlark.Thread{
+		Name: "main",
+		Load: b.load,
+	}
+
+	// creates the derivation function and checks we have a valid bramble path and store
+	derivation, err := derivation.NewFunction(b.thread)
+	if err != nil {
+		return
+	}
+
+	assertGlobals, err := starlarktest.LoadAssertModule()
+	if err != nil {
+		return
+	}
+
+	b.predeclared = starlark.StringDict{
+		"derivation": derivation,
+		"cmd":        bramblecmd.NewFunction(),
+		"os":         brambleos.OS{},
+		"assert":     assertGlobals["assert"],
+	}
+
+	return
+}
+
+func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
+	globals, err = b.resolveModule(module)
+	return
 }
 
 var extension string = ".bramble"
@@ -85,8 +139,8 @@ func isTestFile(name string) bool {
 		strings.HasSuffix(nameWithoutExtension, "_test"))
 }
 
-func _findBrambles(withTest bool) (brambles []string, err error) {
-	files, err := ioutil.ReadDir(".")
+func findBrambles(path string, withTests bool) (brambles []string, err error) {
+	files, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
 	}
@@ -95,20 +149,13 @@ func _findBrambles(withTest bool) (brambles []string, err error) {
 		if filepath.Ext(name) != extension {
 			continue
 		}
-		if !withTest && isTestFile(name) {
+		if !withTests && isTestFile(name) {
 			continue
 		}
-		brambles = append(brambles, name)
+		brambles = append(brambles, filepath.Join(path, name))
 	}
+
 	return
-}
-
-func findBrambles() (brambles []string, err error) {
-	return _findBrambles(false)
-}
-
-func findBramblesWithTest() (brambles []string, err error) {
-	return _findBrambles(true)
 }
 
 func checkGlobals(val string) bool {
@@ -128,26 +175,20 @@ func (e ErrorReporter) Error(args ...interface{}) {
 	os.Exit(1)
 }
 
-func test(args []string) (err error) {
-	brambles, err := findBramblesWithTest()
+func (b *Bramble) test(args []string) (err error) {
+	if err = b.init(); err != nil {
+		return
+	}
+	brambles, err := findBrambles("", true)
 	if err != nil {
 		return
 	}
-	thread, testableGlobals, globals, err := resolveFiles(brambles)
+	testableGlobals, _, err := b.resolveFiles(brambles)
 	if err != nil {
 		return
 	}
 	for _, toCall := range testableGlobals {
-		funcToCall, ok := toCall.(*starlark.Function)
-		if !ok {
-			// global variables that start with test_ that are not functions are not run
-			continue
-		}
-		// this is somewhat redundant, functions in a program share a module https://github.com/google/starlark-go/blob/949cc6f4b0/starlark/value.go#L579
-		for key, val := range globals {
-			funcToCall.AddPredeclared(key, val)
-		}
-		_, err = starlark.Call(thread, toCall, nil, nil)
+		_, err = starlark.Call(b.thread, toCall, nil, nil)
 		// TODO: run all tests before exiting
 		if err != nil {
 			err = errors.Wrap(err, "error running")
@@ -156,30 +197,12 @@ func test(args []string) (err error) {
 	return
 }
 
-func resolveFiles(brambles []string) (thread *starlark.Thread, testableGlobals starlark.StringDict, globals starlark.StringDict, err error) {
-	thread = &starlark.Thread{Name: ""}
-
-	assertGlobals, err := starlarktest.LoadAssertModule()
-	if err != nil {
-		return
-	}
-
+func (b *Bramble) resolveFiles(brambles []string) (testableGlobals starlark.StringDict, globals starlark.StringDict, err error) {
 	// TODO: use our own here, we need to be able to print code location
 	// of various errors and the existing starlarktest lib doesn't easily
 	// allow that
-	starlarktest.SetReporter(thread, ErrorReporter{})
+	starlarktest.SetReporter(b.thread, ErrorReporter{})
 
-	derivation, err := derivation.NewModule()
-	if err != nil {
-		return
-	}
-
-	predeclared := starlark.StringDict{
-		"derivation": derivation,
-		"cmd":        bramblecmd.NewClient(),
-		"os":         brambleos.OS{},
-		"assert":     assertGlobals["assert"],
-	}
 	globals = starlark.StringDict{}
 	testableGlobals = starlark.StringDict{}
 	for _, bramble := range brambles {
@@ -190,7 +213,7 @@ func resolveFiles(brambles []string) (thread *starlark.Thread, testableGlobals s
 			return
 		}
 		var theseGlobals starlark.StringDict
-		theseGlobals, err = prog.Init(thread, predeclared)
+		theseGlobals, err = prog.Init(b.thread, b.predeclared)
 		if err != nil {
 			err = errors.Wrap(err, "error initializing "+bramble)
 			return
@@ -211,38 +234,91 @@ func resolveFiles(brambles []string) (thread *starlark.Thread, testableGlobals s
 	return
 }
 
-func run(args []string) (err error) {
-	if len(args) == 0 {
-		return errors.New("bramble run takes a required positional argument \"function\"")
-	}
-	function := args[0]
-	brambles, err := findBrambles()
-	if err != nil {
-		return err
-	}
-	if len(brambles) == 0 {
-		return errors.New("found no bramble files in this directory")
-	}
-	thread, _, globals, err := resolveFiles(brambles)
-	if err != nil {
+func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err error) {
+	if !strings.HasPrefix(module, b.config.Module.Name) {
+		// TODO: support other modules
+		err = errors.Errorf("can't find module %s", module)
 		return
 	}
 
-	toCall, ok := globals[function]
+	path := module[len(b.config.Module.Name):]
+	path = filepath.Join(b.configLocation, path)
+
+	fi, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		path += ".bramble"
+		fi, err = os.Stat(path)
+		if os.IsNotExist(err) {
+			return nil, ErrModuleDoesNotExist
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if fi.IsDir() {
+		path += "/default.bramble"
+		_, err = os.Stat(path)
+		if os.IsNotExist(err) {
+			return nil, ErrModuleDoesNotExist
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return starlark.ExecFile(b.thread, path, nil, b.predeclared)
+}
+
+func (b *Bramble) run(args []string) (err error) {
+	if len(args) == 0 {
+		err = ErrRequiredFunctionArgument
+		return
+	}
+	if err = b.init(); err != nil {
+		return
+	}
+	module, fn, err := b.argsToImport(args)
+	if err != nil {
+		return
+	}
+	globals, err := b.resolveModule(module)
+	if err != nil {
+		return
+	}
+	toCall, ok := globals[fn]
 	if !ok {
-		return errors.Errorf("global function %q not found", function)
+		return errors.Errorf("global function %q not found", fn)
 	}
 
-	funcToCall, ok := toCall.(*starlark.Function)
-	if !ok {
-		return errors.Errorf("global value %q is not a function", function)
-	}
-
-	for key, val := range globals {
-		funcToCall.AddPredeclared(key, val)
-	}
-
-	_, err = starlark.Call(thread, toCall, nil, nil)
+	_, err = starlark.Call(&starlark.Thread{}, toCall, nil, nil)
 	err = errors.Wrap(err, "error running")
 	return
+}
+
+func (b *Bramble) argsToImport(args []string) (module, fn string, err error) {
+	if len(args) == 0 {
+		return "", "", ErrRequiredFunctionArgument
+	}
+	wd, _ := os.Getwd()
+	path, _ := filepath.Rel(b.configLocation, wd)
+
+	functionArg := args[0]
+	if strings.Contains(functionArg, ":") {
+		parts := strings.Split(functionArg, ":")
+		if len(parts) != 2 {
+			return "", "", errors.New("function name has too many colons")
+		}
+		filename, fn := parts[0], parts[1]
+		fullName := filename + extension
+		_, err := os.Stat(filename + extension)
+		if os.IsNotExist(err) {
+			return "", "", errors.Errorf("tried to find %q in the current directory to run %q, but the file doesn't exist", fullName, functionArg)
+		}
+		functionArg = fn
+		path += ("/" + filename)
+	}
+
+	return b.config.Module.Name + "/" + path, functionArg, nil
 }
