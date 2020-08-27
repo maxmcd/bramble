@@ -30,3 +30,4 @@ bramblescripts_to_test:
 refactor_check:
 	go install
 	cd pkg/bramblecmd/examples/other_new_structure && bramble run main:main
+	cd pkg/bramblecmd/examples/new_structure && bramble test
