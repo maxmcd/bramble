@@ -2,7 +2,6 @@ package derivation
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -23,7 +22,7 @@ func (f *Function) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Deriva
 		funcName: "derivation",
 	}
 	drv = &Derivation{
-		Outputs: map[string]DerivationOutput{"out": {}},
+		Outputs: map[string]Output{"out": {}},
 		Env:     map[string]string{},
 		client:  f,
 	}
@@ -140,13 +139,4 @@ func valueToStringMap(val starlark.Value, function, param string) (out map[strin
 		out[ks.GoString()] = vs.GoString()
 	}
 	return
-}
-
-func (f *Function) starlarkLoadFunc(thread *starlark.Thread, module string) (starlark.StringDict, error) {
-	f.log.Debug("load within '", f.scriptLocation.Peek(), "' of module ", module)
-	dict, err := f.Run(filepath.Join(f.scriptLocation.Peek(), module+".bramble"))
-	if err != nil {
-		f.log.Debugf("%+v", err)
-	}
-	return dict, err
 }

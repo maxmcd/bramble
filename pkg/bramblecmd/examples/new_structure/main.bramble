@@ -4,6 +4,7 @@
 def ls():
     assert.eq(1, 1)
     assert.ne(1, 2)
+    print(os.args)
     return run_and_print("ls", *os.args)
 
 

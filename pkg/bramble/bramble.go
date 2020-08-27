@@ -91,6 +91,7 @@ func (b *Bramble) init() (err error) {
 	if b.configLocation != "" {
 		return errors.New("can't initialize Bramble twice")
 	}
+
 	// ensures we have a bramble.toml in the current or parent dir
 	b.config, b.configLocation, err = findConfig()
 	if err != nil {
@@ -101,6 +102,7 @@ func (b *Bramble) init() (err error) {
 		Name: "main",
 		Load: b.load,
 	}
+	starlarktest.SetReporter(b.thread, ErrorReporter{})
 
 	// creates the derivation function and checks we have a valid bramble path and store
 	derivation, err := derivation.NewFunction(b.thread)
@@ -139,7 +141,7 @@ func isTestFile(name string) bool {
 		strings.HasSuffix(nameWithoutExtension, "_test"))
 }
 
-func findBrambles(path string, withTests bool) (brambles []string, err error) {
+func findTestFiles(path string) (testFiles []string, err error) {
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
@@ -149,22 +151,13 @@ func findBrambles(path string, withTests bool) (brambles []string, err error) {
 		if filepath.Ext(name) != extension {
 			continue
 		}
-		if !withTests && isTestFile(name) {
+		if !isTestFile(name) {
 			continue
 		}
-		brambles = append(brambles, filepath.Join(path, name))
+		testFiles = append(testFiles, filepath.Join(path, name))
 	}
 
 	return
-}
-
-func checkGlobals(val string) bool {
-	_, ok := map[string]struct{}{
-		"print": {},
-		"True":  {},
-		"False": {},
-	}[val]
-	return !ok
 }
 
 type ErrorReporter struct {
@@ -179,55 +172,24 @@ func (b *Bramble) test(args []string) (err error) {
 	if err = b.init(); err != nil {
 		return
 	}
-	brambles, err := findBrambles("", true)
+	testFiles, err := findTestFiles(".")
 	if err != nil {
-		return
+		return errors.Wrap(err, "error finding test files")
 	}
-	testableGlobals, _, err := b.resolveFiles(brambles)
-	if err != nil {
-		return
-	}
-	for _, toCall := range testableGlobals {
-		_, err = starlark.Call(b.thread, toCall, nil, nil)
-		// TODO: run all tests before exiting
+	for _, filename := range testFiles {
+		globals, err := starlark.ExecFile(b.thread, filename, nil, b.predeclared)
 		if err != nil {
-			err = errors.Wrap(err, "error running")
+			return err
 		}
-	}
-	return
-}
-
-func (b *Bramble) resolveFiles(brambles []string) (testableGlobals starlark.StringDict, globals starlark.StringDict, err error) {
-	// TODO: use our own here, we need to be able to print code location
-	// of various errors and the existing starlarktest lib doesn't easily
-	// allow that
-	starlarktest.SetReporter(b.thread, ErrorReporter{})
-
-	globals = starlark.StringDict{}
-	testableGlobals = starlark.StringDict{}
-	for _, bramble := range brambles {
-		var prog *starlark.Program
-		_, prog, err = starlark.SourceProgram(bramble, nil, checkGlobals)
-		if err != nil {
-			err = errors.Wrap(err, "error sourcing "+bramble)
-			return
-		}
-		var theseGlobals starlark.StringDict
-		theseGlobals, err = prog.Init(b.thread, b.predeclared)
-		if err != nil {
-			err = errors.Wrap(err, "error initializing "+bramble)
-			return
-		}
-		for key, value := range theseGlobals {
-			if _, ok := globals[key]; ok {
-				if !ok {
-					err = errors.Errorf("duplicate global value %q redeclared in %q", key, bramble)
-					return
-				}
+		for name, fn := range globals {
+			starFn, ok := fn.(*starlark.Function)
+			if !ok {
+				continue
 			}
-			globals[key] = value
-			if strings.HasPrefix(key, "test_") {
-				testableGlobals[key] = value
+			fmt.Printf("running test %q\n", name)
+			_, err = starlark.Call(b.thread, starFn, nil, nil)
+			if err != nil {
+				return err
 			}
 		}
 	}

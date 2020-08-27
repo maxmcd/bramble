@@ -23,7 +23,7 @@ import (
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
 	Name             string
-	Outputs          map[string]DerivationOutput
+	Outputs          map[string]Output
 	Builder          string
 	Platform         string
 	Args             []string
@@ -32,15 +32,14 @@ type Derivation struct {
 	InputDerivations []InputDerivation
 
 	// internal fields
-	client      *Function
-	bramblePath string
-	location    string
+	client   *Function
+	location string
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
 // Derivation hash. The path tracks the output location in the bramble store
 // and Dependencies tracks the bramble outputs that are runtime dependencies.
-type DerivationOutput struct {
+type Output struct {
 	Path         string
 	Dependencies []string
 }
@@ -291,7 +290,7 @@ func (drv *Derivation) build() (err error) {
 		return
 	}
 	folderName := hashString + "-" + drv.Name
-	drv.Outputs["out"] = DerivationOutput{Path: folderName, Dependencies: matches}
+	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
 
 	newPath := drv.client.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
