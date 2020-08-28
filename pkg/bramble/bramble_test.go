@@ -38,6 +38,11 @@ func Test_argsToImport(t *testing.T) {
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/main",
 			wantFn:     "foo",
 		}, {
+			name:       "reference by subdirectory default",
+			args:       []string{"foo:ok"},
+			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/foo",
+			wantFn:     "ok",
+		}, {
 			name:       "reference by default fn",
 			args:       []string{"default"},
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles",
@@ -64,6 +69,9 @@ func Test_argsToImport(t *testing.T) {
 					t.Errorf("argsToImport() error doesn't match\nwanted:     %q\nto contain: %q", err, tt.wantErr)
 				}
 				return
+			}
+			if err != nil {
+				t.Error(err)
 			}
 			if gotModule != tt.wantModule {
 				t.Errorf("argsToImport() gotModule = %v, want %v", gotModule, tt.wantModule)

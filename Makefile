@@ -4,10 +4,10 @@ bramblescript_shell:
 	go run . script
 
 seed_run:
-	go run . build seed/seed.bramble
+	go run . run seed:seed
 
 simple_run:
-	go run . build tests/simple/simple.bramble
+	go run . run tests/simple/simple:simple
 
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh

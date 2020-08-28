@@ -66,7 +66,6 @@ func (f *Function) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Deriva
 			return
 		}
 	}
-	drv.location = f.scriptLocation.Peek()
 	return drv, nil
 }
 
