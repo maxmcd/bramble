@@ -25,9 +25,6 @@ type Function struct {
 	derivations map[string]*Derivation
 	thread      *starlark.Thread
 
-	test    bool
-	testURL string
-
 	log *logrus.Logger
 }
 

@@ -1,12 +1,13 @@
 # test hardlinks and symlinks
 
 
-link_test = derivation(
-    name="link-test",
-    builder="fetch_url",
-    env={
-        "decompress": True,
-        "url": "$test_url/archive.tar.gz",
-        "hash": "4477ff345dd98f37bc728c0683b39fc8c3efe235a716a9763dd44b70721f178a",
-    },
-)
+def link_test():
+    return derivation(
+        name="link-test",
+        builder="fetch_url",
+        env={
+            "decompress": True,
+            "url": "https://brmbl.s3.amazonaws.com/file-links.tar.gz",
+            "hash": "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a",
+        },
+    )
