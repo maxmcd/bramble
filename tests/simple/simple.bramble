@@ -1,8 +1,8 @@
-load("github.com/maxmcd/bramble/seed")
+load("github.com/maxmcd/bramble/seed", "seed")
 
 
 def simple():
-    out := seed.seed().out
+    out = seed().out
     return derivation(
         name="simple",
         env={"seed": out},

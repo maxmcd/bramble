@@ -28,8 +28,7 @@ type Function struct {
 	test    bool
 	testURL string
 
-	log            *logrus.Logger
-	scriptLocation stringStack
+	log *logrus.Logger
 }
 
 var (
@@ -82,15 +81,12 @@ func NewFunction(thread *starlark.Thread) (*Function, error) {
 // file. Run will recursively run imported files.
 func (f *Function) Run(file string) (globals starlark.StringDict, err error) {
 	f.log.Debug("running file ", file)
-	f.scriptLocation.Push(filepath.Dir(file))
 	globals, err = starlark.ExecFile(f.thread, file, nil, starlark.StringDict{
 		"derivation": f,
 	})
 	if err != nil {
 		return
 	}
-	// clear the context of this Run as it might be on an import
-	f.scriptLocation.Pop()
 	return
 }
 
@@ -193,6 +189,7 @@ func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kw
 	if err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
 	}
+	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 	if err = drv.calculateInputDerivations(); err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
 	}

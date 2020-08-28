@@ -85,6 +85,7 @@ type Bramble struct {
 	predeclared    starlark.StringDict
 	config         Config
 	configLocation string
+	derivation     *derivation.Function
 }
 
 func (b *Bramble) init() (err error) {
@@ -105,7 +106,7 @@ func (b *Bramble) init() (err error) {
 	starlarktest.SetReporter(b.thread, ErrorReporter{})
 
 	// creates the derivation function and checks we have a valid bramble path and store
-	derivation, err := derivation.NewFunction(b.thread)
+	b.derivation, err = derivation.NewFunction(b.thread)
 	if err != nil {
 		return
 	}
@@ -116,7 +117,7 @@ func (b *Bramble) init() (err error) {
 	}
 
 	b.predeclared = starlark.StringDict{
-		"derivation": derivation,
+		"derivation": b.derivation,
 		"cmd":        bramblecmd.NewFunction(),
 		"os":         brambleos.OS{},
 		"assert":     assertGlobals["assert"],
@@ -259,7 +260,7 @@ func (b *Bramble) run(args []string) (err error) {
 	return
 }
 
-func (b *Bramble) argsToImport(args []string) (module, fn string, err error) {
+func (b *Bramble) argsToImport(args []string) (module, function string, err error) {
 	if len(args) == 0 {
 		return "", "", ErrRequiredFunctionArgument
 	}
@@ -274,9 +275,16 @@ func (b *Bramble) argsToImport(args []string) (module, fn string, err error) {
 		}
 		filename, fn := parts[0], parts[1]
 		fullName := filename + extension
-		_, err := os.Stat(filename + extension)
+		_, err = os.Stat(fullName)
 		if os.IsNotExist(err) {
-			return "", "", errors.Errorf("tried to find %q in the current directory to run %q, but the file doesn't exist", fullName, functionArg)
+			_, err = os.Stat(filename + "/default.bramble")
+			if os.IsNotExist(err) {
+				return "", "", errors.Errorf(
+					"tried to find %q in the current directory to run %q, but the file doesn't exist", fullName, functionArg)
+			}
+		}
+		if err != nil {
+			return
 		}
 		functionArg = fn
 		path += ("/" + filename)
