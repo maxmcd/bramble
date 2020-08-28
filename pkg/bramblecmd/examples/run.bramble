@@ -1,6 +1,3 @@
-#!/usr/bin/env -S bramble script
-
-
 def remove_empty(arr):
     return [a for a in arr if a != ""]
 
@@ -14,6 +11,3 @@ def total_bytes_in_folder():
         if "d" not in rows[0]:
             total += int(rows[4])
     print(total, "bytes")
-
-
-total_bytes_in_folder()

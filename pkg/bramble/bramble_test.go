@@ -100,13 +100,17 @@ func TestBramble_resolveModule(t *testing.T) {
 			module:      "github.com/maxmcd/bramble/pkg/bramble/testfiles",
 			wantGlobals: []string{"default"},
 		}, {
+			name:        "ambiguous module without default.bramble in subfolder",
+			module:      "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar",
+			wantGlobals: []string{"hello"},
+		}, {
 			name:    "missing file",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/testfiles/mayne",
-			wantErr: ErrModuleDoesNotExist.Error(),
+			wantErr: ErrModuleDoesNotExist,
 		}, {
 			name:    "missing default",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/",
-			wantErr: ErrModuleDoesNotExist.Error(),
+			wantErr: ErrModuleDoesNotExist,
 		},
 	}
 	for _, tt := range tests {
@@ -123,7 +127,7 @@ func TestBramble_resolveModule(t *testing.T) {
 				globalNames = append(globalNames, key)
 			}
 			if !reflect.DeepEqual(globalNames, tt.wantGlobals) {
-				t.Errorf("Bramble.resolveModule() = %v, want %v", gotGlobals, tt.wantGlobals)
+				t.Errorf("Bramble.resolveModule() = %v, want %v", globalNames, tt.wantGlobals)
 			}
 		})
 	}

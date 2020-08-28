@@ -3,10 +3,11 @@ Bramblescript examples
 """
 
 
-def main():
+def _grep(*args, **kwargs):
+    return cmd("grep", *args, **kwargs)
 
-    # print debug output of all the commands that are being run
-    cmd.debug()
+
+def main():
 
     cmd("ls -lah")
     cmd("ls", "-lah")
@@ -16,16 +17,13 @@ def main():
     cmd("ls -lah").pipe("sort")
 
     # pipe can also take a callback
-    def grep(*args, **kwargs):
-        return cmd("grep", *args, **kwargs)
-
     # Additional arguments are passed to the callback
-    cmd("ls -lah").pipe(grep, "foo")
+    cmd("ls -lah").pipe(_grep, "foo")
 
     # runs and gives stdout as a string
-    cmd("df -h").stdout()
-    cmd("df -h").output()
-    cmd("df -h").stderr()
+    cmd("echo").stdout()
+    cmd("echo").output()
+    cmd("echo").stderr()
 
     # cmd has various methods and attributes
     sleep = cmd("sleep 10")
@@ -37,16 +35,13 @@ def main():
     cmd("ls ").exit_code
 
     # Pass stdin to another command
-    cmd("df -h", stdin=sleep.output)
+    cmd("grep", stdin=sleep.output)
     # passing the command will pass stdout
-    cmd("df -h", stdin=cmd("echo"))
+    cmd("grep", stdin=cmd("echo"))
 
-    def all_lines():
-        # iterate on stout or stderr to process each line
-        for line in cmd("df -h").stdout:
-            print(line)
-
-    all_lines()
+    # iterate on stout or stderr to process each line
+    for line in cmd("ls -lah").stdout:
+        print(line)
 
     # fail over to other commands
     cmd("ls notathing ").if_err("echo failed")
@@ -61,6 +56,3 @@ def main():
         ignore_failure=True,
         print_output=True,
     )
-
-    # you can change directories
-    cmd.cd("..")

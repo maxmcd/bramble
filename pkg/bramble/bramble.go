@@ -20,7 +20,7 @@ import (
 
 var (
 	ErrRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
-	ErrModuleDoesNotExist       = errors.New("module doesn't exist")
+	ErrModuleDoesNotExist       = "module doesn't exist"
 )
 
 // RunCLI runs the cli with os.Args
@@ -208,30 +208,25 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	path := module[len(b.config.Module.Name):]
 	path = filepath.Join(b.configLocation, path)
 
-	fi, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		path += ".bramble"
-		fi, err = os.Stat(path)
-		if os.IsNotExist(err) {
-			return nil, ErrModuleDoesNotExist
-		}
-		if err != nil {
-			return nil, err
-		}
+	directoryWithName, _ := os.Stat(path)
+	fileWithName, _ := os.Stat(path + extension)
+
+	var directoryHasDefaultDotBramble bool
+	if directoryWithName != nil {
+		fi, _ := os.Stat(path + "/default.bramble")
+		directoryHasDefaultDotBramble = fi != nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	if fi.IsDir() {
+
+	switch {
+	case directoryWithName != nil && directoryHasDefaultDotBramble:
 		path += "/default.bramble"
-		_, err = os.Stat(path)
-		if os.IsNotExist(err) {
-			return nil, ErrModuleDoesNotExist
-		}
-		if err != nil {
-			return nil, err
-		}
+	case fileWithName != nil:
+		path += extension
+	default:
+		err = errors.New(ErrModuleDoesNotExist)
+		return
 	}
+
 	return starlark.ExecFile(b.thread, path, nil, b.predeclared)
 }
 
