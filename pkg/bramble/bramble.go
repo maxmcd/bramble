@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/bramblecmd"
 	"github.com/maxmcd/bramble/pkg/brambleos"
 	"github.com/maxmcd/bramble/pkg/derivation"
@@ -111,7 +112,7 @@ func (b *Bramble) init() (err error) {
 		return
 	}
 
-	assertGlobals, err := starlarktest.LoadAssertModule()
+	assertGlobals, err := assert.LoadAssertModule()
 	if err != nil {
 		return
 	}
