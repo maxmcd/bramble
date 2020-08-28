@@ -238,14 +238,6 @@ func (drv *Derivation) build() (err error) {
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'url' to be set")
 		}
-		if drv.client.test {
-			url = os.Expand(url, func(i string) string {
-				if i == "test_url" {
-					return drv.client.testURL
-				}
-				return ""
-			})
-		}
 		hash, ok := drv.Env["hash"]
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'hash' to be set")

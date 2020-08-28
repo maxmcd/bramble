@@ -7,8 +7,8 @@ def busybox():
         builder="fetch_url",
         env={
             "decompress": False,
-            "url": "$test_url/busybox.tar.gz",
-            "hash": "8de53037d8e57daf5030be7c1c944afa849cf3a194962328ddb5478dbbb72533",
+            "url": "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz",
+            "hash": "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1",
         },
     )
 
