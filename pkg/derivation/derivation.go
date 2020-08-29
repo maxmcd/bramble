@@ -272,7 +272,6 @@ func (drv *Derivation) build() (err error) {
 		}
 		builderLocation := drv.expand(drv.Builder)
 
-		// TODO: probably just want to expand bramble_path here
 		if _, err := os.Stat(builderLocation); err != nil {
 			return errors.Wrap(err, "error checking if builder location exists")
 		}

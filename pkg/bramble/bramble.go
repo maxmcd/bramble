@@ -13,14 +13,15 @@ import (
 	"github.com/maxmcd/bramble/pkg/bramblecmd"
 	"github.com/maxmcd/bramble/pkg/brambleos"
 	"github.com/maxmcd/bramble/pkg/derivation"
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/cli"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarktest"
 )
 
 var (
-	ErrRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
-	ErrModuleDoesNotExist       = "module doesn't exist"
+	errRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
+	errModuleDoesNotExist       = errors.New("module doesn't exist")
+	errQuiet                    = errors.New("")
 )
 
 // RunCLI runs the cli with os.Args
@@ -45,12 +46,7 @@ func RunCLI() {
 	}
 	exitStatus, err := c.Run()
 	if err != nil {
-		valueErr, ok := err.(*starlark.EvalError)
-		if ok {
-			fmt.Println(valueErr.Backtrace())
-		} else {
-			fmt.Printf("%+v\n", err)
-		}
+		fmt.Println(err)
 	}
 	os.Exit(exitStatus)
 }
@@ -70,12 +66,10 @@ func (c *command) Help() string     { return c.help }
 func (c *command) Synopsis() string { return c.synopsis }
 func (c *command) Run(args []string) int {
 	if err := c.run(args); err != nil {
-		valueErr, ok := err.(*starlark.EvalError)
-		if ok {
-			fmt.Println(valueErr.Backtrace())
-		} else {
-			fmt.Printf("%+v\n", err)
+		if err == errQuiet {
+			return 1
 		}
+		fmt.Print(starutil.AnnotateError(err))
 		return 1
 	}
 	return 0
@@ -104,7 +98,6 @@ func (b *Bramble) init() (err error) {
 		Name: "main",
 		Load: b.load,
 	}
-	starlarktest.SetReporter(b.thread, ErrorReporter{})
 
 	// creates the derivation function and checks we have a valid bramble path and store
 	b.derivation, err = derivation.NewFunction(b.thread)
@@ -144,6 +137,12 @@ func isTestFile(name string) bool {
 }
 
 func findTestFiles(path string) (testFiles []string, err error) {
+	if fileExists(path) {
+		return []string{path}, nil
+	}
+	if fileExists(path + extension) {
+		return []string{path + extension}, nil
+	}
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
@@ -162,15 +161,24 @@ func findTestFiles(path string) (testFiles []string, err error) {
 	return
 }
 
-type ErrorReporter struct {
+// runErrorReporter reports errors during a run. These errors are just passed up the thread
+type runErrorReporter struct{}
+
+func (e runErrorReporter) Error(err error) {}
+func (e runErrorReporter) FailNow() bool   { return true }
+
+// testErrorReporter reports errors during an individual test
+type testErrorReporter struct {
+	errors []error
 }
 
-func (e ErrorReporter) Error(args ...interface{}) {
-	fmt.Println(fmt.Sprint(args...))
-	os.Exit(1)
+func (e *testErrorReporter) Error(err error) {
+	e.errors = append(e.errors, err)
 }
+func (e *testErrorReporter) FailNow() bool { return false }
 
 func (b *Bramble) test(args []string) (err error) {
+	failFast := true
 	if err = b.init(); err != nil {
 		return
 	}
@@ -188,12 +196,26 @@ func (b *Bramble) test(args []string) (err error) {
 			return err
 		}
 		for name, fn := range globals {
+			if !strings.HasPrefix(name, "test_") {
+				continue
+			}
 			starFn, ok := fn.(*starlark.Function)
 			if !ok {
 				continue
 			}
 			fmt.Printf("running test %q\n", name)
+			errors := testErrorReporter{}
+			assert.SetReporter(b.thread, &errors)
 			_, err = starlark.Call(b.thread, starFn, nil, nil)
+			if len(errors.errors) > 0 {
+				fmt.Printf("\nGot %d errors while running %q in %q:\n", len(errors.errors), name, filename)
+				for _, err := range errors.errors {
+					fmt.Print(starutil.AnnotateError(err))
+				}
+				if failFast {
+					return errQuiet
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -212,7 +234,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	path := module[len(b.config.Module.Name):]
 	path = filepath.Join(b.configLocation, path)
 
-	directoryWithNameExists := fileExists(path)
+	directoryWithNameExists := pathExists(path)
 
 	var directoryHasDefaultDotBramble bool
 	if directoryWithNameExists {
@@ -227,7 +249,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	case fileWithNameExists:
 		path += extension
 	default:
-		err = errors.New(ErrModuleDoesNotExist)
+		err = errModuleDoesNotExist
 		return
 	}
 
@@ -236,12 +258,14 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 
 func (b *Bramble) run(args []string) (err error) {
 	if len(args) == 0 {
-		err = ErrRequiredFunctionArgument
+		err = errRequiredFunctionArgument
 		return
 	}
 	if err = b.init(); err != nil {
 		return
 	}
+	assert.SetReporter(b.thread, runErrorReporter{})
+
 	module, fn, err := b.argsToImport(args)
 	if err != nil {
 		return
@@ -258,11 +282,6 @@ func (b *Bramble) run(args []string) (err error) {
 	_, err = starlark.Call(&starlark.Thread{}, toCall, nil, nil)
 	err = errors.Wrap(err, "error running")
 	return
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func (b *Bramble) moduleFromPath(path string) (module string, err error) {
@@ -296,7 +315,7 @@ func (b *Bramble) relativePathFromConfig() string {
 
 func (b *Bramble) argsToImport(args []string) (module, function string, err error) {
 	if len(args) == 0 {
-		return "", "", ErrRequiredFunctionArgument
+		return "", "", errRequiredFunctionArgument
 	}
 
 	firstArgument := args[0]
@@ -314,4 +333,17 @@ func (b *Bramble) argsToImport(args []string) (module, function string, err erro
 	}
 
 	return
+}
+
+func fileExists(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !fi.IsDir()
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
