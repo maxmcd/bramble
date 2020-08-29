@@ -22,9 +22,9 @@ func (f *Function) newDerivationFromKWArgs(kwargs []starlark.Tuple) (drv *Deriva
 		funcName: "derivation",
 	}
 	drv = &Derivation{
-		Outputs: map[string]Output{"out": {}},
-		Env:     map[string]string{},
-		client:  f,
+		Outputs:  map[string]Output{"out": {}},
+		Env:      map[string]string{},
+		function: f,
 	}
 	for _, kwarg := range kwargs {
 		key := kwarg.Index(0).(starlark.String).GoString()

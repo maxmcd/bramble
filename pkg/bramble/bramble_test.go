@@ -4,18 +4,13 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 )
 
-var once sync.Once
-
 func brambleBramble(t *testing.T) Bramble {
-	once.Do(func() {
-		if err := os.Chdir("./testfiles"); err != nil {
-			t.Fatal(err)
-		}
-	})
+	if err := os.Chdir("./testfiles"); err != nil {
+		t.Fatal(err)
+	}
 	b := Bramble{}
 	if err := b.init(); err != nil {
 		t.Fatal(err)
@@ -25,6 +20,7 @@ func brambleBramble(t *testing.T) Bramble {
 
 func Test_argsToImport(t *testing.T) {
 	b := brambleBramble(t)
+	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name       string
 		args       []string
@@ -38,6 +34,26 @@ func Test_argsToImport(t *testing.T) {
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/main",
 			wantFn:     "foo",
 		}, {
+			name:       "no path provided",
+			args:       []string{":default"},
+			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles",
+			wantFn:     "default",
+		}, {
+			name:       "relative path to file",
+			args:       []string{"bar/main:other"},
+			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar/main",
+			wantFn:     "other",
+		}, {
+			name:       "relative path to file with slash",
+			args:       []string{"./bar/main:other"},
+			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar/main",
+			wantFn:     "other",
+		}, {
+			name:       "relative path to file with extension",
+			args:       []string{"bar/main.bramble:other"},
+			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar/main",
+			wantFn:     "other",
+		}, {
 			name:       "reference by subdirectory default",
 			args:       []string{"foo:ok"},
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/foo",
@@ -50,7 +66,7 @@ func Test_argsToImport(t *testing.T) {
 		}, {
 			name:    "missing file",
 			args:    []string{"missing:foo"},
-			wantErr: "doesn't exist",
+			wantErr: "can't find",
 		}, {
 			name:    "mangled",
 			args:    []string{"missing:foo:bar"},
@@ -85,6 +101,7 @@ func Test_argsToImport(t *testing.T) {
 
 func TestBramble_resolveModule(t *testing.T) {
 	b := brambleBramble(t)
+	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name        string
 		module      string

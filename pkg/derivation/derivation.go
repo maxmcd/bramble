@@ -20,6 +20,21 @@ import (
 	"go.starlark.net/starlark"
 )
 
+var (
+	TempDirPrefix         = "bramble-"
+	PathPaddingCharacters = "bramble_store_padding"
+	PathPaddingLength     = 50
+
+	// BramblePrefixOfRecord is the prefix we use when hashing the build output
+	// this allows us to get a consistent hash even if we're building in a
+	// different location
+	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
+)
+
+var (
+	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
+)
+
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
 	Name             string
@@ -32,7 +47,7 @@ type Derivation struct {
 	InputDerivations []InputDerivation
 
 	// internal fields
-	client   *Function
+	function *Function
 	location string
 }
 
@@ -95,7 +110,7 @@ func (drv *Derivation) calculateInputDerivations() (err error) {
 	if err != nil {
 		return
 	}
-	for location, derivation := range drv.client.derivations {
+	for location, derivation := range drv.function.derivations {
 		// TODO: check all outputs, not just the default
 		if bytes.Contains(fileBytes, []byte(derivation.String())) {
 			drv.InputDerivations = append(drv.InputDerivations, InputDerivation{
@@ -139,8 +154,8 @@ func (drv *Derivation) checkForExisting() (exists bool, err error) {
 	if err != nil {
 		return
 	}
-	drv.client.log.Debug("derivation " + drv.Name + " evaluates to " + filename)
-	existingDrv, exists, err := drv.client.LoadDerivation(filename)
+	drv.function.log.Debug("derivation " + drv.Name + " evaluates to " + filename)
+	existingDrv, exists, err := drv.function.LoadDerivation(filename)
 	if err != nil {
 		return false, err
 	}
@@ -187,7 +202,7 @@ func (drv *Derivation) writeDerivation() (err error) {
 	if err != nil {
 		return
 	}
-	fileLocation := drv.client.joinStorePath(filename)
+	fileLocation := drv.function.joinStorePath(filename)
 
 	if !fileExists(fileLocation) {
 		return ioutil.WriteFile(fileLocation, fileBytes, 0444)
@@ -203,7 +218,7 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 	_, filename, err := drv.computeDerivation()
 
 	return filepath.Join(
-		drv.client.storePath,
+		drv.function.storePath,
 		strings.TrimSuffix(filename, ".drv"),
 	), err
 }
@@ -211,7 +226,7 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 func (drv *Derivation) expand(s string) string {
 	return os.Expand(s, func(i string) string {
 		if i == "bramble_path" {
-			return drv.client.storePath
+			return drv.function.storePath
 		}
 		if v, ok := drv.Env[i]; ok {
 			return v
@@ -242,7 +257,7 @@ func (drv *Derivation) build() (err error) {
 		if !ok {
 			return errors.New("fetch_url requires the environment variable 'hash' to be set")
 		}
-		path, err := drv.client.DownloadFile(url, hash)
+		path, err := drv.function.DownloadFile(url, hash)
 		if err != nil {
 			return err
 		}
@@ -265,11 +280,11 @@ func (drv *Derivation) build() (err error) {
 		cmd.Dir = runLocation
 		cmd.Env = []string{}
 		for k, v := range drv.Env {
-			v = strings.Replace(v, "$bramble_path", drv.client.storePath, -1)
+			v = strings.Replace(v, "$bramble_path", drv.function.storePath, -1)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.client.storePath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.function.storePath))
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -284,9 +299,9 @@ func (drv *Derivation) build() (err error) {
 	folderName := hashString + "-" + drv.Name
 	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
 
-	newPath := drv.client.joinStorePath() + "/" + folderName
+	newPath := drv.function.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
-	drv.client.log.Debug("Output at ", newPath)
+	drv.function.log.Debug("Output at ", newPath)
 	if doesnotExistErr != nil {
 		return os.Rename(outPath, newPath)
 	}
@@ -296,10 +311,10 @@ func (drv *Derivation) build() (err error) {
 
 func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
 	var storeValues []string
-	old := drv.client.storePath
+	old := drv.function.storePath
 	new := BramblePrefixOfRecord
 
-	for _, derivation := range drv.client.derivations {
+	for _, derivation := range drv.function.derivations {
 		storeValues = append(storeValues, strings.Replace(derivation.String(), "$bramble_path", old, 1))
 	}
 
@@ -328,7 +343,7 @@ func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, 
 		return nil, "", err
 	case result := <-resultChan:
 		for k := range result {
-			matches = append(matches, strings.Replace(k, drv.client.storePath, "$bramble_path", 1))
+			matches = append(matches, strings.Replace(k, drv.function.storePath, "$bramble_path", 1))
 		}
 		return matches, hasher.String(), nil
 	}
