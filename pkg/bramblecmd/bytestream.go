@@ -39,6 +39,10 @@ func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, 
 	if err == io.ErrClosedPipe {
 		err = nil
 	}
+	if err != nil {
+		// TODO: need a better solution for this
+		fmt.Println(string(b))
+	}
 	return starlark.String(string(b)), err
 }
 

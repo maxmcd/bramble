@@ -174,7 +174,11 @@ func (b *Bramble) test(args []string) (err error) {
 	if err = b.init(); err != nil {
 		return
 	}
-	testFiles, err := findTestFiles(".")
+	location := "."
+	if len(args) > 0 {
+		location = args[0]
+	}
+	testFiles, err := findTestFiles(location)
 	if err != nil {
 		return errors.Wrap(err, "error finding test files")
 	}
@@ -208,19 +212,19 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	path := module[len(b.config.Module.Name):]
 	path = filepath.Join(b.configLocation, path)
 
-	directoryWithName, _ := os.Stat(path)
-	fileWithName, _ := os.Stat(path + extension)
+	directoryWithNameExists := fileExists(path)
 
 	var directoryHasDefaultDotBramble bool
-	if directoryWithName != nil {
-		fi, _ := os.Stat(path + "/default.bramble")
-		directoryHasDefaultDotBramble = fi != nil
+	if directoryWithNameExists {
+		directoryHasDefaultDotBramble = fileExists(path + "/default.bramble")
 	}
 
+	fileWithNameExists := fileExists(path + extension)
+
 	switch {
-	case directoryWithName != nil && directoryHasDefaultDotBramble:
+	case directoryWithNameExists && directoryHasDefaultDotBramble:
 		path += "/default.bramble"
-	case fileWithName != nil:
+	case fileWithNameExists:
 		path += extension
 	default:
 		err = errors.New(ErrModuleDoesNotExist)
@@ -256,35 +260,58 @@ func (b *Bramble) run(args []string) (err error) {
 	return
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func (b *Bramble) moduleFromPath(path string) (module string, err error) {
+	module = (b.config.Module.Name + "/" + b.relativePathFromConfig())
+	if path == "" {
+		return
+	}
+	module += "/"
+
+	// support things like bar/main.bramble:foo
+	if strings.HasSuffix(path, extension) && fileExists(path) {
+		return module + path[:len(path)-len(extension)], nil
+	}
+
+	fullName := path + extension
+	if !fileExists(fullName) {
+		if !fileExists(path + "/default.bramble") {
+			return "", errors.Errorf("can't find module at %q", path)
+		}
+	}
+	// we found it, return
+	module += filepath.Join(path)
+	return
+}
+
+func (b *Bramble) relativePathFromConfig() string {
+	wd, _ := os.Getwd()
+	relativePath, _ := filepath.Rel(b.configLocation, wd)
+	return relativePath
+}
+
 func (b *Bramble) argsToImport(args []string) (module, function string, err error) {
 	if len(args) == 0 {
 		return "", "", ErrRequiredFunctionArgument
 	}
-	wd, _ := os.Getwd()
-	path, _ := filepath.Rel(b.configLocation, wd)
 
-	functionArg := args[0]
-	if strings.Contains(functionArg, ":") {
-		parts := strings.Split(functionArg, ":")
+	firstArgument := args[0]
+	if !strings.Contains(firstArgument, ":") {
+		function = firstArgument
+		module = b.config.Module.Name + "/" + b.relativePathFromConfig()
+	} else {
+		parts := strings.Split(firstArgument, ":")
 		if len(parts) != 2 {
 			return "", "", errors.New("function name has too many colons")
 		}
-		filename, fn := parts[0], parts[1]
-		fullName := filename + extension
-		_, err = os.Stat(fullName)
-		if os.IsNotExist(err) {
-			_, err = os.Stat(filename + "/default.bramble")
-			if os.IsNotExist(err) {
-				return "", "", errors.Errorf(
-					"tried to find %q in the current directory to run %q, but the file doesn't exist", fullName, functionArg)
-			}
-		}
-		if err != nil {
-			return
-		}
-		functionArg = fn
-		path += ("/" + filename)
+		var path string
+		path, function = parts[0], parts[1]
+		module, err = b.moduleFromPath(path)
 	}
 
-	return b.config.Module.Name + "/" + path, functionArg, nil
+	return
 }

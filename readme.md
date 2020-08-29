@@ -46,6 +46,12 @@ derivation(
 )
 ```
 
+### CLI
+
+```
+bramble run
+
+
 ### Store
 
 Bramble stores build artifacts at `$BRAMBLE_STORE` or at `$HOME/bramble`. The path is padded out to a fixed length so that cached build outputs can be relocated to a different users home folder.
