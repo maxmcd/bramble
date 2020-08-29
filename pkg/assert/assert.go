@@ -3,14 +3,13 @@ package assert
 import (
 	"fmt"
 	"regexp"
-	"strings"
 	"sync"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-var AssertModule = `# Predeclared built-ins for this module:
+var assertModule = `# Predeclared built-ins for this module:
 #
 # error(msg): report an error in Go's test framework without halting execution.
 #  This is distinct from the built-in fail function, which halts execution.
@@ -69,7 +68,8 @@ const localKey = "Reporter"
 // A Reporter is a value to which errors may be reported.
 // It is satisfied by *testing.T.
 type Reporter interface {
-	Error(args ...interface{})
+	Error(err error)
+	FailNow() bool
 }
 
 // SetReporter associates an error reporter (such as a testing.T in
@@ -107,7 +107,7 @@ func LoadAssertModule() (starlark.StringDict, error) {
 			"_freeze": starlark.NewBuiltin("freeze", freeze),
 		}
 		thread := new(starlark.Thread)
-		assert, assertErr = starlark.ExecFile(thread, "assert.star", AssertModule, predeclared)
+		assert, assertErr = starlark.ExecFile(thread, "assert.star", assertModule, predeclared)
 	})
 	return assert, assertErr
 }
@@ -143,16 +143,21 @@ func error_(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, k
 	if len(args) != 1 {
 		return nil, fmt.Errorf("error: got %d arguments, want 1", len(args))
 	}
-	buf := new(strings.Builder)
 	stk := thread.CallStack()
 	stk.Pop()
-	fmt.Fprintf(buf, "%sError: ", stk)
-	if s, ok := starlark.AsString(args[0]); ok {
-		buf.WriteString(s)
-	} else {
-		buf.WriteString(args[0].String())
+	err := &starlark.EvalError{
+		CallStack: stk,
 	}
-	GetReporter(thread).Error(buf.String())
+	if s, ok := starlark.AsString(args[0]); ok {
+		err.Msg = s
+	} else {
+		err.Msg = args[0].String()
+	}
+	reporter := GetReporter(thread)
+	reporter.Error(err)
+	if reporter.FailNow() {
+		return starlark.None, err
+	}
 	return starlark.None, nil
 }
 

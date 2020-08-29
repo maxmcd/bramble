@@ -23,3 +23,7 @@ bramblescripts_to_test:
 	go install
 	bramble run pkg/bramblecmd/examples/run:total_bytes_in_folder
 	bramble run pkg/bramblecmd/examples:main
+
+drv_test:
+	go install
+	bramble test tests/derivation_test.bramble

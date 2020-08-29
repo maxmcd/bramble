@@ -186,10 +186,12 @@ func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kw
 	if err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
 	}
+	// At(0) is within this function, we want the file of the caller
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 	if err = drv.calculateInputDerivations(); err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
 	}
+
 	f.log.Debugf("Building derivation %q", drv.Name)
 	if err = f.buildDerivation(drv); err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}

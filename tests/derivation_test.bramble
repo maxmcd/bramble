@@ -1,0 +1,15 @@
+"""various derivation tests"""
+
+
+def _no_name():
+    derivation()
+
+
+def test_derivation():
+    other()
+
+def other():
+    and_another()
+
+def and_another():
+    assert.fails(_no_name, "no such")

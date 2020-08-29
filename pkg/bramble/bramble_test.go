@@ -74,7 +74,7 @@ func Test_argsToImport(t *testing.T) {
 		}, {
 			name:    "missing arg",
 			args:    []string{},
-			wantErr: ErrRequiredFunctionArgument.Error(),
+			wantErr: errRequiredFunctionArgument.Error(),
 		},
 	}
 	for _, tt := range tests {
@@ -123,11 +123,11 @@ func TestBramble_resolveModule(t *testing.T) {
 		}, {
 			name:    "missing file",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/testfiles/mayne",
-			wantErr: ErrModuleDoesNotExist,
+			wantErr: errModuleDoesNotExist.Error(),
 		}, {
 			name:    "missing default",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/",
-			wantErr: ErrModuleDoesNotExist,
+			wantErr: errModuleDoesNotExist.Error(),
 		},
 	}
 	for _, tt := range tests {
