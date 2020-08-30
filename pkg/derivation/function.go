@@ -18,10 +18,15 @@ import (
 	"go.starlark.net/starlark"
 )
 
+type StoreMeta interface {
+	BramblePath() string
+	StorePath() string
+}
+
 // Function is the function that creates derivations
 type Function struct {
-	bramblePath string
-	storePath   string
+	storeMeta StoreMeta
+
 	derivations map[string]*Derivation
 	thread      *starlark.Thread
 
@@ -54,20 +59,15 @@ func init() {
 
 // NewFunction creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewFunction(thread *starlark.Thread, checker starutil.DerivationChecker) (*Function, error) {
+func NewFunction(thread *starlark.Thread, checker starutil.DerivationChecker, storeMeta StoreMeta) (*Function, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
-	bramblePath, storePath, err := ensureBramblePath()
-	if err != nil {
-		return nil, err
-	}
 	// TODO: check that the store directory structure is accurate and make
 	// directories if needed
 	fn := &Function{
 		log:         logrus.New(),
-		bramblePath: bramblePath,
-		storePath:   storePath,
 		derivations: make(map[string]*Derivation),
+		storeMeta:   storeMeta,
 		checker:     checker,
 	}
 	// c.log.SetReportCaller(true)
@@ -91,7 +91,7 @@ func (f *Function) Run(file string) (globals starlark.StringDict, err error) {
 }
 
 func (f *Function) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{f.storePath}, v...)...)
+	return filepath.Join(append([]string{f.storeMeta.StorePath()}, v...)...)
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
@@ -152,7 +152,7 @@ func (f *Function) DownloadFile(url string, hash string) (path string, err error
 		return
 	}
 	defer resp.Body.Close()
-	file, err := ioutil.TempFile(filepath.Join(f.bramblePath, "tmp"), "")
+	file, err := ioutil.TempFile(filepath.Join(f.storeMeta.BramblePath(), "tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a download")
 		return
