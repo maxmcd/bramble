@@ -100,7 +100,7 @@ var (
 func LoadAssertModule() (starlark.StringDict, error) {
 	once.Do(func() {
 		predeclared := starlark.StringDict{
-			"error":   starlark.NewBuiltin("error", error_),
+			"error":   starlark.NewBuiltin("error", Error),
 			"catch":   starlark.NewBuiltin("catch", catch),
 			"matches": starlark.NewBuiltin("matches", matches),
 			"module":  starlark.NewBuiltin("module", starlarkstruct.MakeModule),
@@ -139,7 +139,7 @@ func matches(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, 
 }
 
 // error(x) reports an error to the Go test framework.
-func error_(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func Error(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("error: got %d arguments, want 1", len(args))
 	}

@@ -81,6 +81,18 @@ type Bramble struct {
 	config         Config
 	configLocation string
 	derivation     *derivation.Function
+
+	afterDerivation bool
+}
+
+var _ starutil.DerivationChecker = new(Bramble)
+
+func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
+func (b *Bramble) CalledDerivation() error {
+	if b.afterDerivation {
+		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
+	}
+	return nil
 }
 
 func (b *Bramble) init() (err error) {
@@ -100,7 +112,7 @@ func (b *Bramble) init() (err error) {
 	}
 
 	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivation, err = derivation.NewFunction(b.thread)
+	b.derivation, err = derivation.NewFunction(b.thread, b)
 	if err != nil {
 		return
 	}
@@ -113,7 +125,7 @@ func (b *Bramble) init() (err error) {
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivation,
 		"cmd":        bramblecmd.NewFunction(),
-		"os":         brambleos.OS{},
+		"os":         brambleos.NewOS(b),
 		"assert":     assertGlobals["assert"],
 	}
 
