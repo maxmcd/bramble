@@ -1,0 +1,5 @@
+load("github.com/maxmcd/bramble/pkg/bramblecmd/examples/new_structure/main", "ls")
+
+def test_ls():
+    ran = ls()
+    assert.eq(ran.exit_code, 0)

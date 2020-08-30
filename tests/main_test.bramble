@@ -1,0 +1,10 @@
+load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested", "nested")
+load("github.com/maxmcd/bramble/tests/busybox", "busybox")
+
+
+def test_nested():
+    nested()
+
+
+def test_busybox():
+    busybox()

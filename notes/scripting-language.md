@@ -48,10 +48,10 @@ cron(every="4h", check_for_tickets)
 
 Could also add service/server primitives, databases, etc...
 ```python
-pg = cmd("postgres", environment={"DB":"OKAYSLEEP"}).async())
+pg = cmd("postgres", env={"DB":"OKAYSLEEP"}).async())
 server(pg)
 
-servers = server(cmd("flask", environment={"DB_URL": server.hostname + ":" + pg.port}).async(), count=2)
+servers = server(cmd("flask", env={"DB_URL": server.hostname + ":" + pg.port}).async(), count=2)
 ```
 
 More scripting examples:

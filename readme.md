@@ -24,7 +24,7 @@ Derivations are the core building block of Bramble. They describe how how to bui
 seed = derivation(
     name="seed",
     builder="fetch_url",
-    environment={
+    env={
         "decompress": True,
         "url": "https://github.com/maxmcd/bramble/releases/download/v0.0.1/linux-x86_64-seed.tar.gz",
         "hash": "111005a76fa66c148799a8fb67fb784ac47944fcba791efe7599128bbd5884ac",
@@ -39,12 +39,19 @@ load("../seed", "seed")
 
 derivation(
     name="simple",
-    environment={"seed": seed},
+    env={"seed": seed},
     builder="%s/bin/sh" % seed,
     args=["./simple_builder.sh"],
     sources=["./simple.c", "simple_builder.sh"],
 )
 ```
+
+### CLI
+
+```
+bramble run
+```
+
 
 ### Store
 
