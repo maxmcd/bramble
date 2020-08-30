@@ -4,16 +4,23 @@ import (
 	"bufio"
 	goos "os"
 
+	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"go.starlark.net/starlark"
 )
 
-type OS struct{}
+type OS struct {
+	checker starutil.DerivationChecker
+}
 
 var (
 	_ starlark.Value    = OS{}
 	_ starlark.HasAttrs = OS{}
 )
+
+func NewOS(checker starutil.DerivationChecker) OS {
+	return OS{checker: checker}
+}
 
 func (os OS) String() string        { return "<module 'os'>" }
 func (os OS) Freeze()               {}
@@ -39,6 +46,7 @@ func makeArgs() (starlark.Value, error) {
 }
 
 func (os OS) Attr(name string) (val starlark.Value, err error) {
+	os.checker.AfterDerivation()
 	switch name {
 	case "args":
 		return makeArgs()
@@ -51,10 +59,7 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 }
 
 func (os OS) error(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	if err = starlark.UnpackArgs("args", args, kwargs, "val", &val); err != nil {
-		return
-	}
-	panic(val) //TODO
+	return assert.Error(thread, nil, args, kwargs)
 }
 
 func (os OS) input(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

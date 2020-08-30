@@ -26,6 +26,8 @@ type Function struct {
 	thread      *starlark.Thread
 
 	log *logrus.Logger
+
+	checker starutil.DerivationChecker
 }
 
 var (
@@ -52,7 +54,7 @@ func init() {
 
 // NewFunction creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewFunction(thread *starlark.Thread) (*Function, error) {
+func NewFunction(thread *starlark.Thread, checker starutil.DerivationChecker) (*Function, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
 	bramblePath, storePath, err := ensureBramblePath()
@@ -66,6 +68,7 @@ func NewFunction(thread *starlark.Thread) (*Function, error) {
 		bramblePath: bramblePath,
 		storePath:   storePath,
 		derivations: make(map[string]*Derivation),
+		checker:     checker,
 	}
 	// c.log.SetReportCaller(true)
 	fn.log.SetLevel(logrus.DebugLevel)
@@ -179,6 +182,9 @@ func (f *Function) DownloadFile(url string, hash string) (path string, err error
 }
 
 func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	if err = f.checker.CalledDerivation(); err != nil {
+		return
+	}
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
