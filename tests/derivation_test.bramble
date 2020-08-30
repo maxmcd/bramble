@@ -12,4 +12,4 @@ def other():
     and_another()
 
 def and_another():
-    assert.fails(_no_name, "no such")
+    assert.fails(_no_name, "missing argument for builder")

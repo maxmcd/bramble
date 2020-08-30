@@ -190,7 +190,7 @@ func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kw
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
-	drv, err := f.newDerivationFromKWArgs(kwargs)
+	drv, err := f.newDerivationFromArgs(args, kwargs)
 	if err != nil {
 		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
 	}
