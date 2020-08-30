@@ -21,18 +21,12 @@ import (
 )
 
 var (
-	TempDirPrefix         = "bramble-"
-	PathPaddingCharacters = "bramble_store_padding"
-	PathPaddingLength     = 50
+	TempDirPrefix = "bramble-"
 
 	// BramblePrefixOfRecord is the prefix we use when hashing the build output
 	// this allows us to get a consistent hash even if we're building in a
 	// different location
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
-)
-
-var (
-	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
 
 // Derivation is the basic building block of a Bramble build
@@ -210,6 +204,8 @@ func (drv *Derivation) writeDerivation() (err error) {
 	return nil
 }
 
+func (drv *Derivation) storePath() string { return drv.function.storeMeta.StorePath() }
+
 func (drv *Derivation) createBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir("", TempDirPrefix)
 }
@@ -218,7 +214,7 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 	_, filename, err := drv.computeDerivation()
 
 	return filepath.Join(
-		drv.function.storePath,
+		drv.function.storeMeta.StorePath(),
 		strings.TrimSuffix(filename, ".drv"),
 	), err
 }
@@ -226,7 +222,7 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 func (drv *Derivation) expand(s string) string {
 	return os.Expand(s, func(i string) string {
 		if i == "bramble_path" {
-			return drv.function.storePath
+			return drv.function.storeMeta.StorePath()
 		}
 		if v, ok := drv.Env[i]; ok {
 			return v
@@ -279,11 +275,11 @@ func (drv *Derivation) build() (err error) {
 		cmd.Dir = runLocation
 		cmd.Env = []string{}
 		for k, v := range drv.Env {
-			v = strings.Replace(v, "$bramble_path", drv.function.storePath, -1)
+			v = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.function.storePath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.storePath()))
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -310,7 +306,7 @@ func (drv *Derivation) build() (err error) {
 
 func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
 	var storeValues []string
-	old := drv.function.storePath
+	old := drv.storePath()
 	new := BramblePrefixOfRecord
 
 	for _, derivation := range drv.function.derivations {
@@ -342,7 +338,7 @@ func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, 
 		return nil, "", err
 	case result := <-resultChan:
 		for k := range result {
-			matches = append(matches, strings.Replace(k, drv.function.storePath, "$bramble_path", 1))
+			matches = append(matches, strings.Replace(k, drv.storePath(), "$bramble_path", 1))
 		}
 		return matches, hasher.String(), nil
 	}

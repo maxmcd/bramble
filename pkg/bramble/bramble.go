@@ -82,10 +82,16 @@ type Bramble struct {
 	configLocation string
 	derivation     *derivation.Function
 
+	storePath   string
+	bramblePath string
+
 	afterDerivation bool
 }
 
-var _ starutil.DerivationChecker = new(Bramble)
+var (
+	_ starutil.DerivationChecker = new(Bramble)
+	_ derivation.StoreMeta       = new(Bramble)
+)
 
 func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
 func (b *Bramble) CalledDerivation() error {
@@ -94,6 +100,9 @@ func (b *Bramble) CalledDerivation() error {
 	}
 	return nil
 }
+
+func (b *Bramble) BramblePath() string { return b.bramblePath }
+func (b *Bramble) StorePath() string   { return b.storePath }
 
 func (b *Bramble) init() (err error) {
 	if b.configLocation != "" {
@@ -106,13 +115,17 @@ func (b *Bramble) init() (err error) {
 		return
 	}
 
+	if b.bramblePath, b.storePath, err = ensureBramblePath(); err != nil {
+		return
+	}
+
 	b.thread = &starlark.Thread{
 		Name: "main",
 		Load: b.load,
 	}
 
 	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivation, err = derivation.NewFunction(b.thread, b)
+	b.derivation, err = derivation.NewFunction(b.thread, b, b)
 	if err != nil {
 		return
 	}
