@@ -1,0 +1,34 @@
+"""deploy with nomad"""
+
+
+def main(args):
+    # Where do these args come from?
+
+    if len(args) == 0:
+        # raise an error?
+        pass
+    file = args[0]
+
+    contents = cmd("cat %s" % file).stdout()
+    # optionally replace the contents?
+
+    plan = cmd("nomad job plan -", stdin=contents).wait()
+
+    out = plan.output()
+
+    print(out)
+    # ask for confirmation?
+
+    index = None
+
+    for line in out.split("\n"):
+        if "Job Modify Index" in line:
+            index = line.split(" ")[-1]
+
+    if index == None:
+        # raise error?
+        pass
+
+    run = cmd("nomad job run -check-index %s %s" % (index, file)).wait()
+
+    # continue from here and

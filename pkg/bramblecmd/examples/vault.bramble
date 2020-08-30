@@ -1,0 +1,26 @@
+"""
+script to delete all vault tokens with manager group permissions
+"""
+
+
+def vault_cmd(token=None):
+    def _vault(*args, **kwargs):
+        return cmd("vault", *args, env={"VAULT_TOKEN": token}, **kwargs)
+
+    return _vault
+
+
+def main():
+    # how to set this token?
+    token = "?????"
+    vault = vault_cmd(token)
+    values = list(vault("list", "auth/token/accessors").output)
+    manager_tokens = []
+    for value in values:
+        if (
+            "default manager"
+            in vault("token", "lookup", "-accessor", value).output()
+        ):
+            manager_tokens.append(value)
+    for token in manager_tokens:
+        vault("token", "revoke", "-accessor", token).wait()

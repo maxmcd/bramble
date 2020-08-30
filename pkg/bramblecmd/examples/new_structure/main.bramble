@@ -1,0 +1,40 @@
+"""tour of some features and limitations"""
+
+
+def ls():
+    assert.eq(1, 1)
+    assert.ne(1, 2)
+    print(os.args)
+    return run_and_print("ls", *os.args)
+
+
+def get_something():
+    print("What is your name?")
+    thing = os.input()
+
+    # clear previous line
+    print("\033[A                             \033[A")
+    print("hello %s" % thing)
+
+
+
+def build_flask():
+    cmd("python build").wait()
+
+def flask():
+    foo = derivation(
+        script=build_flask,
+        src="./"
+    )
+
+    cmd(foo, "python", "flask")
+
+
+
+def run_and_print(*args, **kwargs):
+    """run and print"""
+    print(*args)
+    runner = cmd(*args, **kwargs)
+    out = runner.output()
+    print(out)
+    return runner
