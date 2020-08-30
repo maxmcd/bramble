@@ -6,5 +6,5 @@ type DerivationChecker interface {
 	AfterDerivation()
 	// CallDerivation is called within every derivation call. If this is called
 	// after AfterDerivation it will error
-	CalledDerivation() error
+	CalledDerivation() (int, map[string]string, error)
 }

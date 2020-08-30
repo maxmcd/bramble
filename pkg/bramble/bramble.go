@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -82,10 +83,13 @@ type Bramble struct {
 	configLocation string
 	derivation     *derivation.Function
 
+	moduleCache map[string]string
+
 	storePath   string
 	bramblePath string
 
-	afterDerivation bool
+	afterDerivation     bool
+	derivationCallCount int
 }
 
 var (
@@ -94,20 +98,28 @@ var (
 )
 
 func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
-func (b *Bramble) CalledDerivation() error {
+func (b *Bramble) CalledDerivation() (int, map[string]string, error) {
+	b.derivationCallCount++
 	if b.afterDerivation {
-		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
+		return 0, nil, errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
 	}
-	return nil
+	return b.derivationCallCount, b.moduleCache, nil
 }
 
 func (b *Bramble) BramblePath() string { return b.bramblePath }
 func (b *Bramble) StorePath() string   { return b.storePath }
 
+func (b *Bramble) reset() {
+	b.moduleCache = map[string]string{}
+	b.derivationCallCount = 0
+}
+
 func (b *Bramble) init() (err error) {
 	if b.configLocation != "" {
 		return errors.New("can't initialize Bramble twice")
 	}
+
+	b.moduleCache = map[string]string{}
 
 	// ensures we have a bramble.toml in the current or parent dir
 	b.config, b.configLocation, err = findConfig()
@@ -202,6 +214,53 @@ func (e *testErrorReporter) Error(err error) {
 }
 func (e *testErrorReporter) FailNow() bool { return false }
 
+func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return
+	}
+	hasher := derivation.NewHasher()
+	if _, err = io.Copy(hasher, f); err != nil {
+		return
+	}
+	var mod *starlark.Program
+	storeLocation := filepath.Join(b.StorePath(), hasher.String()+"-star-prog-cache")
+	if fileExists(storeLocation) {
+		var compiledProgram *os.File
+		compiledProgram, err = os.Open(storeLocation)
+		if err != nil {
+			return
+		}
+		mod, err = starlark.CompiledProgram(compiledProgram)
+		if err != nil {
+			return
+		}
+	} else {
+		if _, err = f.Seek(0, 0); err != nil {
+			return
+		}
+		_, mod, err = starlark.SourceProgram(filename, f, b.predeclared.Has)
+		if err != nil {
+			return
+		}
+		cachedProgram, err := os.Create(storeLocation)
+		if err != nil {
+			return nil, err
+		}
+		if err = mod.Write(cachedProgram); err != nil {
+			return nil, err
+		}
+	}
+	if err = f.Close(); err != nil {
+		return
+	}
+	b.moduleCache[moduleName] = storeLocation
+
+	g, err := mod.Init(b.thread, b.predeclared)
+	g.Freeze()
+	return g, err
+}
+
 func (b *Bramble) test(args []string) (err error) {
 	failFast := true
 	if err = b.init(); err != nil {
@@ -216,7 +275,9 @@ func (b *Bramble) test(args []string) (err error) {
 		return errors.Wrap(err, "error finding test files")
 	}
 	for _, filename := range testFiles {
-		globals, err := starlark.ExecFile(b.thread, filename, nil, b.predeclared)
+		// TODO: need to calculate module name
+		b.reset()
+		globals, err := b.ExecFile("", filename)
 		if err != nil {
 			return err
 		}
@@ -278,7 +339,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 		return
 	}
 
-	return starlark.ExecFile(b.thread, path, nil, b.predeclared)
+	return b.ExecFile(module, path)
 }
 
 func (b *Bramble) run(args []string) (err error) {
