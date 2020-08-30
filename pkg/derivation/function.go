@@ -182,9 +182,11 @@ func (f *Function) DownloadFile(url string, hash string) (path string, err error
 }
 
 func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
-	if err = f.checker.CalledDerivation(); err != nil {
+	derivationCallCount, moduleCache, err := f.checker.CalledDerivation()
+	if err != nil {
 		return
 	}
+	fmt.Println(derivationCallCount, moduleCache)
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}

@@ -15,15 +15,19 @@ seed/linux-x86_64-seed.tar.gz:
 test:
 	go test -v ./...
 
+install:
+	go install
+
+bramble_tests: install
+	bramble test ./tests
+
 reptar:
 	cd pkg/reptar && docker build -t reptar . \
 	&& docker run -it reptar sh
 
-bramblescripts_to_test:
-	go install
+bramblescripts_to_test: install
 	bramble run pkg/bramblecmd/examples/run:total_bytes_in_folder
 	bramble run pkg/bramblecmd/examples:main
 
-drv_test:
-	go install
+drv_test: install
 	bramble test tests/derivation_test.bramble
