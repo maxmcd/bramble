@@ -1,17 +1,16 @@
-package brambleos
+package bramble
 
 import (
 	"bufio"
 	goos "os"
 
 	"github.com/maxmcd/bramble/pkg/assert"
-	"github.com/maxmcd/bramble/pkg/derivation"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"go.starlark.net/starlark"
 )
 
 type OS struct {
-	bramble derivation.Bramble
+	bramble *Bramble
 }
 
 var (
@@ -19,7 +18,7 @@ var (
 	_ starlark.HasAttrs = OS{}
 )
 
-func NewOS(bramble derivation.Bramble) OS {
+func NewOS(bramble *Bramble) OS {
 	return OS{bramble: bramble}
 }
 
