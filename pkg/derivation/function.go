@@ -18,21 +18,32 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type StoreMeta interface {
+type Bramble interface {
 	BramblePath() string
 	StorePath() string
+
+	// AfterDerivation is called when it is assumed that derivation calls are
+	// complete. Derivations will usually build at this point
+	AfterDerivation()
+	// CallDerivation is called within every derivation call. If this is called
+	// after AfterDerivation it will error
+	CalledDerivation() error
+
+	ModuleCache() map[string]string
+	DerivationCallCount() int
+	RunEntrypoint() (module string, function string)
+	FindFunctionContext(derivationCallCount int, moduleCache map[string]string, moduleEntrypoint, calledFunction string) (thread *starlark.Thread, fn *starlark.Function, err error)
 }
 
 // Function is the function that creates derivations
 type Function struct {
-	storeMeta StoreMeta
+	bramble Bramble
 
 	derivations map[string]*Derivation
-	thread      *starlark.Thread
 
 	log *logrus.Logger
 
-	checker starutil.DerivationChecker
+	DerivationCallCount int
 }
 
 var (
@@ -59,7 +70,7 @@ func init() {
 
 // NewFunction creates a new client. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewFunction(thread *starlark.Thread, checker starutil.DerivationChecker, storeMeta StoreMeta) (*Function, error) {
+func NewFunction(bramble Bramble) (*Function, error) {
 	// TODO: don't run on this on every command run, shouldn't be needed to
 	// just print health information
 	// TODO: check that the store directory structure is accurate and make
@@ -67,31 +78,16 @@ func NewFunction(thread *starlark.Thread, checker starutil.DerivationChecker, st
 	fn := &Function{
 		log:         logrus.New(),
 		derivations: make(map[string]*Derivation),
-		storeMeta:   storeMeta,
-		checker:     checker,
+		bramble:     bramble,
 	}
 	// c.log.SetReportCaller(true)
 	fn.log.SetLevel(logrus.DebugLevel)
 
-	fn.thread = thread
 	return fn, nil
 }
 
-// Run runs a file given a path. Returns the global variable values from that
-// file. Run will recursively run imported files.
-func (f *Function) Run(file string) (globals starlark.StringDict, err error) {
-	f.log.Debug("running file ", file)
-	globals, err = starlark.ExecFile(f.thread, file, nil, starlark.StringDict{
-		"derivation": f,
-	})
-	if err != nil {
-		return
-	}
-	return
-}
-
 func (f *Function) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{f.storeMeta.StorePath()}, v...)...)
+	return filepath.Join(append([]string{f.bramble.StorePath()}, v...)...)
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
@@ -152,7 +148,7 @@ func (f *Function) DownloadFile(url string, hash string) (path string, err error
 		return
 	}
 	defer resp.Body.Close()
-	file, err := ioutil.TempFile(filepath.Join(f.storeMeta.BramblePath(), "tmp"), "")
+	file, err := ioutil.TempFile(filepath.Join(f.bramble.BramblePath(), "tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a download")
 		return
@@ -181,28 +177,52 @@ func (f *Function) DownloadFile(url string, hash string) (path string, err error
 	return path, err
 }
 
+type ErrFoundBuildContext struct {
+	thread *starlark.Thread
+	Fn     *starlark.Function
+}
+
+func (efbc ErrFoundBuildContext) Error() string {
+	return "internal err found build context error"
+}
+
+func getBuilderFunction(kwargs []starlark.Tuple) *starlark.Function {
+	for _, tup := range kwargs {
+		key, val := tup[0].(starlark.String), tup[1]
+		if key == "builder" {
+			if fn, ok := val.(*starlark.Function); ok {
+				return fn
+			}
+		}
+	}
+	return nil
+}
+
 func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
-	derivationCallCount, moduleCache, err := f.checker.CalledDerivation()
-	if err != nil {
+	if err = f.bramble.CalledDerivation(); err != nil {
 		return
 	}
-	fmt.Println(derivationCallCount, moduleCache)
+	// we're running inside a derivation build and we need to exit with this function and function context
+	if f.bramble.DerivationCallCount() == f.DerivationCallCount {
+		return nil, ErrFoundBuildContext{thread: thread, Fn: getBuilderFunction(kwargs)}
+	}
 	if args.Len() > 0 {
 		return nil, errors.New("builtin function build() takes no positional arguments")
 	}
 	drv, err := f.newDerivationFromArgs(args, kwargs)
 	if err != nil {
-		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+		return nil, err
 	}
 	// At(0) is within this function, we want the file of the caller
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 	if err = drv.calculateInputDerivations(); err != nil {
-		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+		return nil, err
 	}
+	f.log.Debug("Calculated derivation before build: ", drv.prettyJSON())
 
 	f.log.Debugf("Building derivation %q", drv.Name)
 	if err = f.buildDerivation(drv); err != nil {
-		return nil, &starlark.EvalError{Msg: err.Error(), CallStack: f.thread.CallStack()}
+		return nil, err
 	}
 	f.log.Debug("Completed derivation: ", drv.prettyJSON())
 	_, filename, err := drv.computeDerivation()
@@ -210,5 +230,114 @@ func (f *Function) CallInternal(thread *starlark.Thread, args starlark.Tuple, kw
 		return
 	}
 	f.derivations[filename] = drv
+	return drv, nil
+}
+
+type functionBuilderMeta struct {
+	DerivationCallCount int
+	ModuleCache         map[string]string
+	Module              string
+	Function            string
+}
+
+// setBuilder is used during instantiation to set various attributes on the
+// derivation for a specific builder
+func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
+	switch v := builder.(type) {
+	case starlark.String:
+		drv.Builder = v.GoString()
+	case *starlark.Function:
+		drv.Builder = "function"
+		meta := functionBuilderMeta{
+			DerivationCallCount: drv.function.bramble.DerivationCallCount(),
+			ModuleCache:         drv.function.bramble.ModuleCache(),
+		}
+		meta.Module, meta.Function = drv.function.bramble.RunEntrypoint()
+		b, _ := json.Marshal(meta)
+		drv.Env["function_builder_meta"] = string(b)
+	default:
+		return errors.Errorf("no builder for %q", builder.Type())
+	}
+	return
+}
+
+func (f *Function) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
+	drv = &Derivation{
+		Outputs:  map[string]Output{"out": {}},
+		Env:      map[string]string{},
+		function: f,
+	}
+	var (
+		name        starlark.String
+		builder     starlark.Value = starlark.None
+		argsParam   *starlark.List
+		sources     *starlark.List
+		env         *starlark.Dict
+		outputs     *starlark.List
+		buildInputs *starlark.List
+	)
+	if err = starlark.UnpackArgs("derivation", args, kwargs,
+		"builder", &builder,
+		"name?", &name,
+		"args?", &argsParam,
+		"sources?", &sources,
+		"env?", &env,
+		"outputs?", &outputs,
+		"build_inputs", &buildInputs,
+	); err != nil {
+		return
+	}
+
+	drv.Name = name.GoString()
+
+	if argsParam != nil {
+		if drv.Args, err = starutil.ListToGoList(argsParam); err != nil {
+			return
+		}
+	}
+	if sources != nil {
+		if drv.Sources, err = starutil.ListToGoList(sources); err != nil {
+			return
+		}
+	}
+	if env != nil {
+		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
+			return
+		}
+	}
+
+	if buildInputs != nil {
+		for _, item := range starutil.ListToValueList(buildInputs) {
+			input, ok := item.(*Derivation)
+			if !ok {
+				err = errors.Errorf("build_inputs takes a list of derivations, found type %q", item.Type())
+				return
+			}
+			_, filename, err := input.computeDerivation()
+			if err != nil {
+				panic(err)
+			}
+			drv.InputDerivations = append(drv.InputDerivations, InputDerivation{
+				Path:   filename,
+				Output: "out", // TODO: support passing other outputs
+			})
+			drv.Env[input.Name] = input.Outputs["out"].Path
+		}
+	}
+	if outputs != nil {
+		outputsList, err := starutil.ListToGoList(outputs)
+		if err != nil {
+			return nil, err
+		}
+		delete(drv.Outputs, "out")
+		for _, o := range outputsList {
+			drv.Outputs[o] = Output{}
+		}
+	}
+
+	if err = setBuilder(drv, builder); err != nil {
+		return
+	}
+
 	return drv, nil
 }

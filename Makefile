@@ -21,13 +21,16 @@ install:
 bramble_tests: install
 	bramble test ./tests
 
-reptar:
+docker_reptar:
 	cd pkg/reptar && docker build -t reptar . \
 	&& docker run -it reptar sh
 
 bramblescripts_to_test: install
-	bramble run pkg/bramblecmd/examples/run:total_bytes_in_folder
-	bramble run pkg/bramblecmd/examples:main
+	bramble run pkg/bramble/cmd-examples:main
 
 drv_test: install
 	bramble test tests/derivation_test.bramble
+
+
+starlark_builder: install
+	bramble run tests/starlark-builder:run_busybox

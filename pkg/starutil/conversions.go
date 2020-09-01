@@ -21,6 +21,17 @@ func ListToGoList(list *starlark.List) (out []string, err error) {
 	return
 }
 
+func ListToValueList(list *starlark.List) (out []starlark.Value) {
+	iterator := list.Iterate()
+	defer iterator.Done()
+	var val starlark.Value
+	for iterator.Next(&val) {
+		cpy := val
+		out = append(out, cpy)
+	}
+	return
+}
+
 func DictToGoStringMap(dict *starlark.Dict) (out map[string]string, err error) {
 	out = make(map[string]string)
 	for _, key := range dict.Keys() {

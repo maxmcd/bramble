@@ -66,15 +66,11 @@ var (
 	_ starlark.HasAttrs = new(Derivation)
 )
 
-func (drv *Derivation) String() string {
-	// TODO: we're overriding this for our own purposes. could be confusing
-	return fmt.Sprintf("<derivation %q>", drv.Name)
-}
-
-func (drv *Derivation) Type() string          { return "derivation" }
 func (drv *Derivation) Freeze()               {}
-func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
+func (drv *Derivation) String() string        { return fmt.Sprintf("<derivation %q>", drv.Name) }
+func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
+func (drv *Derivation) Type() string          { return "derivation" }
 
 func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
 	output, ok := drv.Outputs[name]
@@ -156,6 +152,11 @@ func (drv *Derivation) checkForExisting() (exists bool, err error) {
 	if !exists {
 		return false, nil
 	}
+	for _, v := range existingDrv.Outputs {
+		if v.Path == "" {
+			return false, nil
+		}
+	}
 	drv.Outputs = existingDrv.Outputs
 	return true, nil
 }
@@ -204,7 +205,7 @@ func (drv *Derivation) writeDerivation() (err error) {
 	return nil
 }
 
-func (drv *Derivation) storePath() string { return drv.function.storeMeta.StorePath() }
+func (drv *Derivation) storePath() string { return drv.function.bramble.StorePath() }
 
 func (drv *Derivation) createBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir("", TempDirPrefix)
@@ -214,7 +215,7 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 	_, filename, err := drv.computeDerivation()
 
 	return filepath.Join(
-		drv.function.storeMeta.StorePath(),
+		drv.storePath(),
 		strings.TrimSuffix(filename, ".drv"),
 	), err
 }
@@ -222,13 +223,75 @@ func (drv *Derivation) computeOutPath() (outPath string, err error) {
 func (drv *Derivation) expand(s string) string {
 	return os.Expand(s, func(i string) string {
 		if i == "bramble_path" {
-			return drv.function.storeMeta.StorePath()
+			return drv.storePath()
 		}
 		if v, ok := drv.Env[i]; ok {
 			return v
 		}
 		return ""
 	})
+}
+
+func (drv *Derivation) regularBuilder(buildDir, outPath string) (err error) {
+	var runLocation string
+	runLocation, err = drv.assembleSources(buildDir)
+	if err != nil {
+		return
+	}
+	builderLocation := drv.expand(drv.Builder)
+
+	if _, err := os.Stat(builderLocation); err != nil {
+		return errors.Wrap(err, "error checking if builder location exists")
+	}
+	cmd := exec.Command(builderLocation, drv.Args...)
+	cmd.Dir = runLocation
+	cmd.Env = []string{}
+	for k, v := range drv.Env {
+		v = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.storePath()))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (drv *Derivation) fetchURLBuilder(outPath string) (err error) {
+	url, ok := drv.Env["url"]
+	if !ok {
+		return errors.New("fetch_url requires the environment variable 'url' to be set")
+	}
+	hash, ok := drv.Env["hash"]
+	if !ok {
+		return errors.New("fetch_url requires the environment variable 'hash' to be set")
+	}
+	path, err := drv.function.DownloadFile(url, hash)
+	if err != nil {
+		return err
+	}
+	if err = archiver.Unarchive(path, outPath); err != nil {
+		return errors.Wrap(err, "error unarchiving")
+	}
+	return nil
+}
+
+func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
+	var meta functionBuilderMeta
+
+	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
+		return errors.Wrap(err, "error parsing function_builder_meta")
+	}
+	thread, fn, err := drv.function.bramble.FindFunctionContext(
+		meta.DerivationCallCount,
+		meta.ModuleCache,
+		meta.Module,
+		meta.Function,
+	)
+	_, _ = thread, fn
+	// starlark.Call(thread, fn)
+
+	return nil
 }
 
 func (drv *Derivation) build() (err error) {
@@ -244,47 +307,17 @@ func (drv *Derivation) build() (err error) {
 	if err = os.MkdirAll(outPath, 0755); err != nil {
 		return
 	}
-	if drv.Builder == "fetch_url" {
-		url, ok := drv.Env["url"]
-		if !ok {
-			return errors.New("fetch_url requires the environment variable 'url' to be set")
-		}
-		hash, ok := drv.Env["hash"]
-		if !ok {
-			return errors.New("fetch_url requires the environment variable 'hash' to be set")
-		}
-		path, err := drv.function.DownloadFile(url, hash)
-		if err != nil {
-			return err
-		}
-		if err = archiver.Unarchive(path, outPath); err != nil {
-			return errors.Wrap(err, "error unarchiving")
-		}
-	} else {
-		var runLocation string
-		runLocation, err = drv.assembleSources(buildDir)
-		if err != nil {
-			return
-		}
-		builderLocation := drv.expand(drv.Builder)
 
-		if _, err := os.Stat(builderLocation); err != nil {
-			return errors.Wrap(err, "error checking if builder location exists")
-		}
-		cmd := exec.Command(builderLocation, drv.Args...)
-		cmd.Dir = runLocation
-		cmd.Env = []string{}
-		for k, v := range drv.Env {
-			v = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.storePath()))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err = cmd.Run(); err != nil {
-			return err
-		}
+	switch drv.Builder {
+	case "fetch_url":
+		err = drv.fetchURLBuilder(outPath)
+	case "function":
+		err = drv.functionBuilder(buildDir, outPath)
+	default:
+		err = drv.regularBuilder(buildDir, outPath)
+	}
+	if err != nil {
+		return
 	}
 
 	matches, hashString, err := drv.hashAndScanDirectory(outPath)
