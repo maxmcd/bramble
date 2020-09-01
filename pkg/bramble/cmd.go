@@ -1,19 +1,26 @@
-package bramblecmd
+package bramble
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/moby/moby/pkg/stdcopy"
 	"github.com/pkg/errors"
 
 	"go.starlark.net/starlark"
 )
+
+var ErrInvalidRead = errors.New("can't read from command output more than once")
 
 type Cmd struct {
 	exec.Cmd
@@ -302,13 +309,11 @@ func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tupl
 		cmd.Stdin = stdin
 	}
 	err = cmd.Start()
-	logger.Println(cmd.String(), "started")
 	go func() {
 		err := cmd.Cmd.Wait()
 		{
 			cmd.lock.Lock()
 			if err != nil {
-				logger.Println(cmd.String(), "error", err)
 				cmd.err = err
 			}
 			cmd.finished = true
@@ -337,5 +342,239 @@ func (cmd *Cmd) Read(p []byte) (n int, err error) {
 		return n, cmd.err
 	}
 
+	return
+}
+
+// CmdFunction is the value for the builtin "cmd", calling it as a function
+// creates a new cmd instance, it also has various other attributes and methods
+type CmdFunction struct{}
+
+var (
+	_ starlark.Value    = new(CmdFunction)
+	_ starlark.Callable = new(CmdFunction)
+)
+
+func NewCmdFunction() *CmdFunction {
+	return &CmdFunction{}
+}
+
+func (fn *CmdFunction) Freeze()               {}
+func (fn *CmdFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable(fn.Type()) }
+func (fn *CmdFunction) Name() string          { return fn.Type() }
+func (fn *CmdFunction) String() string        { return "<built-in function cmd>" }
+func (fn *CmdFunction) Type() string          { return "builtin_function_cmd" }
+func (fn *CmdFunction) Truth() starlark.Bool  { return true }
+
+// CallInternal defines the cmd() starlark function.
+func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	return newCmd(thread, args, kwargs, nil, "")
+}
+
+type ByteStream struct {
+	cmd    *Cmd
+	stdout bool
+	stderr bool
+}
+
+var (
+	_ starlark.Value    = ByteStream{}
+	_ starlark.Callable = ByteStream{}
+	_ starlark.Iterable = ByteStream{}
+)
+
+func (bs ByteStream) Name() string {
+	if bs.stdout && bs.stderr {
+		return "output"
+	}
+	if bs.stderr {
+		return "stderr"
+	}
+	return "stdout"
+}
+func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	if err = bs.cmd.setOutput(bs.stdout, bs.stderr); err != nil {
+		return
+	}
+	b, err := ioutil.ReadAll(bs.cmd)
+	if err == io.ErrClosedPipe {
+		err = nil
+	}
+	if err != nil {
+		// TODO: need a better solution for this
+		fmt.Println(string(b))
+	}
+	return starlark.String(string(b)), err
+}
+
+func (bs ByteStream) String() string {
+	return fmt.Sprintf("<attribute '%s' of 'cmd'>", bs.Name())
+}
+
+func (bs ByteStream) Type() string          { return "bytestream" }
+func (bs ByteStream) Freeze()               {}
+func (bs ByteStream) Truth() starlark.Bool  { return bs.cmd.Truth() }
+func (bs ByteStream) Hash() (uint32, error) { return 0, errors.New("bytestream is unhashable") }
+
+func (bs ByteStream) Iterate() starlark.Iterator {
+	err := bs.cmd.setOutput(bs.stdout, bs.stderr)
+	bsi := byteStreamIterator{
+		bs: bs,
+	}
+	if err == nil {
+		bsi.buf = bufio.NewReader(bs.cmd)
+	}
+	return bsi
+}
+
+type byteStreamIterator struct {
+	bs  ByteStream
+	buf *bufio.Reader
+}
+
+func (bsi byteStreamIterator) Next(p *starlark.Value) bool {
+	if bsi.buf == nil {
+		return false
+	}
+	str, err := bsi.buf.ReadString('\n')
+	if err == io.EOF || err == io.ErrClosedPipe {
+		return false
+	}
+	if err != nil {
+		// TODO: something better here? certain errors we care about?
+		panic(err)
+	}
+	*p = starlark.String(str[:len(str)-1])
+	return true
+}
+
+func (bsi byteStreamIterator) Done() {}
+
+// bufferedPipe is a buffered pipe
+// parts taken from https://github.com/golang/go/blob/0436b162397018c45068b47ca1b5924a3eafdee0/src/net/net_fake.go#L173
+type bufferedPipe struct {
+	softLimit int
+	mu        sync.Mutex
+	buf       []byte
+	closed    bool
+	rCond     sync.Cond
+	wCond     sync.Cond
+}
+
+func newBufferedPipe(softLimit int) *bufferedPipe {
+	p := &bufferedPipe{softLimit: softLimit}
+	p.rCond.L = &p.mu
+	p.wCond.L = &p.mu
+	return p
+}
+
+func (p *bufferedPipe) Read(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for {
+		if p.closed && len(p.buf) == 0 {
+			return 0, io.EOF
+		}
+		if len(p.buf) > 0 {
+			break
+		}
+		p.rCond.Wait()
+	}
+
+	n := copy(b, p.buf)
+	p.buf = p.buf[n:]
+	p.wCond.Broadcast()
+	return n, nil
+}
+
+func (p *bufferedPipe) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for {
+		if p.closed {
+			return 0, syscall.ENOTCONN
+		}
+		if len(p.buf) <= p.softLimit {
+			break
+		}
+		p.wCond.Wait()
+	}
+
+	p.buf = append(p.buf, b...)
+	p.rCond.Broadcast()
+	return len(b), nil
+}
+
+func (p *bufferedPipe) Close() (err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.closed = true
+	p.rCond.Broadcast()
+	p.wCond.Broadcast()
+	return nil
+}
+
+type StandardStream struct {
+	stdout bool
+	stderr bool
+	once   sync.Once
+
+	buffPipe *bufferedPipe
+
+	reader *io.PipeReader
+
+	err  error
+	lock sync.Mutex
+
+	started bool
+}
+
+func NewStandardStream() (ss *StandardStream, stdoutWriter, stderrWriter io.Writer) {
+	ss = &StandardStream{
+		buffPipe: newBufferedPipe(4096 * 16),
+	}
+
+	stdoutWriter = stdcopy.NewStdWriter(ss.buffPipe, stdcopy.Stdout)
+	stderrWriter = stdcopy.NewStdWriter(ss.buffPipe, stdcopy.Stderr)
+
+	return
+}
+
+func (ss *StandardStream) Close() (err error) {
+	_ = ss.buffPipe.Close()
+	return nil
+}
+
+func (ss *StandardStream) Read(p []byte) (n int, err error) {
+	ss.once.Do(func() {
+		ss.started = true
+		var writer *io.PipeWriter
+		ss.lock.Lock()
+		ss.reader, writer = io.Pipe()
+		ss.lock.Unlock()
+		var stdoutWriter io.Writer = ioutil.Discard
+		var stderrWriter io.Writer = ioutil.Discard
+		if ss.stdout {
+			stdoutWriter = writer
+		}
+		if ss.stderr {
+			stderrWriter = writer
+		}
+		go func() {
+			_, err := stdcopy.StdCopy(stdoutWriter, stderrWriter, ss.buffPipe)
+			ss.lock.Lock()
+			ss.err = err
+			ss.lock.Unlock()
+			_ = writer.Close()
+			_ = ss.reader.Close()
+		}()
+	})
+	n, err = ss.reader.Read(p)
+	ss.lock.Lock()
+	if err == nil && ss.err != nil {
+		err = ss.err
+	}
+	ss.lock.Unlock()
 	return
 }

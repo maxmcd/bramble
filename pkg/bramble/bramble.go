@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
-	"github.com/maxmcd/bramble/pkg/bramblecmd"
 	"github.com/maxmcd/bramble/pkg/brambleos"
 	"github.com/maxmcd/bramble/pkg/derivation"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -81,33 +80,66 @@ type Bramble struct {
 	predeclared    starlark.StringDict
 	config         Config
 	configLocation string
-	derivation     *derivation.Function
-
-	moduleCache map[string]string
+	derivationFn   *derivation.Function
+	cmd            *CmdFunction
 
 	storePath   string
 	bramblePath string
 
+	moduleCache         map[string]string
 	afterDerivation     bool
 	derivationCallCount int
+
+	moduleEntrypoint string
+	calledFunction   string
 }
 
 var (
-	_ starutil.DerivationChecker = new(Bramble)
-	_ derivation.StoreMeta       = new(Bramble)
+	_ derivation.Bramble = new(Bramble)
 )
 
-func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
-func (b *Bramble) CalledDerivation() (int, map[string]string, error) {
+// implement derivation.Bramble
+func (b *Bramble) BramblePath() string             { return b.bramblePath }
+func (b *Bramble) StorePath() string               { return b.storePath }
+func (b *Bramble) ModuleCache() map[string]string  { return b.moduleCache }
+func (b *Bramble) DerivationCallCount() int        { return b.derivationCallCount }
+func (b *Bramble) RunEntrypoint() (string, string) { return b.moduleEntrypoint, b.calledFunction }
+func (b *Bramble) AfterDerivation()                { b.afterDerivation = true }
+func (b *Bramble) CalledDerivation() error {
 	b.derivationCallCount++
 	if b.afterDerivation {
-		return 0, nil, errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
+		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
 	}
-	return b.derivationCallCount, b.moduleCache, nil
+	return nil
 }
 
-func (b *Bramble) BramblePath() string { return b.bramblePath }
-func (b *Bramble) StorePath() string   { return b.storePath }
+func (b *Bramble) FindFunctionContext(derivationCallCount int, moduleCache map[string]string, moduleEntrypoint, calledFunction string) (thread *starlark.Thread, fn *starlark.Function, err error) {
+	prevCache := b.moduleCache
+	prevThread := b.thread
+	prevDerivationCallCount := b.derivationCallCount
+
+	b.moduleCache = moduleCache
+	b.derivationFn.DerivationCallCount = derivationCallCount
+	b.derivationCallCount = 0
+	b.thread = &starlark.Thread{
+		Load: b.load,
+	}
+
+	defer func() {
+		b.moduleCache = prevCache
+		b.derivationFn.DerivationCallCount = 0
+		b.derivationCallCount = prevDerivationCallCount
+		b.thread = prevThread
+	}()
+	globals, err := b.resolveModule(moduleEntrypoint)
+	if err != nil {
+		return
+	}
+
+	_, intentionalError := starlark.Call(b.thread, globals[calledFunction].(*starlark.Function), nil, nil)
+
+	return b.thread, intentionalError.(*starlark.EvalError).Unwrap().(derivation.ErrFoundBuildContext).Fn, nil
+}
 
 func (b *Bramble) reset() {
 	b.moduleCache = map[string]string{}
@@ -137,7 +169,7 @@ func (b *Bramble) init() (err error) {
 	}
 
 	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivation, err = derivation.NewFunction(b.thread, b, b)
+	b.derivationFn, err = derivation.NewFunction(b)
 	if err != nil {
 		return
 	}
@@ -146,10 +178,10 @@ func (b *Bramble) init() (err error) {
 	if err != nil {
 		return
 	}
-
+	b.cmd = NewCmdFunction()
 	b.predeclared = starlark.StringDict{
-		"derivation": b.derivation,
-		"cmd":        bramblecmd.NewFunction(),
+		"derivation": b.derivationFn,
+		"cmd":        b.cmd,
 		"os":         brambleos.NewOS(b),
 		"assert":     assertGlobals["assert"],
 	}
@@ -215,16 +247,20 @@ func (e *testErrorReporter) Error(err error) {
 func (e *testErrorReporter) FailNow() bool { return false }
 
 func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return
-	}
-	hasher := derivation.NewHasher()
-	if _, err = io.Copy(hasher, f); err != nil {
-		return
+	storeLocation, ok := b.moduleCache[moduleName]
+	var f *os.File
+	if !ok {
+		f, err = os.Open(filename)
+		if err != nil {
+			return
+		}
+		hasher := derivation.NewHasher()
+		if _, err = io.Copy(hasher, f); err != nil {
+			return nil, err
+		}
+		storeLocation = filepath.Join(b.StorePath(), hasher.String()+"-star-prog-cache")
 	}
 	var mod *starlark.Program
-	storeLocation := filepath.Join(b.StorePath(), hasher.String()+"-star-prog-cache")
 	if fileExists(storeLocation) {
 		var compiledProgram *os.File
 		compiledProgram, err = os.Open(storeLocation)
@@ -251,10 +287,16 @@ func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.String
 			return nil, err
 		}
 	}
-	if err = f.Close(); err != nil {
-		return
+
+	// TODO: a cleaner implementation should remove these null checks
+	if f != nil {
+		if err = f.Close(); err != nil {
+			return
+		}
 	}
-	b.moduleCache[moduleName] = storeLocation
+	if moduleName != "" {
+		b.moduleCache[moduleName] = storeLocation
+	}
 
 	g, err := mod.Init(b.thread, b.predeclared)
 	g.Freeze()
@@ -360,6 +402,8 @@ func (b *Bramble) run(args []string) (err error) {
 	if err != nil {
 		return
 	}
+	b.calledFunction = fn
+	b.moduleEntrypoint = module
 	toCall, ok := globals[fn]
 	if !ok {
 		return errors.Errorf("global function %q not found", fn)
@@ -375,7 +419,11 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 	if path == "" {
 		return
 	}
-	module += "/"
+
+	// if the relative path is nothing, we've already added the slash above
+	if !strings.HasSuffix(module, "/") {
+		module += "/"
+	}
 
 	// support things like bar/main.bramble:foo
 	if strings.HasSuffix(path, extension) && fileExists(path) {
@@ -396,6 +444,10 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 func (b *Bramble) relativePathFromConfig() string {
 	wd, _ := os.Getwd()
 	relativePath, _ := filepath.Rel(b.configLocation, wd)
+	if relativePath == "." {
+		// don't add a dot to the path
+		return ""
+	}
 	return relativePath
 }
 

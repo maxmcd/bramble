@@ -5,12 +5,13 @@ import (
 	goos "os"
 
 	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/pkg/derivation"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"go.starlark.net/starlark"
 )
 
 type OS struct {
-	checker starutil.DerivationChecker
+	bramble derivation.Bramble
 }
 
 var (
@@ -18,8 +19,8 @@ var (
 	_ starlark.HasAttrs = OS{}
 )
 
-func NewOS(checker starutil.DerivationChecker) OS {
-	return OS{checker: checker}
+func NewOS(bramble derivation.Bramble) OS {
+	return OS{bramble: bramble}
 }
 
 func (os OS) String() string        { return "<module 'os'>" }
@@ -46,7 +47,7 @@ func makeArgs() (starlark.Value, error) {
 }
 
 func (os OS) Attr(name string) (val starlark.Value, err error) {
-	os.checker.AfterDerivation()
+	os.bramble.AfterDerivation()
 	switch name {
 	case "args":
 		return makeArgs()
