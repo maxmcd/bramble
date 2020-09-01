@@ -11,8 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
-	"github.com/maxmcd/bramble/pkg/brambleos"
-	"github.com/maxmcd/bramble/pkg/derivation"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/cli"
 	"go.starlark.net/starlark"
@@ -80,7 +78,7 @@ type Bramble struct {
 	predeclared    starlark.StringDict
 	config         Config
 	configLocation string
-	derivationFn   *derivation.Function
+	derivationFn   *DerivationFunction
 	cmd            *CmdFunction
 
 	storePath   string
@@ -93,10 +91,6 @@ type Bramble struct {
 	moduleEntrypoint string
 	calledFunction   string
 }
-
-var (
-	_ derivation.Bramble = new(Bramble)
-)
 
 // implement derivation.Bramble
 func (b *Bramble) BramblePath() string             { return b.bramblePath }
@@ -138,7 +132,7 @@ func (b *Bramble) FindFunctionContext(derivationCallCount int, moduleCache map[s
 
 	_, intentionalError := starlark.Call(b.thread, globals[calledFunction].(*starlark.Function), nil, nil)
 
-	return b.thread, intentionalError.(*starlark.EvalError).Unwrap().(derivation.ErrFoundBuildContext).Fn, nil
+	return b.thread, intentionalError.(*starlark.EvalError).Unwrap().(ErrFoundBuildContext).Fn, nil
 }
 
 func (b *Bramble) reset() {
@@ -169,7 +163,7 @@ func (b *Bramble) init() (err error) {
 	}
 
 	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivationFn, err = derivation.NewFunction(b)
+	b.derivationFn, err = NewDerivationFunction(b)
 	if err != nil {
 		return
 	}
@@ -182,7 +176,7 @@ func (b *Bramble) init() (err error) {
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
 		"cmd":        b.cmd,
-		"os":         brambleos.NewOS(b),
+		"os":         NewOS(b),
 		"assert":     assertGlobals["assert"],
 	}
 
@@ -254,7 +248,7 @@ func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.String
 		if err != nil {
 			return
 		}
-		hasher := derivation.NewHasher()
+		hasher := NewHasher()
 		if _, err = io.Copy(hasher, f); err != nil {
 			return nil, err
 		}
