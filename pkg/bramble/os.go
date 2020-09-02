@@ -11,6 +11,7 @@ import (
 
 type OS struct {
 	bramble *Bramble
+	session *session
 }
 
 var (
@@ -18,8 +19,8 @@ var (
 	_ starlark.HasAttrs = OS{}
 )
 
-func NewOS(bramble *Bramble) OS {
-	return OS{bramble: bramble}
+func NewOS(bramble *Bramble, session *session) OS {
+	return OS{bramble: bramble, session: session}
 }
 
 func (os OS) String() string        { return "<module 'os'>" }
@@ -32,6 +33,7 @@ func (os OS) AttrNames() []string {
 		"args",
 		"error",
 		"input",
+		"mkdir",
 	}
 }
 
@@ -52,8 +54,16 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 		return makeArgs()
 	case "error":
 		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
+	case "cd":
+		return starutil.Callable{ThisName: "cd", ParentName: "os", Callable: os.cd}, nil
+	case "getenv":
+		return starutil.Callable{ThisName: "getenv", ParentName: "os", Callable: os.getenv}, nil
+	case "setenv":
+		return starutil.Callable{ThisName: "setenv", ParentName: "os", Callable: os.setenv}, nil
 	case "input":
 		return starutil.Callable{ThisName: "input", ParentName: "os", Callable: os.input}, nil
+	case "mkdir":
+		return starutil.Callable{ThisName: "mkdir", ParentName: "os", Callable: os.mkdir}, nil
 	}
 	return nil, nil
 }
@@ -66,4 +76,41 @@ func (os OS) input(thread *starlark.Thread, args starlark.Tuple, kwargs []starla
 	reader := bufio.NewReader(goos.Stdin)
 	text, err := reader.ReadString('\n')
 	return starlark.String(text), err
+}
+
+func (os OS) mkdir(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var path starlark.String
+	if err = starlark.UnpackArgs("mkdir", args, kwargs, "path", &path); err != nil {
+		return
+	}
+	return starlark.None, goos.Mkdir(os.session.expand(path.GoString()), 0755)
+}
+
+func (os OS) getenv(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var key starlark.String
+	if err = starlark.UnpackArgs("getenv", args, kwargs, "key", &key); err != nil {
+		return
+	}
+	return starlark.String(os.session.getEnv(key.GoString())), nil
+}
+
+func (os OS) setenv(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var key starlark.String
+	var value starlark.String
+	if err = starlark.UnpackArgs("setenv", args, kwargs, "key", &key, "value", &value); err != nil {
+		return
+	}
+	os.session.setEnv(
+		key.GoString(),
+		value.GoString(),
+	)
+	return starlark.None, nil
+}
+
+func (os OS) cd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var path starlark.String
+	if err = starlark.UnpackArgs("cd", args, kwargs, "path", &path); err != nil {
+		return
+	}
+	return starlark.None, os.session.cd(os.session.expand(path.GoString()))
 }

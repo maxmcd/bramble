@@ -1,7 +1,7 @@
 def run_busybox():
     bb = busybox()
     # whoami is now available to run
-    bb.cmd("whoami").print()
+    # bb.cmd("whoami").print()
 
 
 def busybox():
@@ -21,8 +21,9 @@ def busybox():
 
 def build_busybox():
     os.mkdir("$out/bin")  # using the builtin os module
-    print("hi")
-    # move the busybox executable into the output for this build
+    # move the fbasdfusybox executable into the output for this build
+
+    print(cmd("echo ok $busybox_download/busybox-x86_64").output())
     cmd(
         "$busybox_download/busybox-x86_64",
         "cp",
@@ -36,14 +37,17 @@ def build_busybox():
     for line in cmd("$out/bin/busybox").output:
         if commands_started:
             for name in line.strip().split(","):
-                commands.push(name.strip())
+                name = name.strip()
+                if name:
+                    commands.append(name)
         if "Currently defined functions" in line:  # the builtin os module
             commands_started = True
 
-    # move into the output directory so that symlinks are relative
+    # move into the output directory so that symlinks are relative,
     os.cd("$out/bin")
-
     cmd("./busybox ln -s busybox ln").wait()
+
     # link each command
-    for cmd in commands:
-        cmd("./ln -s busybox %s" % cmd).wait()
+    for c in commands:
+        if c != "ln":
+            cmd("./ln -s busybox %s" % c).output()

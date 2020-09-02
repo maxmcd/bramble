@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -57,7 +58,7 @@ var (
 func (f *DerivationFunction) Freeze()               {}
 func (f *DerivationFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("module") }
 func (f *DerivationFunction) Name() string          { return f.String() }
-func (f *DerivationFunction) String() string        { return `<built-in function cmd>` }
+func (f *DerivationFunction) String() string        { return `<built-in function derivation>` }
 func (f *DerivationFunction) Truth() starlark.Bool  { return true }
 func (f *DerivationFunction) Type() string          { return "module" }
 
@@ -201,6 +202,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if err = f.bramble.CalledDerivation(); err != nil {
 		return
 	}
+
 	// we're running inside a derivation build and we need to exit with this function and function context
 	if f.bramble.DerivationCallCount() == f.DerivationCallCount {
 		return nil, ErrFoundBuildContext{thread: thread, Fn: getBuilderFunction(kwargs)}
@@ -252,6 +254,7 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 			ModuleCache:         drv.function.bramble.ModuleCache(),
 		}
 		meta.Module, meta.Function = drv.function.bramble.RunEntrypoint()
+
 		b, _ := json.Marshal(meta)
 		drv.Env["function_builder_meta"] = string(b)
 	default:
@@ -320,7 +323,7 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 				Path:   filename,
 				Output: "out", // TODO: support passing other outputs
 			})
-			drv.Env[input.Name] = input.Outputs["out"].Path
+			drv.Env[input.Name] = "$bramble_path/" + input.Outputs["out"].Path
 		}
 	}
 	if outputs != nil {
@@ -582,6 +585,7 @@ func (drv *Derivation) fetchURLBuilder(outPath string) (err error) {
 	if err != nil {
 		return err
 	}
+	// TODO: what if this package changes?
 	if err = archiver.Unarchive(path, outPath); err != nil {
 		return errors.Wrap(err, "error unarchiving")
 	}
@@ -594,16 +598,18 @@ func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")
 	}
-	thread, fn, err := drv.function.bramble.FindFunctionContext(
-		meta.DerivationCallCount,
-		meta.ModuleCache,
-		meta.Module,
-		meta.Function,
+	session, err := newSession(buildDir, drv.Env)
+	if err != nil {
+		return
+	}
+	session.setEnv("out", outPath)
+	for k, v := range session.env {
+		session.env[k] = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
+	}
+	spew.Dump(session)
+	return drv.function.bramble.CallInlineDerivationFunction(
+		meta, session,
 	)
-	_, _ = thread, fn
-	// starlark.Call(thread, fn)
-
-	return nil
 }
 
 func (drv *Derivation) build() (err error) {
