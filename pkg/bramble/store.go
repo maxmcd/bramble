@@ -1,4 +1,4 @@
-package derivation
+package bramble
 
 import (
 	"fmt"
@@ -7,6 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
+)
+
+var (
+	PathPaddingCharacters = "bramble_store_padding"
+	PathPaddingLength     = 50
+
+	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
 
 func ensureBramblePath() (bramblePath, storePath string, err error) {

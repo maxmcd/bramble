@@ -29,7 +29,7 @@ func AnnotateError(err error) string {
 	sb := new(strings.Builder)
 	switch err := errors.Cause(err).(type) {
 	case *starlark.EvalError:
-		if err.CallStack.At(0).Pos.Filename() == "assert.star" {
+		if len(err.CallStack) > 0 && err.CallStack.At(0).Pos.Filename() == "assert.star" {
 			err.CallStack.Pop()
 		}
 		fmt.Fprintln(sb)
