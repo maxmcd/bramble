@@ -22,8 +22,169 @@ import (
 
 var ErrInvalidRead = errors.New("can't read from command output more than once")
 
+// CmdFunction is the value for the builtin "cmd", calling it as a function
+// creates a new cmd instance, it also has various other attributes and methods
+type CmdFunction struct {
+	session *session
+}
+
+var (
+	_ starlark.Value    = new(CmdFunction)
+	_ starlark.Callable = new(CmdFunction)
+)
+
+func NewCmdFunction(session *session) *CmdFunction {
+	return &CmdFunction{session: session}
+}
+
+func (fn *CmdFunction) Freeze()               {}
+func (fn *CmdFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable(fn.Type()) }
+func (fn *CmdFunction) Name() string          { return fn.Type() }
+func (fn *CmdFunction) String() string        { return "<built-in function cmd>" }
+func (fn *CmdFunction) Type() string          { return "builtin_function_cmd" }
+func (fn *CmdFunction) Truth() starlark.Bool  { return true }
+
+// CallInternal defines the cmd() starlark function.
+func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	return fn.newCmd(thread, args, kwargs, nil, "")
+}
+
+// NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
+// immediately if it can't find the cmd
+func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
+	cmd := Cmd{fn: fn}
+	cmd.Dir = fn.session.currentDirectory
+
+	var stdinKwarg starlark.Value
+	var dirKwarg starlark.String
+	var envKwarg *starlark.Dict
+	var clearEnvKwarg starlark.Bool
+	var ignoreFailureKwarg starlark.Bool
+	var printOutputKwarg starlark.Bool
+	if err = starlark.UnpackArgs("f", nil, kwargs,
+		"stdin?", &stdinKwarg,
+		"dir?", &dirKwarg,
+		"env?", &envKwarg,
+		"clear_env?", &clearEnvKwarg,
+		"ignore_failure?", &ignoreFailureKwarg,
+		"print_output?", &printOutputKwarg,
+	); err != nil {
+		return
+	}
+
+	if clearEnvKwarg == starlark.True {
+		cmd.Env = []string{}
+	} else {
+		cmd.Env = fn.session.envArray()
+	}
+	if envKwarg != nil {
+		kvs, err := starutil.DictToGoStringMap(envKwarg)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range kvs {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// and empty cmd() call isn't allowed
+	if args.Len() == 0 {
+		return nil, errors.New("cmd() missing 1 required positional argument")
+	}
+
+	if args.Index(0).Type() == "function" {
+		fn := args.Index(0).(callInternalable)
+		kwargs = append(kwargs, starlark.Tuple{starlark.String("stdin"), stdin})
+		return fn.CallInternal(thread, args[1:], kwargs)
+	}
+
+	// it's cmd(["grep", "-v"])
+	if args.Len() == 1 {
+		if args.Index(0).Type() == "list" {
+			cmd.Args, err = starutil.ListToListOfStrings(args.Index(0))
+			if err != nil {
+				return nil, err
+			}
+			if len(cmd.Args) == 0 {
+				return nil, errors.New("if the first argument is a list it can't be empty")
+			}
+		} else if args.Index(0).Type() == "string" {
+			starlarkCmd := args.Index(0).(starlark.String).GoString()
+			if starlarkCmd == "" {
+				return nil, errors.New("if the first argument is a string it can't be empty")
+			}
+			cmd.Args, err = shellquote.Split(starlarkCmd)
+			if err != nil {
+				return
+			}
+			if len(cmd.Args) == 0 {
+				// whitespace bash characters will be removed by shellquote,
+				// add them back for correct error message
+				cmd.Args = []string{starlarkCmd}
+			}
+		}
+	} else {
+		iterator := args.Iterate()
+		defer iterator.Done()
+		var val starlark.Value
+		for iterator.Next(&val) {
+			if err := cmd.addArgumentToCmd(val); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// expand shell variables in arguments
+	cmd.expandArguments()
+
+	if stdinKwarg != nil {
+		if err = cmdAttachStdin(&cmd, stdinKwarg); err != nil {
+			return
+		}
+	}
+	// kwargs:
+	// stdin
+	// dir
+	// env
+	name := cmd.name()
+	if filepath.Base(name) == name {
+		var lp string
+		if lp, err = exec.LookPath(name); err != nil {
+			return nil, err
+		}
+		cmd.Path = lp
+	} else {
+		cmd.Path = name
+	}
+
+	cmd.wg = &sync.WaitGroup{}
+	cmd.wg.Add(1)
+
+	cmd.ss, cmd.Stdout, cmd.Stderr = NewStandardStream()
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
+	err = cmd.Start()
+	go func() {
+		err := cmd.Cmd.Wait()
+		{
+			cmd.lock.Lock()
+			if err != nil {
+				cmd.err = err
+			}
+			cmd.finished = true
+			cmd.lock.Unlock()
+		}
+		cmd.ss.Close()
+		cmd.wg.Done()
+	}()
+	return &cmd, err
+}
+
 type Cmd struct {
 	exec.Cmd
+
+	fn       *CmdFunction
 	frozen   bool
 	finished bool
 	err      error
@@ -127,12 +288,12 @@ func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []sta
 	}
 
 	// if there is an error we run the command in or instead
-	return newCmd(thread, args, kwargs, nil, cmd.Dir)
+	return cmd.fn.newCmd(thread, args, kwargs, nil, cmd.Dir)
 }
 
 func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	_ = cmd.setOutput(true, false)
-	return newCmd(thread, args, kwargs, cmd, cmd.Dir)
+	return cmd.fn.newCmd(thread, args, kwargs, cmd, cmd.Dir)
 }
 
 func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
@@ -142,6 +303,12 @@ func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
 	}
 	cmd.Args = append(cmd.Args, val)
 	return
+}
+
+func (cmd *Cmd) expandArguments() {
+	for i, arg := range cmd.Args {
+		cmd.Args[i] = cmd.fn.session.expand(arg)
+	}
 }
 
 func (cmd *Cmd) starlarkWait(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
@@ -170,7 +337,7 @@ type callInternalable interface {
 	CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error)
 }
 
-func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
+func cmdAttachStdin(cmd *Cmd, val starlark.Value) (err error) {
 	switch v := val.(type) {
 	case *Cmd:
 		if err = v.setOutput(true, false); err != nil {
@@ -188,141 +355,6 @@ func attachStdin(cmd *Cmd, val starlark.Value) (err error) {
 		return errors.Errorf("can't take type %t for stdin", v)
 	}
 	return nil
-}
-
-// NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
-// immediately if it can't find the cmd
-func newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
-	fmt.Println(args)
-	// if input is an array we use the first item as the cmd
-	// if input is just args we use them as cmd+args
-	// if input is just a string we parse it as a shell command
-
-	cmd := Cmd{}
-	cmd.Dir = dir
-
-	var stdinKwarg starlark.Value
-	var dirKwarg starlark.String
-	var envKwarg *starlark.Dict
-	var clearEnvKwarg starlark.Bool
-	var ignoreFailureKwarg starlark.Bool
-	var printOutputKwarg starlark.Bool
-	if err = starlark.UnpackArgs("f", nil, kwargs,
-		"stdin?", &stdinKwarg,
-		"dir?", &dirKwarg,
-		"env?", &envKwarg,
-		"clear_env?", &clearEnvKwarg,
-		"ignore_failure?", &ignoreFailureKwarg,
-		"print_output?", &printOutputKwarg,
-	); err != nil {
-		return
-	}
-
-	if clearEnvKwarg == starlark.True {
-		cmd.Env = []string{}
-	}
-	if envKwarg != nil {
-		for _, key := range envKwarg.Keys() {
-			envVal, _, _ := envKwarg.Get(key)
-			keyString, err := starutil.ValueToString(key)
-			if err != nil {
-				return nil, err
-			}
-			valString, err := starutil.ValueToString(envVal)
-			if err != nil {
-				return nil, err
-			}
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", keyString, valString))
-		}
-	}
-
-	// cmd() isn't allowed
-	if args.Len() == 0 {
-		return nil, errors.New("cmd() missing 1 required positional argument")
-	}
-
-	if args.Index(0).Type() == "function" {
-		fn := args.Index(0).(callInternalable)
-		kwargs = append(kwargs, starlark.Tuple{starlark.String("stdin"), stdin})
-		return fn.CallInternal(thread, args[1:], kwargs)
-	}
-
-	// it's cmd(["grep", "-v"])
-	if args.Len() == 1 {
-		if args.Index(0).Type() == "list" {
-			cmd.Args, err = starutil.ListToListOfStrings(args.Index(0))
-			if err != nil {
-				return nil, err
-			}
-			if len(cmd.Args) == 0 {
-				return nil, errors.New("if the first argument is a list it can't be empty")
-			}
-		} else if args.Index(0).Type() == "string" {
-			starlarkCmd := args.Index(0).(starlark.String).GoString()
-			if starlarkCmd == "" {
-				return nil, errors.New("if the first argument is a string it can't be empty")
-			}
-			cmd.Args, err = shellquote.Split(starlarkCmd)
-			if err != nil {
-				return
-			}
-			if len(cmd.Args) == 0 {
-				// whitespace bash characters will be removed by shellquote,
-				// add them back for correct error message
-				cmd.Args = []string{starlarkCmd}
-			}
-		}
-	} else {
-		iterator := args.Iterate()
-		defer iterator.Done()
-		var val starlark.Value
-		for iterator.Next(&val) {
-			if err := cmd.addArgumentToCmd(val); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if stdinKwarg != nil {
-		if err = attachStdin(&cmd, stdinKwarg); err != nil {
-			return
-		}
-	}
-	// kwargs:
-	// stdin
-	// dir
-	// env
-	name := cmd.name()
-	if filepath.Base(name) == name {
-		var lp string
-		if lp, err = exec.LookPath(name); err != nil {
-			return nil, err
-		}
-		cmd.Path = lp
-	}
-
-	cmd.wg = &sync.WaitGroup{}
-	cmd.wg.Add(1)
-
-	cmd.ss, cmd.Stdout, cmd.Stderr = NewStandardStream()
-	if stdin != nil {
-		cmd.Stdin = stdin
-	}
-	err = cmd.Start()
-	go func() {
-		err := cmd.Cmd.Wait()
-		{
-			cmd.lock.Lock()
-			if err != nil {
-				cmd.err = err
-			}
-			cmd.finished = true
-			cmd.lock.Unlock()
-		}
-		cmd.ss.Close()
-		cmd.wg.Done()
-	}()
-	return &cmd, err
 }
 
 func (cmd *Cmd) setOutput(stdout, stderr bool) (err error) {
@@ -343,31 +375,6 @@ func (cmd *Cmd) Read(p []byte) (n int, err error) {
 	}
 
 	return
-}
-
-// CmdFunction is the value for the builtin "cmd", calling it as a function
-// creates a new cmd instance, it also has various other attributes and methods
-type CmdFunction struct{}
-
-var (
-	_ starlark.Value    = new(CmdFunction)
-	_ starlark.Callable = new(CmdFunction)
-)
-
-func NewCmdFunction() *CmdFunction {
-	return &CmdFunction{}
-}
-
-func (fn *CmdFunction) Freeze()               {}
-func (fn *CmdFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable(fn.Type()) }
-func (fn *CmdFunction) Name() string          { return fn.Type() }
-func (fn *CmdFunction) String() string        { return "<built-in function cmd>" }
-func (fn *CmdFunction) Type() string          { return "builtin_function_cmd" }
-func (fn *CmdFunction) Truth() starlark.Bool  { return true }
-
-// CallInternal defines the cmd() starlark function.
-func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
-	return newCmd(thread, args, kwargs, nil, "")
 }
 
 type ByteStream struct {

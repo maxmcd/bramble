@@ -29,7 +29,6 @@ func TestIntegration(t *testing.T) {
 }
 
 func TestRunStarlarkBuilder(t *testing.T) {
-	t.Skip()
 	b := Bramble{}
 
 	dir, err := ioutil.TempDir("", TestTmpDirPrefix)

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -80,6 +81,7 @@ type Bramble struct {
 	configLocation string
 	derivationFn   *DerivationFunction
 	cmd            *CmdFunction
+	session        *session
 
 	storePath   string
 	bramblePath string
@@ -107,32 +109,43 @@ func (b *Bramble) CalledDerivation() error {
 	return nil
 }
 
-func (b *Bramble) FindFunctionContext(derivationCallCount int, moduleCache map[string]string, moduleEntrypoint, calledFunction string) (thread *starlark.Thread, fn *starlark.Function, err error) {
-	prevCache := b.moduleCache
-	prevThread := b.thread
-	prevDerivationCallCount := b.derivationCallCount
+func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session *session) (err error) {
+	newBramble := &Bramble{
+		// retain from parent
+		config:         b.config,
+		configLocation: b.configLocation,
+		storePath:      b.storePath,
+		bramblePath:    b.bramblePath,
 
-	b.moduleCache = moduleCache
-	b.derivationFn.DerivationCallCount = derivationCallCount
-	b.derivationCallCount = 0
-	b.thread = &starlark.Thread{
-		Load: b.load,
+		// populate for this task
+		moduleEntrypoint:    meta.Module,
+		calledFunction:      meta.Function,
+		moduleCache:         meta.ModuleCache,
+		derivationCallCount: 0,
+		session:             session,
 	}
+	newBramble.thread = &starlark.Thread{Load: newBramble.load}
+	// this will pass the session to cmd and os
+	if err = newBramble.initPredeclared(); err != nil {
+		return
+	}
+	newBramble.derivationFn.DerivationCallCount = meta.DerivationCallCount
 
-	defer func() {
-		b.moduleCache = prevCache
-		b.derivationFn.DerivationCallCount = 0
-		b.derivationCallCount = prevDerivationCallCount
-		b.thread = prevThread
-	}()
-	globals, err := b.resolveModule(moduleEntrypoint)
+	spew.Dump(meta.Module)
+	globals, err := newBramble.resolveModule(meta.Module)
 	if err != nil {
 		return
 	}
 
-	_, intentionalError := starlark.Call(b.thread, globals[calledFunction].(*starlark.Function), nil, nil)
-
-	return b.thread, intentionalError.(*starlark.EvalError).Unwrap().(ErrFoundBuildContext).Fn, nil
+	_, intentionalError := starlark.Call(
+		newBramble.thread,
+		globals[meta.Function].(*starlark.Function),
+		nil, nil,
+	)
+	spew.Dump(intentionalError)
+	fn := intentionalError.(*starlark.EvalError).Unwrap().(ErrFoundBuildContext).Fn
+	_, err = starlark.Call(newBramble.thread, fn, nil, nil)
+	return
 }
 
 func (b *Bramble) reset() {
@@ -161,7 +174,17 @@ func (b *Bramble) init() (err error) {
 		Name: "main",
 		Load: b.load,
 	}
+	if b.session, err = newSession("", nil); err != nil {
+		return
+	}
 
+	return b.initPredeclared()
+}
+
+func (b *Bramble) initPredeclared() (err error) {
+	if b.derivationFn != nil {
+		return errors.New("can't init predeclared twice")
+	}
 	// creates the derivation function and checks we have a valid bramble path and store
 	b.derivationFn, err = NewDerivationFunction(b)
 	if err != nil {
@@ -172,14 +195,15 @@ func (b *Bramble) init() (err error) {
 	if err != nil {
 		return
 	}
-	b.cmd = NewCmdFunction()
+
+	b.cmd = NewCmdFunction(b.session)
+
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
 		"cmd":        b.cmd,
-		"os":         NewOS(b),
+		"os":         NewOS(b, b.session),
 		"assert":     assertGlobals["assert"],
 	}
-
 	return
 }
 
