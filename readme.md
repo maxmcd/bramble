@@ -14,9 +14,10 @@ Let's look at a simple example:
 
 ```python
 def run_busybox():
+    # this call triggers the derivation to calculate and build
     bb = busybox()
     # whoami is now available to run
-    bb.cmd("whoami").print()
+    print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
 
 
 def busybox():
@@ -31,38 +32,42 @@ def busybox():
         },
     )
 
-    return derivation(
-        name="busybox",
-        builder=build_busybox,
-        deps=[download],
-    )
+    # we pass the build_busybox callback here which is used to build this derivation
+    return derivation(name="busybox", builder=build_busybox, build_inputs=[download])
 
 
 def build_busybox():
-    os.mkdir("$out/bin") # using the builtin os module
+    os.mkdir("$out/bin")  # using the builtin os module
 
     # move the busybox executable into the output for this build
-    cmd("$busybox_download/busybox-x86_64",
+    print(cmd("echo ok $busybox_download/busybox-x86_64").output())
+    cmd(
+        "$busybox_download/busybox-x86_64",
         "cp",
-        "$busybox-x86_64 $out/bin/busybox").wait()
+        "$busybox_download/busybox-x86_64",
+        "$out/bin/busybox",
+    ).wait()
+
+    # extract the available commands from the busybox help text
     commands = []
     commands_started = False
-
-    # run the busybox help text to extract supported commands
     for line in cmd("$out/bin/busybox").output:
         if commands_started:
             for name in line.strip().split(","):
-                commands.push(name.strip())
-        if "Currently defined functions" in line:# the builtin os module
+                name = name.strip()
+                if name:
+                    commands.append(name)
+        if "Currently defined functions" in line:  # the builtin os module
             commands_started = True
 
-    # move into the output directory so that symlinks are relative
+    # cd into the output directory so that symlinks are relative
     os.cd("$out/bin")
-
     cmd("./busybox ln -s busybox ln").wait()
-    # link each command
-    for cmd in commands:
-        cmd("./ln -s busybox %s" % cmd).wait()
+
+    # link each command so that we can use all the available busybox commands
+    for c in commands:
+        if c != "ln":
+            cmd("./ln -s busybox %s" % c).output()
 ```
 
 We can save this file as "example.bramble" to our filesystem and run it with `bramble run example:run_busybox`

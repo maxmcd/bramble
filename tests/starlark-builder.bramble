@@ -1,4 +1,5 @@
 def run_busybox():
+    # this call triggers the derivation to calculate and build
     bb = busybox()
     # whoami is now available to run
     print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
@@ -16,13 +17,14 @@ def busybox():
         },
     )
 
+    # we pass the build_busybox callback here which is used to build this derivation
     return derivation(name="busybox", builder=build_busybox, build_inputs=[download])
 
 
 def build_busybox():
     os.mkdir("$out/bin")  # using the builtin os module
-    # move the fbasdfusybox executable into the output for this build
 
+    # move the busybox executable into the output for this build
     print(cmd("echo ok $busybox_download/busybox-x86_64").output())
     cmd(
         "$busybox_download/busybox-x86_64",
@@ -30,10 +32,10 @@ def build_busybox():
         "$busybox_download/busybox-x86_64",
         "$out/bin/busybox",
     ).wait()
+
+    # extract the available commands from the busybox help text
     commands = []
     commands_started = False
-
-    # run the busybox help text to extract supported commands
     for line in cmd("$out/bin/busybox").output:
         if commands_started:
             for name in line.strip().split(","):
@@ -43,11 +45,11 @@ def build_busybox():
         if "Currently defined functions" in line:  # the builtin os module
             commands_started = True
 
-    # move into the output directory so that symlinks are relative,
+    # cd into the output directory so that symlinks are relative
     os.cd("$out/bin")
     cmd("./busybox ln -s busybox ln").wait()
 
-    # link each command
+    # link each command so that we can use all the available busybox commands
     for c in commands:
         if c != "ln":
             cmd("./ln -s busybox %s" % c).output()
