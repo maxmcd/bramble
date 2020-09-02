@@ -1,7 +1,7 @@
 def run_busybox():
     bb = busybox()
     # whoami is now available to run
-    # bb.cmd("whoami").print()
+    print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
 
 
 def busybox():
