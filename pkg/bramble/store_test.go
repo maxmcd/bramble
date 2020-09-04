@@ -9,12 +9,12 @@ import (
 )
 
 func Test_ensureBramblePath(t *testing.T) {
-	_, storePath, err := ensureBramblePath()
+	s, err := NewStore()
 	if err != nil {
 		t.Error(err)
 	}
 	// -1 because the output path is "/foo/bar" plus the trailing slash
-	assert.Equal(t, len(storePath), PathPaddingLength-1)
+	assert.Equal(t, len(s.storePath), PathPaddingLength-1)
 }
 
 func Test_calculatePaddedDirectoryName(t *testing.T) {

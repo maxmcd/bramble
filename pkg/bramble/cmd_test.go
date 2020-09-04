@@ -17,12 +17,16 @@ type cmdTest struct {
 func runCmdTest(t *testing.T, tests []cmdTest) {
 	session, err := newSession("", nil)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+	b := Bramble{}
+	if err = b.init(); err != nil {
+		t.Fatal(err)
 	}
 	for _, tt := range tests {
 		t.Run(tt.script, func(t *testing.T) {
 			thread := &starlark.Thread{Name: "main"}
-			cmd := NewCmdFunction(session)
+			cmd := NewCmdFunction(session, &b)
 			globals, err := starlark.ExecFile(
 				thread, tt.name+".bramble",
 				tt.script, starlark.StringDict{"cmd": cmd},

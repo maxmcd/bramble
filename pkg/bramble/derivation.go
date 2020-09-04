@@ -87,7 +87,21 @@ func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 }
 
 func (f *DerivationFunction) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{f.bramble.StorePath()}, v...)...)
+	return f.bramble.store.joinStorePath(v...)
+}
+
+func (f *DerivationFunction) checkBytesForDerivations(b []byte) (inputDerivations InputDerivations) {
+	for location, derivation := range f.derivations {
+		for name, output := range derivation.Outputs {
+			if bytes.Contains(b, []byte(output.Path)) {
+				inputDerivations = append(inputDerivations, InputDerivation{
+					Path:   location,
+					Output: name,
+				})
+			}
+		}
+	}
+	return
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
@@ -108,10 +122,7 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 func (f *DerivationFunction) buildDerivation(drv *Derivation) (err error) {
 	var exists bool
 	exists, err = drv.checkForExisting()
-	if err != nil {
-		return
-	}
-	if exists {
+	if err != nil || exists {
 		return
 	}
 	if err = drv.build(); err != nil {
@@ -148,7 +159,8 @@ func (f *DerivationFunction) DownloadFile(url string, hash string) (path string,
 		return
 	}
 	defer resp.Body.Close()
-	file, err := ioutil.TempFile(filepath.Join(f.bramble.BramblePath(), "tmp"), "")
+
+	file, err := ioutil.TempFile(f.bramble.store.joinBramblePath("tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a download")
 		return
@@ -353,7 +365,7 @@ type Derivation struct {
 	Args             []string
 	Env              map[string]string
 	Sources          []string
-	InputDerivations []InputDerivation
+	InputDerivations InputDerivations
 
 	// internal fields
 	function *DerivationFunction
@@ -374,6 +386,28 @@ type Output struct {
 type InputDerivation struct {
 	Path   string
 	Output string
+}
+
+type InputDerivations []InputDerivation
+
+func sortAndUniqueInputDerivations(ids InputDerivations) InputDerivations {
+	sort.Slice(ids, func(i, j int) bool {
+		id := ids[i]
+		jd := ids[j]
+		return id.Path+id.Output < jd.Path+id.Output
+	})
+	if len(ids) == 0 {
+		return ids
+	}
+	j := 0
+	for i := 1; i < len(ids); i++ {
+		if ids[j] == ids[i] {
+			continue
+		}
+		j++
+		ids[j] = ids[i]
+	}
+	return ids[:j+1]
 }
 
 var (
@@ -408,27 +442,19 @@ func (drv *Derivation) prettyJSON() string {
 }
 
 func (drv *Derivation) calculateInputDerivations() (err error) {
-	// TODO: is this the best way to do this? presumaby in nix it's a language
-	// feature
+	// TODO: combine this with checking of build_inputs
+	// TODO: also check derivations passed to cmd run
 
 	fileBytes, err := json.Marshal(drv)
 	if err != nil {
 		return
 	}
-	for location, derivation := range drv.function.derivations {
-		// TODO: check all outputs, not just the default
-		if bytes.Contains(fileBytes, []byte(derivation.String())) {
-			drv.InputDerivations = append(drv.InputDerivations, InputDerivation{
-				Path:   location,
-				Output: "out",
-			})
-		}
-	}
-	sort.Slice(drv.InputDerivations, func(i, j int) bool {
-		id := drv.InputDerivations[i]
-		jd := drv.InputDerivations[j]
-		return id.Path+id.Output < jd.Path+id.Output
-	})
+
+	drv.InputDerivations = sortAndUniqueInputDerivations(append(
+		drv.InputDerivations,
+		drv.function.checkBytesForDerivations(fileBytes)...,
+	))
+
 	return nil
 }
 
@@ -520,7 +546,7 @@ func (drv *Derivation) writeDerivation() (err error) {
 	return nil
 }
 
-func (drv *Derivation) storePath() string { return drv.function.bramble.StorePath() }
+func (drv *Derivation) storePath() string { return drv.function.bramble.store.storePath }
 
 func (drv *Derivation) createBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir("", TempDirPrefix)
