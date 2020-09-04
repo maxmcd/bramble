@@ -3,15 +3,11 @@ load("github.com/maxmcd/bramble/tests/busybox", "busybox")
 
 def nested():
     bb = busybox()
-    derivation(
-        name="nested2",
-        builder="%s/bin/sh" % bb.out,
-        env={"PATH": "%s/bin" % bb.out},
-        sources=["../file.txt", "../script.sh"],
-        args=["../script.sh"],
-    )
+    return [nested1(bb), nested2(bb), nested3(bb)]
 
-    derivation(
+
+def nested1(bb):
+    return derivation(
         name="nested",
         env={"PATH": "%s/bin" % bb.out},
         builder="%s/bin/sh" % bb.out,
@@ -19,7 +15,19 @@ def nested():
         args=["../script.sh"],
     )
 
-    derivation(
+
+def nested2(bb):
+    return derivation(
+        name="nested2",
+        builder="%s/bin/sh" % bb.out,
+        env={"PATH": "%s/bin" % bb.out},
+        sources=["../file.txt", "../script.sh"],
+        args=["../script.sh"],
+    )
+
+
+def nested3(bb):
+    return derivation(
         name="nested3",
         builder="%s/bin/sh" % bb.out,
         env={"PATH": "%s/bin" % bb.out},

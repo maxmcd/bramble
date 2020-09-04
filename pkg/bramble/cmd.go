@@ -26,6 +26,11 @@ var ErrInvalidRead = errors.New("can't read from command output more than once")
 // creates a new cmd instance, it also has various other attributes and methods
 type CmdFunction struct {
 	session *session
+
+	bramble *Bramble
+
+	// derivations that are touched by running commands
+	inputDerivations InputDerivations
 }
 
 var (
@@ -33,8 +38,8 @@ var (
 	_ starlark.Callable = new(CmdFunction)
 )
 
-func NewCmdFunction(session *session) *CmdFunction {
-	return &CmdFunction{session: session}
+func NewCmdFunction(session *session, bramble *Bramble) *CmdFunction {
+	return &CmdFunction{session: session, bramble: bramble}
 }
 
 func (fn *CmdFunction) Freeze()               {}
@@ -47,6 +52,18 @@ func (fn *CmdFunction) Truth() starlark.Bool  { return true }
 // CallInternal defines the cmd() starlark function.
 func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	return fn.newCmd(thread, args, kwargs, nil, "")
+}
+
+func (fn *CmdFunction) calculateInputDerivations(cmd *Cmd) {
+	var buf bytes.Buffer
+	fmt.Fprint(&buf, cmd.Path)
+	fmt.Fprint(&buf, strings.Join(cmd.Args, ""))
+	fmt.Fprint(&buf, strings.Join(cmd.Env, ""))
+
+	fn.inputDerivations = append(
+		fn.inputDerivations,
+		fn.bramble.derivationFn.checkBytesForDerivations(buf.Bytes())...,
+	)
 }
 
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
@@ -156,6 +173,8 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	} else {
 		cmd.Path = name
 	}
+
+	fn.calculateInputDerivations(&cmd)
 
 	cmd.wg = &sync.WaitGroup{}
 	cmd.wg.Add(1)

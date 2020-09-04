@@ -123,11 +123,11 @@ func TestBramble_resolveModule(t *testing.T) {
 		}, {
 			name:    "missing file",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/testfiles/mayne",
-			wantErr: errModuleDoesNotExist.Error(),
+			wantErr: "couldn't find",
 		}, {
 			name:    "missing default",
 			module:  "github.com/maxmcd/bramble/pkg/bramble/",
-			wantErr: errModuleDoesNotExist.Error(),
+			wantErr: "couldn't find",
 		},
 	}
 	for _, tt := range tests {
