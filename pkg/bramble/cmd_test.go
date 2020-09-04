@@ -124,7 +124,7 @@ func TestArgs(t *testing.T) {
 		{script: `b=cmd("env", clear_env=True).output()`,
 			returnValue: `""`},
 		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).output()`,
-			returnValue: `"foo=bar\nbaz=1\n"`},
+			returnValue: `"baz=1\nfoo=bar\n"`},
 	}
 	runCmdTest(t, tests)
 }

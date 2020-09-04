@@ -119,21 +119,6 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 	return drv, true, json.NewDecoder(file).Decode(drv)
 }
 
-func (f *DerivationFunction) buildDerivation(drv *Derivation) (err error) {
-	var exists bool
-	exists, err = drv.checkForExisting()
-	if err != nil || exists {
-		return
-	}
-	if err = drv.build(); err != nil {
-		return
-	}
-	if err = drv.writeDerivation(); err != nil {
-		return
-	}
-	return
-}
-
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
 func (f *DerivationFunction) DownloadFile(url string, hash string) (path string, err error) {
@@ -231,10 +216,9 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if err = drv.calculateInputDerivations(); err != nil {
 		return nil, err
 	}
-	f.log.Debug("Calculated derivation before build: ", drv.prettyJSON())
 
 	f.log.Debugf("Building derivation %q", drv.Name)
-	if err = f.buildDerivation(drv); err != nil {
+	if err = drv.buildIfNew(); err != nil {
 		return nil, err
 	}
 	f.log.Debug("Completed derivation: ", drv.prettyJSON())
@@ -636,6 +620,18 @@ func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
 	return drv.function.bramble.CallInlineDerivationFunction(
 		meta, session,
 	)
+}
+
+func (drv *Derivation) buildIfNew() (err error) {
+	var exists bool
+	exists, err = drv.checkForExisting()
+	if err != nil || exists {
+		return
+	}
+	if err = drv.build(); err != nil {
+		return
+	}
+	return drv.writeDerivation()
 }
 
 func (drv *Derivation) build() (err error) {

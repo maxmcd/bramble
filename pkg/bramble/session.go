@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -52,6 +53,7 @@ func (s *session) envArray() (out []string) {
 	for k, v := range s.env {
 		out = append(out, fmt.Sprintf("%s=%s", k, v))
 	}
+	sort.Strings(out)
 	return
 }
 
