@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -103,6 +104,8 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
+	// this feels like it's helping determinism, is it?
+	sort.Strings(cmd.Env)
 
 	// and empty cmd() call isn't allowed
 	if args.Len() == 0 {
