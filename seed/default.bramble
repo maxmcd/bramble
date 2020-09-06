@@ -11,3 +11,24 @@ def seed():
             "hash": "111005a76fa66c148799a8fb67fb784ac47944fcba791efe7599128bbd5884ac",
         },
     )
+
+
+def ldd():
+    s = seed()
+
+    return derivation(name="ld", builder=build_ldd, build_inputs=[s])
+
+
+def build_ldd():
+    os.mkdir("$out/bin")
+    f = os.create("$out/bin/ldd")
+    f.write(
+        """#!{seed}/bin/sh
+exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
+#hihihihi
+""".format(
+            seed=os.getenv("seed")
+        )
+    )
+    f.close()
+    cmd("$seed/bin/chmod", "+x", "$out/bin/ldd").wait()

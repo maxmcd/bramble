@@ -534,15 +534,6 @@ func (drv *Derivation) calculateInputSources() (err error) {
 	drv.InputSource.Path = hasher.String()
 	drv.InputSource.RelativeLocation = relBramblefileLocation
 	return
-	//
-	// if err != nil {
-	// 	return "", errors.Wrap(err, "error calculating relative bramblefile loc")
-	// }
-	// runLocation = filepath.Join(destination, relBramblefileLocation)
-	// if err = os.MkdirAll(runLocation, 0755); err != nil {
-	// 	return "", errors.Wrap(err, "error making build directory")
-	// }
-	// return
 }
 
 func (drv *Derivation) writeDerivation() (err error) {
@@ -696,6 +687,7 @@ func (drv *Derivation) build() (err error) {
 	if err != nil {
 		return
 	}
+
 	folderName := hashString + "-" + drv.Name
 	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
 
@@ -705,19 +697,20 @@ func (drv *Derivation) build() (err error) {
 	if doesnotExistErr != nil {
 		return os.Rename(outPath, newPath)
 	}
-	// hashed content is already there, just exit
 	return
 }
 
 func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
 	var storeValues []string
-	old := drv.storePath()
+	oldStorePath := drv.storePath()
 	new := BramblePrefixOfRecord
 
 	for _, derivation := range drv.function.derivations {
-		storeValues = append(storeValues, strings.Replace(derivation.String(), "$bramble_path", old, 1))
+		for _, output := range derivation.Outputs {
+			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
+		}
 	}
-
+	fmt.Println(storeValues)
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
@@ -732,7 +725,8 @@ func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, 
 	}()
 	hasher := NewHasher()
 	go func() {
-		_, matches, err := textreplace.ReplaceStringsPrefix(pipeReader, hasher, storeValues, old, new)
+		_, matches, err := textreplace.ReplaceStringsPrefix(
+			pipeReader, hasher, storeValues, oldStorePath, new)
 		if err != nil {
 			errChan <- err
 		}
