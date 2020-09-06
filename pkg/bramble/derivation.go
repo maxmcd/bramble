@@ -2,22 +2,17 @@ package bramble
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/reptar"
@@ -144,34 +139,13 @@ func (f *DerivationFunction) DownloadFile(url string, hash string) (path string,
 		return
 	}
 	defer resp.Body.Close()
-
-	file, err := ioutil.TempFile(f.bramble.store.joinBramblePath("tmp"), "")
-	if err != nil {
-		err = errors.Wrap(err, "error creating a temporary file for a download")
-		return
-	}
-	sha256Hash := sha256.New()
-	tee := io.TeeReader(resp.Body, sha256Hash)
-	if _, err = io.Copy(file, tee); err != nil {
-		err = errors.Wrap(err, "error writing to the temporary download file")
-		return
-	}
-	sha256HashBytes := sha256Hash.Sum(nil)
-	hexStringHash := fmt.Sprintf("%x", sha256HashBytes)
-	if hash != hexStringHash {
+	path, err = f.bramble.store.writeReader(resp.Body, filepath.Base(url), hash)
+	if err == errHashMismatch {
 		err = errors.Errorf(
 			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
-			url, hash, hexStringHash)
-		// make best effort to save this file, as we'll likely just download it again
-		storePrefixHash = bytesToBase32Hash(sha256HashBytes)
+			url, hash, path)
 	}
-	path = f.joinStorePath(storePrefixHash + "-" + filepath.Base(url))
-	// don't overwrite err if we error here, we want to try and save this, but
-	// still return the incorrect hash error
-	if er := os.Rename(file.Name(), path); er != nil {
-		return "", errors.Wrap(er, "error moving file into store")
-	}
-	return path, err
+	return
 }
 
 type ErrFoundBuildContext struct {
@@ -211,17 +185,32 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if err != nil {
 		return nil, err
 	}
+
 	// At(0) is within this function, we want the file of the caller
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 	if err = drv.calculateInputDerivations(); err != nil {
 		return nil, err
 	}
 
+	if err = drv.calculateInputSources(); err != nil {
+		return
+	}
+
+	f.log.Debug("Completed derivation: ", drv.prettyJSON())
+
+	// derivation calculation complete, hard barier
+	// TODO: expand on this nonsensical comment
+	// ---------------------------------------------------------------
+
 	f.log.Debugf("Building derivation %q", drv.Name)
 	if err = drv.buildIfNew(); err != nil {
 		return nil, err
 	}
 	f.log.Debug("Completed derivation: ", drv.prettyJSON())
+	// TODO: add this panic but don't include outputs in the comparison
+	// if beforeBuild != drv.prettyJSON() {
+	// 	panic(beforeBuild + drv.prettyJSON())
+	// }
 	_, filename, err := drv.computeDerivation()
 	if err != nil {
 		return
@@ -294,10 +283,11 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		}
 	}
 	if sources != nil {
-		if drv.Sources, err = starutil.ListToGoList(sources); err != nil {
+		if drv.sources, err = starutil.ListToGoList(sources); err != nil {
 			return
 		}
 	}
+	fmt.Println(drv.sources)
 	if env != nil {
 		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
 			return
@@ -348,12 +338,18 @@ type Derivation struct {
 	Platform         string
 	Args             []string
 	Env              map[string]string
-	Sources          []string
 	InputDerivations InputDerivations
+	InputSource      InputSource
 
 	// internal fields
+	sources  []string
 	function *DerivationFunction
 	location string
+}
+
+type InputSource struct {
+	Path             string
+	RelativeLocation string
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
@@ -486,12 +482,17 @@ func (drv *Derivation) checkForExisting() (exists bool, err error) {
 	return true, nil
 }
 
-func (drv *Derivation) assembleSources(destination string) (runLocation string, err error) {
-	if len(drv.Sources) == 0 {
+func (drv *Derivation) calculateInputSources() (err error) {
+	if len(drv.sources) == 0 {
 		return
 	}
-	sources := drv.Sources
-	drv.Sources = []string{}
+	tmpDir, err := drv.createBuildDir()
+	if err != nil {
+		return
+	}
+
+	sources := drv.sources
+	drv.sources = []string{}
 	absDir, err := filepath.Abs(drv.location)
 	if err != nil {
 		return
@@ -501,20 +502,47 @@ func (drv *Derivation) assembleSources(destination string) (runLocation string, 
 		sources[i] = filepath.Join(absDir, src)
 	}
 	prefix := commonFilepathPrefix(append(sources, absDir))
-
-	if err = copyFiles(prefix, sources, destination); err != nil {
-		return
-	}
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
-		return "", errors.Wrap(err, "error calculating relative bramblefile loc")
+		return
 	}
-	runLocation = filepath.Join(destination, relBramblefileLocation)
+
+	if err = copyFilesByPath(prefix, sources, tmpDir); err != nil {
+		return
+	}
+	// sometimes the location the derivation runs from is not present
+	// in the structure of the copied source files. ensure that we add it
+	runLocation := filepath.Join(tmpDir, relBramblefileLocation)
 	if err = os.MkdirAll(runLocation, 0755); err != nil {
-		return "", errors.Wrap(err, "error making build directory")
+		return
 	}
-	drv.Env["src"] = destination
+
+	hasher := NewHasher()
+	if err = reptar.Reptar(tmpDir, hasher); err != nil {
+		return
+	}
+	storeLocation := drv.function.joinStorePath(hasher.String())
+	if pathExists(storeLocation) {
+		if err = os.RemoveAll(tmpDir); err != nil {
+			return
+		}
+	} else {
+		if err = os.Rename(tmpDir, storeLocation); err != nil {
+			return
+		}
+	}
+	drv.InputSource.Path = hasher.String()
+	drv.InputSource.RelativeLocation = relBramblefileLocation
 	return
+	//
+	// if err != nil {
+	// 	return "", errors.Wrap(err, "error calculating relative bramblefile loc")
+	// }
+	// runLocation = filepath.Join(destination, relBramblefileLocation)
+	// if err = os.MkdirAll(runLocation, 0755); err != nil {
+	// 	return "", errors.Wrap(err, "error making build directory")
+	// }
+	// return
 }
 
 func (drv *Derivation) writeDerivation() (err error) {
@@ -558,18 +586,12 @@ func (drv *Derivation) expand(s string) string {
 }
 
 func (drv *Derivation) regularBuilder(buildDir, outPath string) (err error) {
-	var runLocation string
-	runLocation, err = drv.assembleSources(buildDir)
-	if err != nil {
-		return
-	}
 	builderLocation := drv.expand(drv.Builder)
-
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "error checking if builder location exists")
 	}
 	cmd := exec.Command(builderLocation, drv.Args...)
-	cmd.Dir = runLocation
+	cmd.Dir = filepath.Join(buildDir, drv.InputSource.RelativeLocation)
 	cmd.Env = []string{}
 	for k, v := range drv.Env {
 		v = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
@@ -612,6 +634,9 @@ func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
 	if err != nil {
 		return
 	}
+	if err = session.cd(filepath.Join(buildDir, drv.InputSource.RelativeLocation)); err != nil {
+		return
+	}
 	session.setEnv("out", outPath)
 	for k, v := range session.env {
 		session.env[k] = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
@@ -638,6 +663,13 @@ func (drv *Derivation) build() (err error) {
 	buildDir, err := drv.createBuildDir()
 	if err != nil {
 		return
+	}
+
+	if drv.InputSource.Path != "" {
+		if err = copyDirectory(drv.function.joinStorePath(drv.InputSource.Path), buildDir); err != nil {
+			return errors.Wrap(err, "error copying sources into build dir")
+		}
+		fmt.Println(buildDir, drv.function.joinStorePath(drv.InputSource.Path))
 	}
 
 	outPath, err := drv.computeOutPath()
@@ -715,190 +747,4 @@ func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, 
 		}
 		return matches, hasher.String(), nil
 	}
-}
-
-func commonFilepathPrefix(paths []string) string {
-	sep := byte(os.PathSeparator)
-	if len(paths) == 0 {
-		return string(sep)
-	}
-
-	c := []byte(path.Clean(paths[0]))
-	c = append(c, sep)
-
-	for _, v := range paths[1:] {
-		v = path.Clean(v) + string(sep)
-		if len(v) < len(c) {
-			c = c[:len(v)]
-		}
-		for i := 0; i < len(c); i++ {
-			if v[i] != c[i] {
-				c = c[:i]
-				break
-			}
-		}
-	}
-
-	for i := len(c) - 1; i >= 0; i-- {
-		if c[i] == sep {
-			c = c[:i+1]
-			break
-		}
-	}
-
-	return string(c)
-}
-
-// Hasher is used to compute path hash values. Hasher implements io.Writer and
-// takes a sha256 hash of the input bytes. The output string is a lowercase
-// base32 representation of the first 160 bits of the hash
-type Hasher struct {
-	hash hash.Hash
-}
-
-func NewHasher() *Hasher {
-	return &Hasher{
-		hash: sha256.New(),
-	}
-}
-
-func (h *Hasher) Write(b []byte) (n int, err error) {
-	return h.hash.Write(b)
-}
-
-func (h *Hasher) String() string {
-	return bytesToBase32Hash(h.hash.Sum(nil))
-}
-
-// bytesToBase32Hash copies nix here
-// https://nixos.org/nixos/nix-pills/nix-store-paths.html
-// Finally the comments tell us to compute the base32 representation of the
-// first 160 bits (truncation) of a sha256 of the above string:
-func bytesToBase32Hash(b []byte) string {
-	var buf bytes.Buffer
-	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(b[:20])
-	return strings.ToLower(buf.String())
-}
-
-func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
-	defer file.Close()
-	hasher := NewHasher()
-	if _, err = hasher.Write([]byte(name)); err != nil {
-		return
-	}
-	if _, err = io.Copy(hasher, file); err != nil {
-		return
-	}
-	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
-	return
-}
-
-// CopyFiles takes a list of absolute paths to files and copies them into
-// another directory, maintaining structure
-func copyFiles(prefix string, files []string, dest string) (err error) {
-	files, err = expandPathDirectories(files)
-	if err != nil {
-		return err
-	}
-
-	sort.Slice(files, func(i, j int) bool { return len(files[i]) < len(files[j]) })
-	for _, file := range files {
-		destPath := filepath.Join(dest, strings.TrimPrefix(file, prefix))
-		fileInfo, err := os.Stat(file)
-		if err != nil {
-			return errors.Wrap(err, "error finding source file")
-		}
-
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
-		}
-
-		switch fileInfo.Mode() & os.ModeType {
-		case os.ModeDir:
-			if err := createDirIfNotExists(destPath, 0755); err != nil {
-				return err
-			}
-		case os.ModeSymlink:
-			if err := copySymLink(file, destPath); err != nil {
-				return err
-			}
-		default:
-			if err := copyFile(file, destPath); err != nil {
-				return err
-			}
-		}
-
-		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return err
-		}
-
-		// TODO: when does this happen???
-		isSymlink := fileInfo.Mode()&os.ModeSymlink != 0
-		if !isSymlink {
-			if err := os.Chmod(destPath, fileInfo.Mode()); err != nil {
-				return err
-			}
-		}
-	}
-	return
-}
-
-// takes a list of paths and adds all files in all subdirectories
-func expandPathDirectories(files []string) (out []string, err error) {
-	for _, file := range files {
-		if err = filepath.Walk(file,
-			func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				out = append(out, path)
-				return nil
-			}); err != nil {
-			return
-		}
-	}
-	return
-}
-
-func copyFile(srcFile, dstFile string) error {
-	out, err := os.Create(dstFile)
-	if err != nil {
-		return err
-	}
-
-	defer out.Close()
-
-	in, err := os.Open(srcFile)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createDirIfNotExists(dir string, perm os.FileMode) error {
-	if pathExists(dir) {
-		return nil
-	}
-
-	if err := os.MkdirAll(dir, perm); err != nil {
-		return fmt.Errorf("failed to create directory: '%s', error: '%s'", dir, err.Error())
-	}
-
-	return nil
-}
-
-func copySymLink(source, dest string) error {
-	link, err := os.Readlink(source)
-	if err != nil {
-		return err
-	}
-	return os.Symlink(link, dest)
 }

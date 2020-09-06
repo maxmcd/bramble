@@ -10,6 +10,7 @@ var (
 	errRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
 	errQuiet                    = errors.New("")
 	errHelp                     = errors.New("")
+	errHashMismatch             = errors.New("two hashes don't match")
 )
 
 type errModuleDoesNotExist string

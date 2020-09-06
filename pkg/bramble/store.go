@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -49,7 +50,6 @@ func (s *Store) ensureBramblePath() (err error) {
 			return
 		}
 	}
-
 	files, err := ioutil.ReadDir(s.bramblePath)
 	if err != nil {
 		err = errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
@@ -92,6 +92,9 @@ func (s *Store) ensureBramblePath() (err error) {
 		if err = os.Mkdir(s.joinBramblePath("var/config-registry"), 0755); err != nil {
 			return
 		}
+		if err = os.Mkdir(s.joinBramblePath("var/star-cache"), 0755); err != nil {
+			return
+		}
 	}
 
 	// otherwise, check if the exact store path we need exists
@@ -108,6 +111,34 @@ func (s *Store) joinStorePath(v ...string) string {
 }
 func (s *Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.bramblePath}, v...)...)
+}
+
+func (s *Store) writeReader(src io.Reader, name string, validateHash string) (path string, err error) {
+	hasher := NewHasher()
+	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
+	if err != nil {
+		err = errors.Wrap(err, "error creating a temporary file for a write to the store")
+		return
+	}
+	tee := io.TeeReader(src, hasher)
+	if _, err = io.Copy(file, tee); err != nil {
+		err = errors.Wrap(err, "error writing to the temporary store file")
+		return
+	}
+	fileName := hasher.String()
+	if validateHash != "" {
+		if hasher.Sha256Hex() != validateHash {
+			return fileName, errHashMismatch
+		}
+	}
+	if name != "" {
+		fileName += ("-" + name)
+	}
+	path = s.joinStorePath(fileName)
+	if er := os.Rename(file.Name(), path); er != nil {
+		return "", errors.Wrap(er, "error moving file into store")
+	}
+	return
 }
 
 func (s *Store) writeConfigLink(location string, derivations map[string][]string) (err error) {

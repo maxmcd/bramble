@@ -35,3 +35,6 @@ starlark_builder: install
 
 simple: install
 	bramble run tests/simple/simple:simple
+
+nested: install
+	bramble run tests/nested-sources/another-folder/nested:nested
