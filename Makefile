@@ -38,3 +38,6 @@ simple: install
 
 nested: install
 	bramble run tests/nested-sources/another-folder/nested:nested
+
+ldd: install
+	bramble run seed:ldd

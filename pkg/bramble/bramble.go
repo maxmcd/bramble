@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 
@@ -354,7 +355,52 @@ func (b *Bramble) run(args []string) (err error) {
 	return b.writeLockfileAndMetadata(valuesToDerivations(values))
 }
 
-func (b *Bramble) gc(args []string) error {
+func (b *Bramble) gc(args []string) (err error) {
+	if err = b.init(); err != nil {
+		return
+	}
+	registryFolder := b.store.joinBramblePath("var", "config-registry")
+	files, err := ioutil.ReadDir(registryFolder)
+	if err != nil {
+		return
+	}
+
+	var toKeep []InputDerivation
+	for _, f := range files {
+		var drvMap derivationMap
+		registryLoc := filepath.Join(registryFolder, f.Name())
+		f, err := os.Open(registryLoc)
+		if err != nil {
+			return err
+		}
+		if _, err := toml.DecodeReader(f, &drvMap); err != nil {
+			return err
+		}
+		fmt.Println("assembling derivations for", drvMap.Location)
+		// delete the config if we can't find the project any more
+		tomlLoc := filepath.Join(drvMap.Location, "bramble.toml")
+		if !pathExists(tomlLoc) {
+			fmt.Printf("deleting cache for %q, it no longer exists\n", tomlLoc)
+			if err := os.Remove(registryLoc); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, list := range drvMap.Derivations {
+			// TODO: check that these global entrypoints actually still exist
+			for _, item := range list {
+				parts := strings.Split(item, ":")
+				toKeep = append(toKeep, InputDerivation{
+					Path:   parts[0],
+					Output: parts[1],
+				})
+			}
+		}
+	}
+
+	_ = toKeep
+	// TODO: actually delete the derivations
+
 	return nil
 }
 

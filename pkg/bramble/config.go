@@ -63,9 +63,13 @@ func (b *Bramble) writeLockfileAndMetadata(derivations []*Derivation) (err error
 		outputs = append(outputs, drv.Path+":"+drv.Output)
 	}
 	for _, drv := range derivations {
+		_, filename, err := drv.computeDerivation()
+		if err != nil {
+			return err
+		}
 		// add all outputs for returned derivations
-		for name, out := range drv.Outputs {
-			outputs = append(outputs, out.Path+":"+name)
+		for name := range drv.Outputs {
+			outputs = append(outputs, filename+":"+name)
 		}
 	}
 	derivationsStringMap := map[string][]string{}

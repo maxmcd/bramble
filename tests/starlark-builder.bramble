@@ -1,6 +1,7 @@
 def run_busybox():
     # this call triggers the derivation to calculate and build
     bb = busybox()
+
     # whoami is now available to run
     print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
 

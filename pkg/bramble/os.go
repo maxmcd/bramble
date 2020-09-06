@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"bufio"
+	"fmt"
 	goos "os"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -56,6 +57,8 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
 	case "cd":
 		return starutil.Callable{ThisName: "cd", ParentName: "os", Callable: os.cd}, nil
+	case "create":
+		return starutil.Callable{ThisName: "create", ParentName: "os", Callable: os.create}, nil
 	case "getenv":
 		return starutil.Callable{ThisName: "getenv", ParentName: "os", Callable: os.getenv}, nil
 	case "setenv":
@@ -113,4 +116,68 @@ func (os OS) cd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 		return
 	}
 	return starlark.None, os.session.cd(os.session.expand(path.GoString()))
+}
+
+func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var path starlark.String
+	if err = starlark.UnpackArgs("cd", args, kwargs, "path", &path); err != nil {
+		return
+	}
+	f, err := goos.Create(os.session.expand(path.GoString()))
+	return File{file: f}, err
+}
+
+type File struct {
+	bramble *Bramble
+	session *session
+
+	name string
+	file *goos.File
+}
+
+var (
+	_ starlark.Value    = File{}
+	_ starlark.HasAttrs = File{}
+)
+
+func (f File) String() string        { return fmt.Sprintf("<file '%s'>", f.name) }
+func (f File) Freeze()               {}
+func (f File) Type() string          { return "file" }
+func (f File) Truth() starlark.Bool  { return starlark.True }
+func (f File) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("os") }
+func (f File) AttrNames() []string {
+	return []string{
+		"write",
+		"close",
+	}
+}
+
+func (f File) Attr(name string) (val starlark.Value, err error) {
+	switch name {
+	case "write":
+		return starutil.Callable{ThisName: "write", ParentName: "file", Callable: f.write}, nil
+	case "close":
+		return starutil.Callable{ThisName: "close", ParentName: "file", Callable: f.close}, nil
+	}
+	return nil, nil
+}
+
+func (f File) close(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	if err = starlark.UnpackArgs("close", args, kwargs); err != nil {
+		return
+	}
+	return starlark.None, f.file.Close()
+}
+
+func (f File) write(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	var content starlark.Value
+	if err = starlark.UnpackArgs("write", args, kwargs, "content", &content); err != nil {
+		return
+	}
+	s, err := starutil.ValueToString(content)
+	if err != nil {
+		return
+	}
+	_, err = f.file.Write([]byte(s))
+	return starlark.None, err
 }
