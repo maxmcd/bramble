@@ -1,6 +1,7 @@
 package bramble
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -204,59 +205,70 @@ func (e *testErrorReporter) Error(err error) {
 }
 func (e *testErrorReporter) FailNow() bool { return false }
 
-func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
+func (b *Bramble) compilePath(path string) (prog *starlark.Program, err error) {
+	compiledProgram, err := os.Open(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "error opening moduleCache storeLocation")
+	}
+	return starlark.CompiledProgram(compiledProgram)
+}
+
+func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Program, err error) {
 	storeLocation, ok := b.moduleCache[moduleName]
-	var f *os.File
-	if !ok {
-		f, err = os.Open(filename)
-		if err != nil {
-			return
-		}
-		hasher := NewHasher()
-		if _, err = io.Copy(hasher, f); err != nil {
-			return nil, err
-		}
-		storeLocation = b.store.joinStorePath(hasher.String() + "-star-prog-cache")
-	}
-	var mod *starlark.Program
-	if fileExists(storeLocation) {
-		var compiledProgram *os.File
-		compiledProgram, err = os.Open(storeLocation)
-		if err != nil {
-			return
-		}
-		mod, err = starlark.CompiledProgram(compiledProgram)
-		if err != nil {
-			return
-		}
-	} else {
-		if _, err = f.Seek(0, 0); err != nil {
-			return
-		}
-		_, mod, err = starlark.SourceProgram(filename, f, b.predeclared.Has)
-		if err != nil {
-			return
-		}
-		cachedProgram, err := os.Create(storeLocation)
-		if err != nil {
-			return nil, err
-		}
-		if err = mod.Write(cachedProgram); err != nil {
-			return nil, err
-		}
+	if ok {
+		// we have a cached binary location in the cache map, so we just use that
+		return b.compilePath(b.store.joinStorePath(storeLocation))
 	}
 
-	// TODO: a cleaner implementation should remove these null checks
-	if f != nil {
-		if err = f.Close(); err != nil {
-			return
-		}
+	// hash the file input
+	f, err := os.Open(filename)
+	if err != nil {
+		return
 	}
-	if moduleName != "" {
+	defer func() { _ = f.Close() }()
+	hasher := NewHasher()
+	if _, err = io.Copy(hasher, f); err != nil {
+		return nil, err
+	}
+	inputHash := hasher.String()
+
+	inputHashStoreLocation := b.store.joinBramblePath("var", "star-cache", inputHash)
+	storeLocation, ok = validSymlinkExists(inputHashStoreLocation)
+	if ok {
+		// if we have the hashed input on the filesystem cache and it points to a valid path
+		// in the store, use that store path and add the cached location to the map
 		b.moduleCache[moduleName] = storeLocation
+		return b.compilePath(storeLocation)
 	}
 
-	g, err := mod.Init(b.thread, b.predeclared)
+	// if we're this far we don't have a cache of the program, process it directly
+	if _, err = f.Seek(0, 0); err != nil {
+		return
+	}
+	_, prog, err = starlark.SourceProgram(filename, f, b.predeclared.Has)
+	if err != nil {
+		return
+	}
+
+	var buf bytes.Buffer
+	if err = prog.Write(&buf); err != nil {
+		return nil, err
+	}
+	path, err := b.store.writeReader(&buf, filepath.Base(filename), "")
+	if err != nil {
+		return
+	}
+	b.moduleCache[moduleName] = filepath.Base(path)
+	_ = os.Remove(inputHashStoreLocation)
+	return prog, os.Symlink(path, inputHashStoreLocation)
+}
+
+func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
+	prog, err := b.sourceProgram(moduleName, filename)
+	if err != nil {
+		return
+	}
+	g, err := prog.Init(b.thread, b.predeclared)
 	g.Freeze()
 	return g, err
 }
@@ -458,17 +470,4 @@ func (b *Bramble) argsToImport(args []string) (module, function string, err erro
 	}
 
 	return
-}
-
-func fileExists(path string) bool {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return !fi.IsDir()
-}
-
-func pathExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
