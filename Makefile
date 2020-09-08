@@ -41,3 +41,6 @@ nested: install
 
 ldd: install
 	bramble run seed:ldd
+
+gc: install
+	bramble gc

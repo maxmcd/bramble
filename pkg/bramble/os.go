@@ -128,9 +128,6 @@ func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starl
 }
 
 type File struct {
-	bramble *Bramble
-	session *session
-
 	name string
 	file *goos.File
 }

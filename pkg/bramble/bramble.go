@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -30,7 +31,7 @@ type Bramble struct {
 	cmd          *CmdFunction
 	session      *session
 
-	store *Store
+	store Store
 
 	moduleCache         map[string]string
 	afterDerivation     bool
@@ -359,22 +360,93 @@ func (b *Bramble) gc(args []string) (err error) {
 	if err = b.init(); err != nil {
 		return
 	}
+	drvQueue, err := b.collectDerivationsToPreserve()
+	if err != nil {
+		return
+	}
+	pathsToKeep := map[string]struct{}{}
+
+	// TODO: maybe this will get too big?
+	drvCache := map[string]Derivation{}
+
+	loadDerivation := func(filename string) (drv Derivation, err error) {
+		if drv, ok := drvCache[filename]; ok {
+			return drv, nil
+		}
+		drv, err = b.loadDerivation(filename)
+		if err == nil {
+			drvCache[filename] = drv
+		}
+		return drv, err
+	}
+	var id InputDerivation
+	var runtimeDep bool
+
+	defer fmt.Println(pathsToKeep)
+
+	processedDerivations := map[InputDerivation]bool{}
+	for {
+		if len(drvQueue) == 0 {
+			break
+		}
+		// pop one off to process
+		for id, runtimeDep = range drvQueue {
+			break
+		}
+		delete(drvQueue, id)
+		pathsToKeep[id.Path] = struct{}{}
+		toAdd, err := b.findDerivationsInputDerivationsToKeep(
+			loadDerivation,
+			pathsToKeep,
+			id, runtimeDep)
+		if err != nil {
+			return err
+		}
+		for toAddID, toAddRuntimeDep := range toAdd {
+			if thisIsRuntimeDep, ok := processedDerivations[toAddID]; !ok {
+				// if we don't have it, add it
+				drvQueue[toAddID] = toAddRuntimeDep
+			} else if !thisIsRuntimeDep && toAddRuntimeDep {
+				// if we do have it, but it's not a runtime dep, and this is, add it
+				drvQueue[toAddID] = toAddRuntimeDep
+			}
+			// otherwise don't add it
+		}
+	}
+
+	// delete everything in the store that's not in the map
+	files, err := ioutil.ReadDir(b.store.storePath)
+	if err != nil {
+		return
+	}
+	for _, file := range files {
+		if _, ok := pathsToKeep[file.Name()]; !ok {
+			fmt.Println("deleting", file.Name())
+			if err = os.RemoveAll(b.store.joinStorePath(file.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[InputDerivation]bool, err error) {
 	registryFolder := b.store.joinBramblePath("var", "config-registry")
 	files, err := ioutil.ReadDir(registryFolder)
 	if err != nil {
 		return
 	}
 
-	var toKeep []InputDerivation
+	drvQueue = map[InputDerivation]bool{}
 	for _, f := range files {
 		var drvMap derivationMap
 		registryLoc := filepath.Join(registryFolder, f.Name())
 		f, err := os.Open(registryLoc)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := toml.DecodeReader(f, &drvMap); err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Println("assembling derivations for", drvMap.Location)
 		// delete the config if we can't find the project any more
@@ -382,7 +454,7 @@ func (b *Bramble) gc(args []string) (err error) {
 		if !pathExists(tomlLoc) {
 			fmt.Printf("deleting cache for %q, it no longer exists\n", tomlLoc)
 			if err := os.Remove(registryLoc); err != nil {
-				return err
+				return nil, err
 			}
 			continue
 		}
@@ -390,18 +462,77 @@ func (b *Bramble) gc(args []string) (err error) {
 			// TODO: check that these global entrypoints actually still exist
 			for _, item := range list {
 				parts := strings.Split(item, ":")
-				toKeep = append(toKeep, InputDerivation{
+				drvQueue[InputDerivation{
 					Path:   parts[0],
 					Output: parts[1],
-				})
+				}] = true
 			}
 		}
 	}
+	return
+}
 
-	_ = toKeep
-	// TODO: actually delete the derivations
+func (b *Bramble) findDerivationsInputDerivationsToKeep(
+	loadDerivation func(string) (Derivation, error),
+	pathsToKeep map[string]struct{},
+	id InputDerivation, runtimeDep bool) (
+	addToQueue map[InputDerivation]bool, err error) {
+	addToQueue = map[InputDerivation]bool{}
 
-	return nil
+	drv, err := loadDerivation(id.Path)
+	if err != nil {
+		return
+	}
+
+	// keep all source paths for all derivations
+	for _, p := range drv.SourcePaths {
+		pathsToKeep[p] = struct{}{}
+	}
+
+	dependencyOutputs := map[string]bool{}
+	if runtimeDep {
+		for _, dep := range drv.Outputs[id.Output].Dependencies {
+			filename := strings.ReplaceAll(dep, "$bramble_path/", "")
+			// keep outputs for all runtime dependencies
+			pathsToKeep[filename] = struct{}{}
+			dependencyOutputs[filename] = false
+		}
+	}
+
+	for _, inputID := range drv.InputDerivations {
+		idDrv, err := loadDerivation(inputID.Path)
+		if err != nil {
+			return nil, err
+		}
+		outPath := idDrv.Outputs[inputID.Output].Path
+		// found this derivation in an output, add it as a runtime dep
+		if _, ok := dependencyOutputs[outPath]; ok {
+			addToQueue[inputID] = true
+			dependencyOutputs[outPath] = true
+		} else {
+			addToQueue[inputID] = false
+		}
+		// keep all derivations
+		pathsToKeep[inputID.Path] = struct{}{}
+	}
+	for path, found := range dependencyOutputs {
+		if !found {
+			return nil, errors.Errorf(
+				"derivation %s has output %s which was not "+
+					"found as an output of any of its input derivations.",
+				id.Path, path)
+		}
+	}
+
+	return nil, nil
+}
+
+func (b *Bramble) loadDerivation(filename string) (drv Derivation, err error) {
+	f, err := os.Open(b.store.joinStorePath(filename))
+	if err != nil {
+		return
+	}
+	return drv, json.NewDecoder(f).Decode(&drv)
 }
 
 func (b *Bramble) derivationBuild(args []string) error {
