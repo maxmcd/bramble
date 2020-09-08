@@ -18,8 +18,8 @@ var (
 	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
 
-func NewStore() (*Store, error) {
-	s := &Store{}
+func NewStore() (Store, error) {
+	s := Store{}
 	return s, s.ensureBramblePath()
 }
 
@@ -106,14 +106,14 @@ func (s *Store) ensureBramblePath() (err error) {
 	return
 }
 
-func (s *Store) joinStorePath(v ...string) string {
+func (s Store) joinStorePath(v ...string) string {
 	return filepath.Join(append([]string{s.storePath}, v...)...)
 }
-func (s *Store) joinBramblePath(v ...string) string {
+func (s Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.bramblePath}, v...)...)
 }
 
-func (s *Store) writeReader(src io.Reader, name string, validateHash string) (path string, err error) {
+func (s Store) writeReader(src io.Reader, name string, validateHash string) (path string, err error) {
 	hasher := NewHasher()
 	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
 	if err != nil {
@@ -141,7 +141,7 @@ func (s *Store) writeReader(src io.Reader, name string, validateHash string) (pa
 	return
 }
 
-func (s *Store) writeConfigLink(location string, derivations map[string][]string) (err error) {
+func (s Store) writeConfigLink(location string, derivations map[string][]string) (err error) {
 	hasher := NewHasher()
 	if _, err = hasher.Write([]byte(location)); err != nil {
 		return

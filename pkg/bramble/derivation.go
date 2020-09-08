@@ -242,6 +242,9 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 
 		b, _ := json.Marshal(meta)
 		drv.Env["function_builder_meta"] = string(b)
+		for _, p := range meta.ModuleCache {
+			drv.SourcePaths = append(drv.SourcePaths, p)
+		}
 	default:
 		return errors.Errorf("no builder for %q", builder.Type())
 	}
@@ -287,7 +290,7 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 			return
 		}
 	}
-	fmt.Println(drv.sources)
+
 	if env != nil {
 		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
 			return
@@ -340,6 +343,7 @@ type Derivation struct {
 	Env              map[string]string
 	InputDerivations InputDerivations
 	InputSource      InputSource
+	SourcePaths      []string
 
 	// internal fields
 	sources  []string
@@ -533,6 +537,7 @@ func (drv *Derivation) calculateInputSources() (err error) {
 	}
 	drv.InputSource.Path = hasher.String()
 	drv.InputSource.RelativeLocation = relBramblefileLocation
+	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
 	return
 }
 
@@ -687,7 +692,6 @@ func (drv *Derivation) build() (err error) {
 	if err != nil {
 		return
 	}
-
 	folderName := hashString + "-" + drv.Name
 	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
 
@@ -710,7 +714,6 @@ func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, 
 			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
 		}
 	}
-	fmt.Println(storeValues)
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,7 @@ func Reptar(location string, out io.Writer) (err error) {
 	// TODO: add our own null padding to match GNU Tar
 	// TODO: test with hardlinks
 	// TODO: confirm name sorting is identical in all cases
+	// TODO: disallow absolute paths
 
 	tw := tar.NewWriter(out)
 	if err = filepath.Walk(location, func(path string, fi os.FileInfo, err error) error {
@@ -45,6 +47,7 @@ func Reptar(location string, out io.Writer) (err error) {
 			if err != nil {
 				return fmt.Errorf("%s: readlink: %w", fi.Name(), err)
 			}
+			// TODO: convert from absolute to relative
 		}
 		// GNU Tar adds a slash to the end of directories, but Go removes them
 		if fi.IsDir() {
@@ -72,7 +75,7 @@ func Reptar(location string, out io.Writer) (err error) {
 		// pax format
 		hdr.Format = tar.FormatPAX
 
-		hdr.Name = path
+		hdr.Name = strings.TrimPrefix(path, location)
 
 		if err = tw.WriteHeader(hdr); err != nil {
 			return fmt.Errorf("%s: writing header: %w", hdr.Name, err)
