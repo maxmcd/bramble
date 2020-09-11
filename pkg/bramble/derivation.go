@@ -281,12 +281,12 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 	drv.Name = name.GoString()
 
 	if argsParam != nil {
-		if drv.Args, err = starutil.ListToGoList(argsParam); err != nil {
+		if drv.Args, err = starutil.IterableToGoList(argsParam); err != nil {
 			return
 		}
 	}
 	if sources != nil {
-		if drv.sources, err = starutil.ListToGoList(sources); err != nil {
+		if drv.sources, err = starutil.IterableToGoList(sources); err != nil {
 			return
 		}
 	}
@@ -316,7 +316,7 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		}
 	}
 	if outputs != nil {
-		outputsList, err := starutil.ListToGoList(outputs)
+		outputsList, err := starutil.IterableToGoList(outputs)
 		if err != nil {
 			return nil, err
 		}
@@ -335,15 +335,32 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
-	Name             string
-	Outputs          map[string]Output
-	Builder          string
-	Platform         string
-	Args             []string
-	Env              map[string]string
+	// Name is the name of the derivation
+	Name string
+	// Outputs are build outputs, a derivation can have many outputs, the
+	// default output is called "out". Multiple outputs are useful when your
+	// build process can produce multiple artifacts, but building them as a
+	// standalone derivation would involve a complete rebuild.
+	//
+	// This attribute is removed when hashing the derivation.
+	Outputs map[string]Output
+	// Builder will either be set to a string constant to signify an internal
+	// builder (like "fetch_url"), or it will be set to the path of an
+	// executable in the bramble store
+	Builder string
+	// Platform is the platform we've built this derivation on
+	Platform string
+	// Args are arguments that are passed to the builder
+	Args []string
+	// Env are environment variables set during the build
+	Env map[string]string
+	// InputDerivations are derivations that are using as imports to this build, outputs
+	// dependencies are tracked in the outputs
 	InputDerivations InputDerivations
-	InputSource      InputSource
-	SourcePaths      []string
+	// InputSource is the source directory and relative build location path for the build
+	InputSource InputSource
+	// SourcePaths are all paths that must exist to support this build
+	SourcePaths []string
 
 	// internal fields
 	sources  []string

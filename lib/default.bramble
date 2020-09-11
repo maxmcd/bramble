@@ -1,0 +1,95 @@
+load("github.com/maxmcd/bramble/lib/seed", "seed")
+
+
+def nix_stdenv():
+    autoconf = derivation(
+        name="stdenv",
+        builder="fetch_url",
+        env={
+            "url": "https://brmbl.s3.amazonaws.com/autoconf.tar.gz",
+            "hash": "1fed660ab8588418d8a2bf8fa86ab9b51f6323dd3870cb07452b8099696259db",
+        },
+    )
+
+
+def autoconf():
+    autoconf = derivation(
+        name="autoconf_src",
+        builder="fetch_url",
+        env={
+            "url": "https://brmbl.s3.amazonaws.com/autoconf.tar.gz",
+            "hash": "1fed660ab8588418d8a2bf8fa86ab9b51f6323dd3870cb07452b8099696259db",
+        },
+    )
+    return derivation(
+        name="autoconf", builder=_build_autoconf, build_inputs=[autoconf, seed()],
+    )
+
+
+def test_autoconf():
+    ac = autoconf()
+    print(cmd(ac.out + "/bin/aclocal").output())
+
+
+def _build_autoconf():
+    os.setenv("PATH", os.getenv("seed") + "/bin")
+    os.mkdir("$out/bin")
+    print(cmd("cp -r $autoconf_src/autoconf/ $out/bin").output())
+
+
+def make():
+    make_src = derivation(
+        name="make_src",
+        builder="fetch_url",
+        env={
+            "url": "https://ftp.gnu.org/gnu/make/make-4.2.tar.gz",
+            "hash": "e968ce3c57ad39a593a92339e23eb148af6296b9f40aa453a9a9202c99d34436",
+        },
+    )
+    return derivation(
+        name="bash", builder=_build_make, build_inputs=[make_src, seed(), autoconf()],
+    )
+
+
+def _build_make():
+    os.setenv("PATH", os.getenv("seed") + "/bin" + ":" + os.getenv("autoconf") + "/bin")
+    os.setenv("CC", "x86_64-linux-musl-gcc --static")
+    os.setenv("CFLAGS", "-O2 -fstack-protector")
+    os.setenv("LDFLAGS", "-s")
+
+    cmd("cp -r $make_src/make-4.2/ .").wait()
+    os.cd("./make-4.2")
+
+    print(cmd("ls -lah").output())
+    print(cmd("$seed/bin/sh", "./configure", "--prefix=$out",).output())
+    print(cmd("$seed/bin/sh", "./build.sh",).output())
+    print(cmd("ls -lah $out").output())
+    print(cmd("./make", "install").output())
+
+
+def bash():
+    bash_src = derivation(
+        name="bash_src",
+        builder="fetch_url",
+        env={
+            "url": "http://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz",
+            "hash": "d86b3392c1202e8ff5a423b302e6284db7f8f435ea9f39b5b1b20fd3ac36dfcb",
+        },
+    )
+    return derivation(
+        name="bash", builder=_build_bash, build_inputs=[bash_src, seed()],
+    )
+
+
+def _build_bash():
+    os.setenv("PATH", os.getenv("seed") + "/bin")
+    cmd("cp -r $bash_src/bash-4.4/ .").wait()
+    os.cd("./bash-4.4")
+    os.setenv("LD_LIBRARY_PATH", "$seed/x86_64-linux-musl/lib")
+    print(cmd("env").output())
+    guess = cmd("$seed/bin/sh ./support/config.guess").output()
+    print(
+        cmd(
+            "$seed/bin/sh", "--prefix=$out", "./configure", "--without-bash-malloc",
+        ).output()
+    )

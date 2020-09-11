@@ -1,4 +1,4 @@
-load("github.com/maxmcd/bramble/seed", "seed")
+load("github.com/maxmcd/bramble/lib/seed", "seed")
 
 
 def simple():

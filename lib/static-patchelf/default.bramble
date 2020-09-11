@@ -1,0 +1,28 @@
+def upload():
+    os.setenv("AWS_PROFILE", "max")
+    print(
+        cmd(
+            "aws s3 cp ./patchelf.tar.gz s3://brmbl/patchelf.tar.gz --acl public-read",
+        ).output()
+    )
+
+
+def patchelf():
+    patch_dl = derivation(
+        name="patch_dl",
+        builder="fetch_url",
+        env={
+            "url": "https://brmbl.s3.amazonaws.com/patchelf.tar.gz",
+            "hash": "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960",
+        },
+    )
+
+    return derivation(
+        name="patchelf", builder=install_patchelf, build_inputs=[patch_dl]
+    )
+
+
+def install_patchelf():
+    out_dir = os.getenv("out") + "/bin"
+    os.mkdir(out_dir)
+    os.cp(os.getenv("patch_dl") + "/patchelf", out_dir)

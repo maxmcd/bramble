@@ -52,7 +52,7 @@ func (fn *CmdFunction) Truth() starlark.Bool  { return true }
 
 // CallInternal defines the cmd() starlark function.
 func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
-	return fn.newCmd(thread, args, kwargs, nil, "")
+	return fn.newCmd(thread, args, kwargs, nil)
 }
 
 func (fn *CmdFunction) calculateInputDerivations(cmd *Cmd) {
@@ -67,9 +67,38 @@ func (fn *CmdFunction) calculateInputDerivations(cmd *Cmd) {
 	)
 }
 
+func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
+	// it's cmd(["grep", "-v"])
+	if args.Len() == 1 {
+		if iterable, ok := args.Index(0).(*starlark.List); ok {
+			if out, err = starutil.IterableToGoList(iterable); err != nil {
+				return
+			} else if len(out) == 0 {
+				return nil, errors.New("if the first argument is a list it can't be empty")
+			}
+			return
+		}
+		var str string
+		if str, err = starutil.ValueToString(args.Index(0)); err != nil {
+			return
+		}
+		if str == "" {
+			return nil, errors.New("if the first argument is a string it can't be empty")
+		}
+		out, err = shellquote.Split(str)
+		if len(out) == 0 {
+			// whitespace bash characters will be removed by shellquote,
+			// add them back for correct error message
+			return []string{str}, nil
+		}
+		return
+	}
+	return starutil.IterableToGoList(args)
+}
+
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
-func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd, dir string) (val starlark.Value, err error) {
+func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
 	cmd := Cmd{fn: fn}
 	cmd.Dir = fn.session.currentDirectory
 
@@ -117,43 +146,10 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		kwargs = append(kwargs, starlark.Tuple{starlark.String("stdin"), stdin})
 		return fn.CallInternal(thread, args[1:], kwargs)
 	}
-
-	// it's cmd(["grep", "-v"])
-	if args.Len() == 1 {
-		if args.Index(0).Type() == "list" {
-			cmd.Args, err = starutil.ListToListOfStrings(args.Index(0))
-			if err != nil {
-				return nil, err
-			}
-			if len(cmd.Args) == 0 {
-				return nil, errors.New("if the first argument is a list it can't be empty")
-			}
-		} else if args.Index(0).Type() == "string" {
-			starlarkCmd := args.Index(0).(starlark.String).GoString()
-			if starlarkCmd == "" {
-				return nil, errors.New("if the first argument is a string it can't be empty")
-			}
-			cmd.Args, err = shellquote.Split(starlarkCmd)
-			if err != nil {
-				return
-			}
-			if len(cmd.Args) == 0 {
-				// whitespace bash characters will be removed by shellquote,
-				// add them back for correct error message
-				cmd.Args = []string{starlarkCmd}
-			}
-		}
-	} else {
-		iterator := args.Iterate()
-		defer iterator.Done()
-		var val starlark.Value
-		for iterator.Next(&val) {
-			if err := cmd.addArgumentToCmd(val); err != nil {
-				return nil, err
-			}
-		}
+	cmd.Args, err = cmdArgumentsFromArgs(args)
+	if err != nil {
+		return
 	}
-
 	// expand shell variables in arguments
 	cmd.expandArguments()
 
@@ -310,21 +306,12 @@ func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []sta
 	}
 
 	// if there is an error we run the command in or instead
-	return cmd.fn.newCmd(thread, args, kwargs, nil, cmd.Dir)
+	return cmd.fn.newCmd(thread, args, kwargs, nil)
 }
 
 func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	_ = cmd.setOutput(true, false)
-	return cmd.fn.newCmd(thread, args, kwargs, cmd, cmd.Dir)
-}
-
-func (cmd *Cmd) addArgumentToCmd(value starlark.Value) (err error) {
-	val, err := starutil.ValueToString(value)
-	if err != nil {
-		return
-	}
-	cmd.Args = append(cmd.Args, val)
-	return
+	return cmd.fn.newCmd(thread, args, kwargs, cmd)
 }
 
 func (cmd *Cmd) expandArguments() {

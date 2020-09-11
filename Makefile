@@ -1,15 +1,9 @@
 
 
-seed_run:
-	go run . run seed:seed
-
-simple_run:
-	go run . run tests/simple/simple:simple
-
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh
 
-test: go_test bramblescripts_to_test seed_run simple_run drv_test
+test: go_test bramblescripts_to_test seed simple drv_test
 
 go_test:
 	go test -v ./...
@@ -40,7 +34,13 @@ nested: install
 	bramble run tests/nested-sources/another-folder/nested:nested
 
 ldd: install
-	bramble run seed:ldd
+	bramble run lib/seed:ldd
 
 gc: install
 	bramble gc
+
+go: install
+	bramble run lib/go:go
+
+seed: install
+	bramble run lib/seed:seed

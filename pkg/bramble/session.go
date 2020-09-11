@@ -17,7 +17,7 @@ func newSession(wd string, env map[string]string) (*session, error) {
 	env2 := map[string]string{}
 	if env == nil {
 		for _, kv := range os.Environ() {
-			parts := strings.SplitN(kv, "=", 1)
+			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) > 1 {
 				env2[parts[0]] = parts[1]
 			} else {

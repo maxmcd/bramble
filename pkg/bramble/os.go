@@ -57,6 +57,8 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
 	case "cd":
 		return starutil.Callable{ThisName: "cd", ParentName: "os", Callable: os.cd}, nil
+	case "cp":
+		return starutil.Callable{ThisName: "cp", ParentName: "os", Callable: os.cp}, nil
 	case "create":
 		return starutil.Callable{ThisName: "create", ParentName: "os", Callable: os.create}, nil
 	case "getenv":
@@ -116,6 +118,18 @@ func (os OS) cd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 		return
 	}
 	return starlark.None, os.session.cd(os.session.expand(path.GoString()))
+}
+
+func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	paths := make([]string, len(args))
+	for i, arg := range args {
+		str, err := starutil.ValueToString(arg)
+		if err != nil {
+			return nil, err
+		}
+		paths[i] = str
+	}
+	return starlark.None, cp(os.session.currentDirectory, paths...)
 }
 
 func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
