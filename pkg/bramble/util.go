@@ -8,6 +8,7 @@ import (
 	"hash"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -95,6 +96,55 @@ func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err e
 	}
 	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
 	return
+}
+
+func cp(wd string, paths ...string) (err error) {
+	fmt.Println(wd, paths)
+	if len(paths) == 1 {
+		return errors.New("copy takes at least two arguments")
+	}
+	absPaths := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if !filepath.IsAbs(path) {
+			absPaths = append(absPaths, filepath.Join(wd, path))
+		} else {
+			absPaths = append(absPaths, path)
+		}
+	}
+	dest := absPaths[len(paths)-1]
+	// if dest exists and it's not a directory
+	if fileExists(dest) {
+		return errors.New("copy destination can't be a file that exists")
+	}
+
+	toCopy := absPaths[:len(absPaths)-1]
+
+	// "cp foo.txt bar.txt" or "cp ./foo ./bar" is a special case if it's just two
+	// paths and they don't exist yet
+	if len(toCopy) == 1 && !pathExists(dest) {
+		f := toCopy[0]
+		if isDir(f) {
+			return copyDirectory(f, dest)
+		}
+		return copyFile(f, dest)
+	}
+
+	// otherwise copy each listed file into a directory with the given name
+	for i, path := range toCopy {
+		fi, err := os.Stat(path)
+		if err != nil {
+			return errors.Errorf("%q doesn't exist", paths[i])
+		}
+		if fi.IsDir() {
+			err = copyDirectory(path, filepath.Join(dest, fi.Name()))
+		} else {
+			err = copyFile(path, filepath.Join(dest, fi.Name()))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // copy directory will copy all of the contents of one directory into another directory
@@ -221,22 +271,26 @@ func expandPathDirectories(files []string) (out []string, err error) {
 }
 
 func copyFile(srcFile, dstFile string) error {
-	out, err := os.Create(dstFile)
+	in, err := os.Open(srcFile)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
+	}
+	defer in.Close()
+
+	fi, err := in.Stat()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	out, err := os.OpenFile(dstFile, os.O_CREATE|os.O_RDWR, fi.Mode())
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	defer out.Close()
 
-	in, err := os.Open(srcFile)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
 	_, err = io.Copy(out, in)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -248,7 +302,7 @@ func createDirIfNotExists(dir string, perm os.FileMode) error {
 	}
 
 	if err := os.MkdirAll(dir, perm); err != nil {
-		return fmt.Errorf("failed to create directory: '%s', error: '%s'", dir, err.Error())
+		return errors.Errorf("failed to create directory: '%s', error: '%s'", dir, err.Error())
 	}
 
 	return nil
@@ -268,6 +322,17 @@ func fileExists(path string) bool {
 		return false
 	}
 	return !fi.IsDir()
+}
+
+func isDir(file string) bool {
+	info, err := os.Stat(file)
+	if err != nil {
+		if err.(*os.PathError).Err != syscall.ENOENT {
+			log.Fatalf("%s failed to access %s", err, file)
+		}
+		return false
+	}
+	return info.Mode().IsDir()
 }
 
 func pathExists(path string) bool {

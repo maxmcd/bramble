@@ -56,7 +56,7 @@ func TestRunStarlarkBuilder(t *testing.T) {
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir)
 	if err := b.run([]string{"../../tests/starlark-builder:run_busybox"}); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	_ = os.RemoveAll(dir)

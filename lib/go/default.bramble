@@ -1,0 +1,24 @@
+load("github.com/maxmcd/bramble/lib/seed", "seed")
+
+
+def go():
+    go1_4 = derivation(
+        name="go_1_4_download",
+        builder="fetch_url",
+        env={
+            "url": "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz",
+            "hash": "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52",
+        },
+    )
+
+    return derivation(name="go 1.4", builder=_build_go, build_inputs=[go1_4, seed()],)
+
+
+def _build_go():
+    os.setenv("PATH", os.getenv("$seed") + "/bin")
+    cmd("cp -r $go_1_4_download/go .").wait()
+    print(cmd("ls -lah").output())
+    os.cd("./go/src")
+    os.setenv("CGO_ENABLED", "0")
+    print(cmd("ls -lah").output())
+    cmd("$seed/bash").wait()
