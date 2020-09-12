@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -179,9 +180,15 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	cmd.wg.Add(1)
 
 	cmd.ss, cmd.Stdout, cmd.Stderr = NewStandardStream()
+	if printOutputKwarg {
+		cmd.Stdout = io.MultiWriter(cmd.Stdout, os.Stdout)
+		cmd.Stderr = io.MultiWriter(cmd.Stderr, os.Stderr)
+	}
+
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
+	fmt.Println(cmd.String())
 	err = cmd.Start()
 	go func() {
 		err := cmd.Cmd.Wait()

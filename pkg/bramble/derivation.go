@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -196,8 +195,6 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return
 	}
 
-	f.log.Debug("Completed derivation: ", drv.prettyJSON())
-
 	// derivation calculation complete, hard barier
 	// TODO: expand on this nonsensical comment
 	// ---------------------------------------------------------------
@@ -206,7 +203,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if err = drv.buildIfNew(); err != nil {
 		return nil, err
 	}
-	f.log.Debug("Completed derivation: ", drv.prettyJSON())
+	f.log.Debug("Completed derivation: ", drv.Outputs)
 	// TODO: add this panic but don't include outputs in the comparison
 	// if beforeBuild != drv.prettyJSON() {
 	// 	panic(beforeBuild + drv.prettyJSON())
@@ -507,7 +504,7 @@ func (drv *Derivation) calculateInputSources() (err error) {
 	if len(drv.sources) == 0 {
 		return
 	}
-	tmpDir, err := drv.createBuildDir()
+	tmpDir, err := drv.createTmpDir()
 	if err != nil {
 		return
 	}
@@ -573,17 +570,8 @@ func (drv *Derivation) writeDerivation() (err error) {
 
 func (drv *Derivation) storePath() string { return drv.function.bramble.store.storePath }
 
-func (drv *Derivation) createBuildDir() (tempDir string, err error) {
-	return ioutil.TempDir("", TempDirPrefix)
-}
-
-func (drv *Derivation) computeOutPath() (outPath string, err error) {
-	_, filename, err := drv.computeDerivation()
-
-	return filepath.Join(
-		drv.storePath(),
-		strings.TrimSuffix(filename, ".drv"),
-	), err
+func (drv *Derivation) createTmpDir() (tempDir string, err error) {
+	return ioutil.TempDir(drv.storePath(), TempDirPrefix)
 }
 
 func (drv *Derivation) expand(s string) string {
@@ -654,7 +642,6 @@ func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
 	for k, v := range session.env {
 		session.env[k] = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
 	}
-	spew.Dump(session)
 	return drv.function.bramble.CallInlineDerivationFunction(
 		meta, session,
 	)
@@ -673,7 +660,7 @@ func (drv *Derivation) buildIfNew() (err error) {
 }
 
 func (drv *Derivation) build() (err error) {
-	buildDir, err := drv.createBuildDir()
+	buildDir, err := drv.createTmpDir()
 	if err != nil {
 		return
 	}
@@ -682,10 +669,9 @@ func (drv *Derivation) build() (err error) {
 		if err = copyDirectory(drv.function.joinStorePath(drv.InputSource.Path), buildDir); err != nil {
 			return errors.Wrap(err, "error copying sources into build dir")
 		}
-		fmt.Println(buildDir, drv.function.joinStorePath(drv.InputSource.Path))
 	}
 
-	outPath, err := drv.computeOutPath()
+	outPath, err := drv.createTmpDir()
 	if err != nil {
 		return err
 	}

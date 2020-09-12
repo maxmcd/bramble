@@ -99,7 +99,6 @@ func (s *Store) ensureBramblePath() (err error) {
 
 	// otherwise, check if the exact store path we need exists
 	if _, err = os.Stat(s.storePath); err != nil {
-		fmt.Println(s.storePath)
 		err = ErrStoreDoesNotExist
 		return
 	}

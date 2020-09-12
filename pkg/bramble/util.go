@@ -99,7 +99,6 @@ func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err e
 }
 
 func cp(wd string, paths ...string) (err error) {
-	fmt.Println(wd, paths)
 	if len(paths) == 1 {
 		return errors.New("copy takes at least two arguments")
 	}

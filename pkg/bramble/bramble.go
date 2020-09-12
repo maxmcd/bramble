@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -75,7 +74,6 @@ func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session
 	}
 	newBramble.derivationFn.DerivationCallCount = meta.DerivationCallCount
 
-	spew.Dump(meta.Module)
 	globals, err := newBramble.resolveModule(meta.Module)
 	if err != nil {
 		return
@@ -86,7 +84,6 @@ func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session
 		globals[meta.Function].(*starlark.Function),
 		nil, nil,
 	)
-	spew.Dump(intentionalError)
 	fn := intentionalError.(*starlark.EvalError).Unwrap().(ErrFoundBuildContext).Fn
 	_, err = starlark.Call(newBramble.thread, fn, nil, nil)
 	return
