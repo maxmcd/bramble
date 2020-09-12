@@ -1,41 +1,29 @@
 load("github.com/maxmcd/bramble/lib/seed", "seed")
-load("github.com/maxmcd/bramble/lib/std", "exec")
+load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
 
 
 def nix_stdenv():
-    autoconf = derivation(
-        name="stdenv",
-        builder="fetch_url",
-        env={
-            "url": "https://brmbl.s3.amazonaws.com/autoconf.tar.gz",
-            "hash": "1fed660ab8588418d8a2bf8fa86ab9b51f6323dd3870cb07452b8099696259db",
-        },
-    )
+    pass
 
 
 def autoconf():
-    autoconf = derivation(
-        name="autoconf_src",
-        builder="fetch_url",
-        env={
-            "url": "https://brmbl.s3.amazonaws.com/autoconf.tar.gz",
-            "hash": "1fed660ab8588418d8a2bf8fa86ab9b51f6323dd3870cb07452b8099696259db",
-        },
+    autoconf = fetch_url(
+        "autoconf_src", "https://brmbl.s3.amazonaws.com/autoconf.tar.gz"
     )
     return derivation(
         name="autoconf", builder=_build_autoconf, build_inputs=[autoconf, seed()],
     )
 
 
-def test_autoconf():
-    ac = autoconf()
-    print(cmd(ac.out + "/bin/aclocal").output())
-
-
 def _build_autoconf():
     os.setenv("PATH", os.getenv("seed") + "/bin")
     os.mkdir("$out/bin")
     print(cmd("cp -r $autoconf_src/autoconf/ $out/bin").output())
+
+
+def test_autoconf():
+    ac = autoconf()
+    print(cmd(ac.out + "/bin/aclocal").output())
 
 
 def make():

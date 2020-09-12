@@ -19,7 +19,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/textreplace"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -35,12 +34,8 @@ var (
 
 // DerivationFunction is the function that creates derivations
 type DerivationFunction struct {
-	bramble *Bramble
-
-	derivations map[string]*Derivation
-
-	log *logrus.Logger
-
+	bramble             *Bramble
+	derivations         map[string]*Derivation
 	DerivationCallCount int
 }
 
@@ -70,12 +65,9 @@ func init() {
 // bramble store exists and creates it if it does not.
 func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 	fn := &DerivationFunction{
-		log:         logrus.New(),
 		derivations: make(map[string]*Derivation),
 		bramble:     bramble,
 	}
-	// c.log.SetReportCaller(true)
-	fn.log.SetLevel(logrus.DebugLevel)
 
 	return fn, nil
 }
@@ -116,7 +108,7 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
 func (f *DerivationFunction) DownloadFile(url string, hash string) (path string, err error) {
-	f.log.Debugf("Downloading url %s", url)
+	fmt.Println("Downloading url %s", url)
 
 	b, err := hex.DecodeString(hash)
 	if err != nil {
@@ -199,11 +191,11 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	// TODO: expand on this nonsensical comment
 	// ---------------------------------------------------------------
 
-	f.log.Debugf("Building derivation %q", drv.Name)
+	fmt.Printf("Building derivation %q\n", drv.Name)
 	if err = drv.buildIfNew(); err != nil {
 		return nil, err
 	}
-	f.log.Debug("Completed derivation: ", drv.Outputs)
+	fmt.Println("Completed derivation:", drv.Outputs)
 	// TODO: add this panic but don't include outputs in the comparison
 	// if beforeBuild != drv.prettyJSON() {
 	// 	panic(beforeBuild + drv.prettyJSON())
@@ -483,7 +475,7 @@ func (drv *Derivation) checkForExisting() (exists bool, err error) {
 	if err != nil {
 		return
 	}
-	drv.function.log.Debug("derivation " + drv.Name + " evaluates to " + filename)
+	fmt.Println("derivation " + drv.Name + " evaluates to " + filename)
 	existingDrv, exists, err := drv.function.LoadDerivation(filename)
 	if err != nil {
 		return false, err
@@ -700,7 +692,7 @@ func (drv *Derivation) build() (err error) {
 
 	newPath := drv.function.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
-	drv.function.log.Debug("Output at ", newPath)
+	fmt.Println("Output at ", newPath)
 	if doesnotExistErr != nil {
 		return os.Rename(outPath, newPath)
 	}
