@@ -1,7 +1,7 @@
 load("github.com/maxmcd/bramble/lib/seed", "seed")
 
 
-def go():
+def _go():
     go1_4 = derivation(
         name="go_1_4_download",
         builder="fetch_url",

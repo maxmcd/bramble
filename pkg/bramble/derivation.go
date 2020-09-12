@@ -110,33 +110,49 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 func (f *DerivationFunction) DownloadFile(url string, hash string) (path string, err error) {
 	fmt.Printf("Downloading url %s\n", url)
 
-	b, err := hex.DecodeString(hash)
-	if err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
-		return
+	if hash != "" {
+		b, err := hex.DecodeString(hash)
+		if err != nil {
+			err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
+			return "", err
+		}
+		storePrefixHash := bytesToBase32Hash(b)
+		matches, err := filepath.Glob(f.joinStorePath(storePrefixHash) + "*")
+		if err != nil {
+			err = errors.Wrap(err, "error searching for existing hashed content")
+			return "", err
+		}
+		if len(matches) != 0 {
+			return matches[0], nil
+		}
 	}
-	storePrefixHash := bytesToBase32Hash(b)
-	matches, err := filepath.Glob(f.joinStorePath(storePrefixHash) + "*")
-	if err != nil {
-		err = errors.Wrap(err, "error searching for existing hashed content")
-		return
+
+	existingHash, exists := f.bramble.lockFile.URLHashes[url]
+	if exists && hash != "" && hash != existingHash {
+		return "", errors.Errorf("when downloading the file %q a hash %q was provided in"+
+			" code but the hash %q was in the lock file, exiting", url, hash, existingHash)
 	}
-	if len(matches) != 0 {
-		return matches[0], nil
+
+	// if we don't have a hash to validate, validate the one we already have
+	if hash == "" && exists {
+		hash = existingHash
 	}
+
 	resp, err := http.Get(url)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
 		return
 	}
 	defer resp.Body.Close()
-	path, err = f.bramble.store.writeReader(resp.Body, filepath.Base(url), hash)
+	contentHash, path, err := f.bramble.store.writeReader(resp.Body, filepath.Base(url), hash)
 	if err == errHashMismatch {
 		err = errors.Errorf(
 			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
-			url, hash, path)
+			url, hash, contentHash)
+	} else if err != nil {
+		return
 	}
-	return
+	return path, f.bramble.addURLHashToLockfile(url, contentHash)
 }
 
 type ErrFoundBuildContext struct {
@@ -602,10 +618,7 @@ func (drv *Derivation) fetchURLBuilder(outPath string) (err error) {
 	if !ok {
 		return errors.New("fetch_url requires the environment variable 'url' to be set")
 	}
-	hash, ok := drv.Env["hash"]
-	if !ok {
-		return errors.New("fetch_url requires the environment variable 'hash' to be set")
-	}
+	hash, _ := drv.Env["hash"]
 	path, err := drv.function.DownloadFile(url, hash)
 	if err != nil {
 		return err
