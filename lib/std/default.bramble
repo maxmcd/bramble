@@ -1,0 +1,11 @@
+"""std defines some standard bramble helper functions"""
+
+
+def exec(*args, **kwargs):
+    kwargs["print_output"] = True
+    c = cmd(*args, **kwargs)
+    return c.wait()
+
+
+def fetch_url(name, url):
+    return derivation(name=name, builder="fetch_url", env={"url": url})
