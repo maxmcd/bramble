@@ -113,7 +113,7 @@ func (s Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.bramblePath}, v...)...)
 }
 
-func (s Store) writeReader(src io.Reader, name string, validateHash string) (path string, err error) {
+func (s Store) writeReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
 	hasher := NewHasher()
 	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
 	if err != nil {
@@ -126,19 +126,17 @@ func (s Store) writeReader(src io.Reader, name string, validateHash string) (pat
 		return
 	}
 	fileName := hasher.String()
-	if validateHash != "" {
-		if hasher.Sha256Hex() != validateHash {
-			return hasher.Sha256Hex(), errHashMismatch
-		}
+	if validateHash != "" && hasher.Sha256Hex() != validateHash {
+		return hasher.Sha256Hex(), "", errHashMismatch
 	}
 	if name != "" {
 		fileName += ("-" + name)
 	}
 	path = s.joinStorePath(fileName)
 	if er := os.Rename(file.Name(), path); er != nil {
-		return "", errors.Wrap(er, "error moving file into store")
+		return "", "", errors.Wrap(er, "error moving file into store")
 	}
-	return
+	return hasher.Sha256Hex(), path, nil
 }
 
 func (s Store) writeConfigLink(location string, derivations map[string][]string) (err error) {

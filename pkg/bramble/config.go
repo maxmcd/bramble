@@ -57,7 +57,7 @@ type LockFile struct {
 	URLHashes map[string]string
 }
 
-func (b *Bramble) writeLockfileAndMetadata(derivations []*Derivation) (err error) {
+func (b *Bramble) writeConfigMetadata(derivations []*Derivation) (err error) {
 	outputs := []string{}
 	for _, drv := range b.cmd.inputDerivations {
 		outputs = append(outputs, drv.Path+":"+drv.Output)
@@ -77,6 +77,12 @@ func (b *Bramble) writeLockfileAndMetadata(derivations []*Derivation) (err error
 	if err = b.store.writeConfigLink(b.configLocation, derivationsStringMap); err != nil {
 		return
 	}
+	return nil
+}
+
+func (b *Bramble) addURLHashToLockfile(url, hash string) (err error) {
+	b.lockFileLock.Lock()
+	defer b.lockFileLock.Unlock()
 
 	f, err := os.OpenFile(filepath.Join(b.configLocation, "bramble.lock"),
 		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
@@ -93,5 +99,10 @@ func (b *Bramble) writeLockfileAndMetadata(derivations []*Derivation) (err error
 	}
 	_ = f.Truncate(0)
 	_, _ = f.Seek(0, 0)
+	if v, ok := lf.URLHashes[url]; ok && v != hash {
+		return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+	}
+	lf.URLHashes[url] = hash
+
 	return toml.NewEncoder(f).Encode(&lf)
 }

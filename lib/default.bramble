@@ -26,7 +26,7 @@ def test_autoconf():
     print(cmd(ac.out + "/bin/aclocal").output())
 
 
-def make():
+def _make():
     make_src = derivation(
         name="make_src",
         builder="fetch_url",
@@ -56,7 +56,7 @@ def _build_make():
     exec("./make", "install")
 
 
-def bash():
+def _bash():
     bash_src = derivation(
         name="bash_src",
         builder="fetch_url",

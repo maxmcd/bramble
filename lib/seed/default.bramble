@@ -16,10 +16,10 @@ def seed():
 def ldd():
     s = seed()
 
-    return derivation(name="ld", builder=build_ldd, build_inputs=[s])
+    return derivation(name="ld", builder=_build_ldd, build_inputs=[s])
 
 
-def build_ldd():
+def _build_ldd():
     os.mkdir("$out/bin")
     f = os.create("$out/bin/ldd")
     f.write(

@@ -33,10 +33,10 @@ def busybox():
     )
 
     # we pass the build_busybox callback here which is used to build this derivation
-    return derivation(name="busybox", builder=build_busybox, build_inputs=[download])
+    return derivation(name="busybox", builder=_build_busybox, build_inputs=[download])
 
 
-def build_busybox():
+def _build_busybox():
     os.mkdir("$out/bin")  # using the builtin os module
 
     # move the busybox executable into the output for this build

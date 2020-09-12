@@ -3,12 +3,14 @@ package bramble
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
@@ -23,8 +25,9 @@ type Bramble struct {
 	predeclared starlark.StringDict
 
 	config         Config
-	lockFile       LockFile
 	configLocation string
+	lockFile       LockFile
+	lockFileLock   sync.Mutex
 
 	derivationFn *DerivationFunction
 	cmd          *CmdFunction
@@ -253,7 +256,7 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 	if err = prog.Write(&buf); err != nil {
 		return nil, err
 	}
-	path, err := b.store.writeReader(&buf, filepath.Base(filename), "")
+	_, path, err := b.store.writeReader(&buf, filepath.Base(filename), "")
 	if err != nil {
 		return
 	}
@@ -326,6 +329,14 @@ func (b *Bramble) run(args []string) (err error) {
 		err = errHelp
 		return
 	}
+	set := flag.NewFlagSet("bramble", flag.ExitOnError)
+	var all bool
+	// TODO
+	set.BoolVar(&all, "all", false, "run all public functions recursively")
+	if err = set.Parse(args); err != nil {
+		return
+	}
+
 	if err = b.init(); err != nil {
 		return
 	}
@@ -350,7 +361,7 @@ func (b *Bramble) run(args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "error running")
 	}
-	return b.writeLockfileAndMetadata(valuesToDerivations(values))
+	return b.writeConfigMetadata(valuesToDerivations(values))
 }
 
 func (b *Bramble) gc(args []string) (err error) {

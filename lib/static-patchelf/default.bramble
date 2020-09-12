@@ -1,4 +1,4 @@
-def upload():
+def _upload():
     os.setenv("AWS_PROFILE", "max")
     print(
         cmd(
@@ -18,11 +18,11 @@ def patchelf():
     )
 
     return derivation(
-        name="patchelf", builder=install_patchelf, build_inputs=[patch_dl]
+        name="patchelf", builder=_install_patchelf, build_inputs=[patch_dl]
     )
 
 
-def install_patchelf():
+def _install_patchelf():
     out_dir = os.getenv("out") + "/bin"
     os.mkdir(out_dir)
     os.cp(os.getenv("patch_dl") + "/patchelf", out_dir)

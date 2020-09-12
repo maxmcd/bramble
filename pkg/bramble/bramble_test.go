@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func brambleBramble(t *testing.T) Bramble {
+func brambleBramble(t *testing.T) *Bramble {
 	if err := os.Chdir("./testfiles"); err != nil {
 		t.Fatal(err)
 	}
@@ -15,7 +15,7 @@ func brambleBramble(t *testing.T) Bramble {
 	if err := b.init(); err != nil {
 		t.Fatal(err)
 	}
-	return b
+	return &b
 }
 
 func Test_argsToImport(t *testing.T) {
