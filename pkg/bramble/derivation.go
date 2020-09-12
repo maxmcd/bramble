@@ -108,7 +108,7 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
 func (f *DerivationFunction) DownloadFile(url string, hash string) (path string, err error) {
-	fmt.Println("Downloading url %s", url)
+	fmt.Printf("Downloading url %s\n", url)
 
 	b, err := hex.DecodeString(hash)
 	if err != nil {
