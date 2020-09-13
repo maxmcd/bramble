@@ -387,26 +387,26 @@ func (b *Bramble) gc(args []string) (err error) {
 		}
 		return drv, err
 	}
-	var id InputDerivation
+	var do DerivationOutput
 	var runtimeDep bool
 
 	defer fmt.Println(pathsToKeep)
 
-	processedDerivations := map[InputDerivation]bool{}
+	processedDerivations := map[DerivationOutput]bool{}
 	for {
 		if len(drvQueue) == 0 {
 			break
 		}
 		// pop one off to process
-		for id, runtimeDep = range drvQueue {
+		for do, runtimeDep = range drvQueue {
 			break
 		}
-		delete(drvQueue, id)
-		pathsToKeep[id.Path] = struct{}{}
+		delete(drvQueue, do)
+		pathsToKeep[do.Filename] = struct{}{}
 		toAdd, err := b.findDerivationsInputDerivationsToKeep(
 			loadDerivation,
 			pathsToKeep,
-			id, runtimeDep)
+			do, runtimeDep)
 		if err != nil {
 			return err
 		}
@@ -438,14 +438,14 @@ func (b *Bramble) gc(args []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[InputDerivation]bool, err error) {
+func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]bool, err error) {
 	registryFolder := b.store.joinBramblePath("var", "config-registry")
 	files, err := ioutil.ReadDir(registryFolder)
 	if err != nil {
 		return
 	}
 
-	drvQueue = map[InputDerivation]bool{}
+	drvQueue = map[DerivationOutput]bool{}
 	for _, f := range files {
 		var drvMap derivationMap
 		registryLoc := filepath.Join(registryFolder, f.Name())
@@ -470,9 +470,9 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[InputDerivation]b
 			// TODO: check that these global entrypoints actually still exist
 			for _, item := range list {
 				parts := strings.Split(item, ":")
-				drvQueue[InputDerivation{
-					Path:   parts[0],
-					Output: parts[1],
+				drvQueue[DerivationOutput{
+					Filename:   parts[0],
+					OutputName: parts[1],
 				}] = true
 			}
 		}
@@ -483,11 +483,11 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[InputDerivation]b
 func (b *Bramble) findDerivationsInputDerivationsToKeep(
 	loadDerivation func(string) (Derivation, error),
 	pathsToKeep map[string]struct{},
-	id InputDerivation, runtimeDep bool) (
-	addToQueue map[InputDerivation]bool, err error) {
-	addToQueue = map[InputDerivation]bool{}
+	do DerivationOutput, runtimeDep bool) (
+	addToQueue map[DerivationOutput]bool, err error) {
+	addToQueue = map[DerivationOutput]bool{}
 
-	drv, err := loadDerivation(id.Path)
+	drv, err := loadDerivation(do.Filename)
 	if err != nil {
 		return
 	}
@@ -499,7 +499,7 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 
 	dependencyOutputs := map[string]bool{}
 	if runtimeDep {
-		for _, dep := range drv.Outputs[id.Output].Dependencies {
+		for _, dep := range drv.Output(do.OutputName).Dependencies {
 			filename := strings.ReplaceAll(dep, "$bramble_path/", "")
 			// keep outputs for all runtime dependencies
 			pathsToKeep[filename] = struct{}{}
@@ -507,28 +507,28 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 		}
 	}
 
-	for _, inputID := range drv.InputDerivations {
-		idDrv, err := loadDerivation(inputID.Path)
+	for _, inputDO := range drv.InputDerivations {
+		idDrv, err := loadDerivation(inputDO.Filename)
 		if err != nil {
 			return nil, err
 		}
-		outPath := idDrv.Outputs[inputID.Output].Path
+		outPath := idDrv.Output(inputDO.OutputName).Path
 		// found this derivation in an output, add it as a runtime dep
 		if _, ok := dependencyOutputs[outPath]; ok {
-			addToQueue[inputID] = true
+			addToQueue[inputDO] = true
 			dependencyOutputs[outPath] = true
 		} else {
-			addToQueue[inputID] = false
+			addToQueue[inputDO] = false
 		}
 		// keep all derivations
-		pathsToKeep[inputID.Path] = struct{}{}
+		pathsToKeep[inputDO.Filename] = struct{}{}
 	}
 	for path, found := range dependencyOutputs {
 		if !found {
 			return nil, errors.Errorf(
 				"derivation %s has output %s which was not "+
 					"found as an output of any of its input derivations.",
-				id.Path, path)
+				do.Filename, path)
 		}
 	}
 

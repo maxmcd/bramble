@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -77,13 +78,13 @@ func (f *DerivationFunction) joinStorePath(v ...string) string {
 	return f.bramble.store.joinStorePath(v...)
 }
 
-func (f *DerivationFunction) checkBytesForDerivations(b []byte) (inputDerivations InputDerivations) {
+func (f *DerivationFunction) checkBytesForDerivations(b []byte) (inputDerivations DerivationOutputs) {
 	for location, derivation := range f.derivations {
-		for name, output := range derivation.Outputs {
+		for i, output := range derivation.Outputs {
 			if bytes.Contains(b, []byte(output.Path)) {
-				inputDerivations = append(inputDerivations, InputDerivation{
-					Path:   location,
-					Output: name,
+				inputDerivations = append(inputDerivations, DerivationOutput{
+					Filename:   location,
+					OutputName: derivation.OutputNames[i],
 				})
 			}
 		}
@@ -217,10 +218,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	// // if beforeBuild != drv.prettyJSON() {
 	// // 	panic(beforeBuild + drv.prettyJSON())
 	// // }
-	_, filename, err := drv.computeDerivation()
-	if err != nil {
-		return
-	}
+	filename := drv.filename()
 	f.derivations[filename] = drv
 	return drv, nil
 }
@@ -257,18 +255,18 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 	return
 }
 
-func (f *DerivationFunction) fetchDerivationOutputPath(id InputDerivation) string {
+func (f *DerivationFunction) fetchDerivationOutputPath(do DerivationOutput) string {
 	return f.joinStorePath(
-		f.derivations[id.Path].
-			Outputs[id.Output].Path,
+		f.derivations[do.Filename].
+			Output(do.OutputName).Path,
 	)
 }
 
 func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
 	drv = &Derivation{
-		Outputs:  map[string]Output{"out": {}},
-		Env:      map[string]string{},
-		function: f,
+		OutputNames: []string{"out"},
+		Env:         map[string]string{},
+		function:    f,
 	}
 	var (
 		name        starlark.String
@@ -316,13 +314,10 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 				err = errors.Errorf("build_inputs takes a list of derivations, found type %q", item.Type())
 				return
 			}
-			_, filename, err := input.computeDerivation()
-			if err != nil {
-				panic(err)
-			}
-			drv.InputDerivations = append(drv.InputDerivations, InputDerivation{
-				Path:   filename,
-				Output: "out", // TODO: support passing other outputs
+			filename := input.filename()
+			drv.InputDerivations = append(drv.InputDerivations, DerivationOutput{
+				Filename:   filename,
+				OutputName: "out", // TODO: support passing other outputs
 			})
 		}
 	}
@@ -331,10 +326,8 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		if err != nil {
 			return nil, err
 		}
-		delete(drv.Outputs, "out")
-		for _, o := range outputsList {
-			drv.Outputs[o] = Output{}
-		}
+		drv.Outputs = nil
+		drv.OutputNames = outputsList
 	}
 
 	if err = setBuilder(drv, builder); err != nil {
@@ -346,6 +339,23 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
+	// fields are in alphabetical order to attempt to provide consistency to
+	// hashmap key ordering
+
+	// Args are arguments that are passed to the builder
+	Args []string
+	// BuildContextSource is the source directory that
+	BuildContextSource       string
+	BuildContextRelativePath string
+	// Builder will either be set to a string constant to signify an internal
+	// builder (like "fetch_url"), or it will be set to the path of an
+	// executable in the bramble store
+	Builder string
+	// Env are environment variables set during the build
+	Env map[string]string
+	// InputDerivations are derivations that are using as imports to this build, outputs
+	// dependencies are tracked in the outputs
+	InputDerivations DerivationOutputs
 	// Name is the name of the derivation
 	Name string
 	// Outputs are build outputs, a derivation can have many outputs, the
@@ -354,23 +364,10 @@ type Derivation struct {
 	// standalone derivation would involve a complete rebuild.
 	//
 	// This attribute is removed when hashing the derivation.
-	Outputs map[string]Output
-	// Builder will either be set to a string constant to signify an internal
-	// builder (like "fetch_url"), or it will be set to the path of an
-	// executable in the bramble store
-	Builder string
+	OutputNames []string
+	Outputs     []Output
 	// Platform is the platform we've built this derivation on
 	Platform string
-	// Args are arguments that are passed to the builder
-	Args []string
-	// Env are environment variables set during the build
-	Env map[string]string
-	// InputDerivations are derivations that are using as imports to this build, outputs
-	// dependencies are tracked in the outputs
-	InputDerivations InputDerivations
-	// BuildContextSource is the source directory that
-	BuildContextSource       string
-	BuildContextRelativePath string
 	// SourcePaths are all paths that must exist to support this build
 	SourcePaths []string
 
@@ -388,38 +385,45 @@ type Output struct {
 	Dependencies []string
 }
 
-// InputDerivation is one of the derivation inputs. Path is the location of
+func (o Output) Empty() bool {
+	if o.Path == "" && len(o.Dependencies) == 0 {
+		return true
+	}
+	return false
+}
+
+// DerivationOutput is one of the derivation inputs. Path is the location of
 // the derivation, output is the name of the specific output this derivation
 // uses for the build
-type InputDerivation struct {
-	Path   string
-	Output string
+type DerivationOutput struct {
+	Filename   string
+	OutputName string
 }
 
-func (id InputDerivation) templateString() string {
-	return fmt.Sprintf("{{ %s %s }}", id.Path, id.Output)
+func (do DerivationOutput) templateString() string {
+	return fmt.Sprintf("{{ %s %s }}", do.Filename, do.OutputName)
 }
 
-type InputDerivations []InputDerivation
+type DerivationOutputs []DerivationOutput
 
-func sortAndUniqueInputDerivations(ids InputDerivations) InputDerivations {
-	sort.Slice(ids, func(i, j int) bool {
-		id := ids[i]
-		jd := ids[j]
-		return id.Path+id.Output < jd.Path+id.Output
+func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
+	sort.Slice(dos, func(i, j int) bool {
+		do := dos[i]
+		jd := dos[j]
+		return do.Filename+do.OutputName < jd.Filename+do.OutputName
 	})
-	if len(ids) == 0 {
-		return ids
+	if len(dos) == 0 {
+		return dos
 	}
 	j := 0
-	for i := 1; i < len(ids); i++ {
-		if ids[j] == ids[i] {
+	for i := 1; i < len(dos); i++ {
+		if dos[j] == dos[i] {
 			continue
 		}
 		j++
-		ids[j] = ids[i]
+		dos[j] = dos[i]
 	}
-	return ids[:j+1]
+	return dos[:j+1]
 }
 
 var (
@@ -427,34 +431,54 @@ var (
 	_ starlark.HasAttrs = new(Derivation)
 )
 
-func (drv *Derivation) Freeze()               {}
-func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
-func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv *Derivation) Type() string          { return "derivation" }
+func (drv *Derivation) Freeze()              {}
+func (drv Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
+func (drv Derivation) Truth() starlark.Bool  { return starlark.True }
+func (drv Derivation) Type() string          { return "derivation" }
 
-func (drv *Derivation) String() string {
+func (drv Derivation) String() string {
 	return drv.templateString(drv.mainOutput())
 }
 
+func (drv Derivation) Output(name string) Output {
+	for i, o := range drv.OutputNames {
+		if o == name {
+			if len(drv.Outputs) > i {
+				return drv.Outputs[i]
+			}
+		}
+	}
+	return Output{}
+}
+
+func (drv Derivation) SetOutput(name string, o Output) {
+	for i, on := range drv.OutputNames {
+		if on == name {
+			// grow if we need to
+			for len(drv.Outputs) < i {
+				drv.Outputs = append(drv.Outputs, Output{})
+			}
+			drv.Outputs[i] = o
+			return
+		}
+	}
+	panic("unable to set output with name: " + name)
+}
+
 func (drv *Derivation) templateString(output string) string {
-	outputPath := drv.Outputs[output].Path
-	if drv.Outputs[output].Path != "" {
+	outputPath := drv.Output(output).Path
+	if drv.Output(output).Path != "" {
 		return outputPath
 	}
-	_, fn, _ := drv.computeDerivation()
+	fn := drv.filename()
 	return fmt.Sprintf("{{ %s %s }}", fn, output)
 }
 
 func (drv *Derivation) mainOutput() string {
-	if _, ok := drv.Outputs["out"]; ok || len(drv.Outputs) == 0 {
+	if out := drv.Output("out"); out.Path != "" || len(drv.OutputNames) == 0 {
 		return "out"
 	}
-	names := []string{}
-	for name := range drv.Outputs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names[0]
+	return drv.OutputNames[0]
 }
 
 func (drv *Derivation) env() (env []string) {
@@ -469,20 +493,17 @@ func (drv *Derivation) env() (env []string) {
 }
 
 func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
-	_, ok := drv.Outputs[name]
-	if ok {
-		return starlark.String(
-			drv.templateString(name),
-		), nil
+	out := drv.Output(name)
+	if out.Empty() {
+		return nil, nil
 	}
-	return nil, nil
+	return starlark.String(
+		drv.templateString(name),
+	), nil
 }
 
 func (drv *Derivation) AttrNames() (out []string) {
-	for name := range drv.Outputs {
-		out = append(out, name)
-	}
-	return
+	return drv.OutputNames
 }
 
 func (drv *Derivation) prettyJSON() string {
@@ -507,34 +528,79 @@ func (drv *Derivation) calculateInputDerivations() (err error) {
 	return nil
 }
 
-func (drv *Derivation) computeDerivation() (fileBytes []byte, filename string, err error) {
-	fileBytes, err = json.Marshal(drv)
-	if err != nil {
-		return
+// TemplateStringRegexp is the regular expression that matches template strings
+// in our derivations. I assume the ".*" parts won't run away too much because
+// of the earlier match on "{{ [0-9a-z]{32}" but might be worth further
+// investigation.
+//
+// TODO: should we limit the content of the derivation name? would at least
+// be limited by filesystem rules. If we're not eager about warning about this
+// we risk having derivation names only work on certain systems through that
+// limitation alone. Maybe this is ok?
+var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv) (.*?) \}\}`)
+
+func (drv Derivation) SearchForDerivationOutputs() DerivationOutputs {
+	out := DerivationOutputs{}
+	for _, match := range TemplateStringRegexp.FindAllStringSubmatch(string(drv.JSON()), -1) {
+		out = append(out, DerivationOutput{
+			Filename:   match[1],
+			OutputName: match[2],
+		})
 	}
+	return sortAndUniqueInputDerivations(out)
+}
+
+func (drv Derivation) ReplaceDerivationOutputsWithOutputPaths(storePath string, derivations map[string]Derivation) (
+	drvCopy Derivation, err error) {
+	// Find all derivation output template strings within the derivation
+	outputs := drv.SearchForDerivationOutputs()
+
+	// Find all the replacements we need to make, template strings need to
+	// become filesystem paths
+	replacements := []string{}
+	for _, do := range outputs {
+		d, ok := derivations[do.Filename]
+		if !ok {
+			return drvCopy, errors.Errorf(
+				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
+		}
+		path := filepath.Join(
+			storePath,
+			d.Output(do.OutputName).Path,
+		)
+		replacements = append(replacements, do.templateString(), path)
+	}
+	// Replace the content using the json body and then convert it back into a
+	// new derivation
+	replacedJSON := strings.NewReplacer(replacements...).Replace(string(drv.JSON()))
+	return drvCopy, json.Unmarshal([]byte(replacedJSON), &drvCopy)
+}
+
+func (drv Derivation) JSON() []byte {
+	// This seems safe to ignore since we won't be updating the type signature
+	// of Derivation. Is it?
+	b, _ := json.Marshal(drv)
+	return b
+}
+
+func (drv *Derivation) filename() (filename string) {
 	outputs := drv.Outputs
-	// content is hashed withoutderi the outputs attribute
-	drv.Outputs = map[string]Output{}
-	for name := range outputs {
-		// ensure the names are in the hash, changing them should change the input value
-		drv.Outputs[name] = Output{}
-	}
-	var jsonBytesForHashing []byte
-	jsonBytesForHashing, err = json.Marshal(drv)
-	if err != nil {
-		return
-	}
+	// Content is hashed without derivation outputs.
+	drv.Outputs = nil
+
+	jsonBytesForHashing := drv.JSON()
+
 	drv.Outputs = outputs
 	fileName := fmt.Sprintf("%s.drv", drv.Name)
-	_, filename, err = hashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
-	if err != nil {
-		return
-	}
+
+	// We ignore this error, the errors would result from bad writes and all reads/writes are
+	// in memory. Is this safe?
+	_, filename, _ = hashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
 	return
 }
 
 func (drv *Derivation) checkForExisting() (exists bool, err error) {
-	_, filename, err := drv.computeDerivation()
+	filename := drv.filename()
 	if err != nil {
 		return
 	}
@@ -611,14 +677,11 @@ func (drv *Derivation) calculateInputSources() (err error) {
 }
 
 func (drv *Derivation) writeDerivation() (err error) {
-	fileBytes, filename, err := drv.computeDerivation()
-	if err != nil {
-		return
-	}
+	filename := drv.filename()
 	fileLocation := drv.function.joinStorePath(filename)
 
 	if !pathExists(fileLocation) {
-		return ioutil.WriteFile(fileLocation, fileBytes, 0444)
+		return ioutil.WriteFile(fileLocation, drv.JSON(), 0444)
 	}
 	return nil
 }
@@ -741,7 +804,7 @@ func (drv *Derivation) build() (err error) {
 		return
 	}
 	folderName := hashString + "-" + drv.Name
-	drv.Outputs["out"] = Output{Path: folderName, Dependencies: matches}
+	drv.SetOutput("out", Output{Path: folderName, Dependencies: matches})
 
 	newPath := drv.function.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)

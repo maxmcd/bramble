@@ -32,7 +32,7 @@ type CmdFunction struct {
 	bramble *Bramble
 
 	// derivations that are touched by running commands
-	inputDerivations InputDerivations
+	inputDerivations DerivationOutputs
 }
 
 var (

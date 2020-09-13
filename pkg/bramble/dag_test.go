@@ -11,10 +11,10 @@ import (
 
 func TestNewAcyclicGraph(t *testing.T) {
 	graph := NewAcyclicGraph()
-	seed := InputDerivation{Path: "seed", Output: "out"}
-	make := InputDerivation{Path: "make", Output: "out"}
-	patchelf := InputDerivation{Path: "patchelf", Output: "out"}
-	golang := InputDerivation{Path: "golang", Output: "out"}
+	seed := DerivationOutput{Filename: "seed", OutputName: "out"}
+	make := DerivationOutput{Filename: "make", OutputName: "out"}
+	patchelf := DerivationOutput{Filename: "patchelf", OutputName: "out"}
+	golang := DerivationOutput{Filename: "golang", OutputName: "out"}
 	graph.Add(seed)
 	graph.Add(make)
 	graph.Add(patchelf)

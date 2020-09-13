@@ -60,15 +60,12 @@ type LockFile struct {
 func (b *Bramble) writeConfigMetadata(derivations []*Derivation) (err error) {
 	outputs := []string{}
 	for _, drv := range b.cmd.inputDerivations {
-		outputs = append(outputs, drv.Path+":"+drv.Output)
+		outputs = append(outputs, drv.Filename+":"+drv.OutputName)
 	}
 	for _, drv := range derivations {
-		_, filename, err := drv.computeDerivation()
-		if err != nil {
-			return err
-		}
+		filename := drv.filename()
 		// add all outputs for returned derivations
-		for name := range drv.Outputs {
+		for _, name := range drv.OutputNames {
 			outputs = append(outputs, filename+":"+name)
 		}
 	}
