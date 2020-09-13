@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -193,29 +194,29 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return nil, err
 	}
 
-	// At(0) is within this function, we want the file of the caller
-	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
-	if err = drv.calculateInputDerivations(); err != nil {
-		return nil, err
-	}
-
-	if err = drv.calculateInputSources(); err != nil {
-		return
-	}
-
-	// derivation calculation complete, hard barier
-	// TODO: expand on this nonsensical comment
-	// ---------------------------------------------------------------
-
-	fmt.Printf("Building derivation %q\n", drv.Name)
-	if err = drv.buildIfNew(); err != nil {
-		return nil, err
-	}
-	fmt.Println("Completed derivation:", drv.Outputs)
-	// TODO: add this panic but don't include outputs in the comparison
-	// if beforeBuild != drv.prettyJSON() {
-	// 	panic(beforeBuild + drv.prettyJSON())
+	// // At(0) is within this function, we want the file of the caller
+	// drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
+	// if err = drv.calculateInputDerivations(); err != nil {
+	// 	return nil, err
 	// }
+
+	// if err = drv.calculateInputSources(); err != nil {
+	// 	return
+	// }
+
+	// // derivation calculation complete, hard barier
+	// // TODO: expand on this nonsensical comment
+	// // ---------------------------------------------------------------
+
+	// fmt.Printf("Building derivation %q\n", drv.Name)
+	// if err = drv.buildIfNew(); err != nil {
+	// 	return nil, err
+	// }
+	// fmt.Println("Completed derivation:", drv.Outputs)
+	// // TODO: add this panic but don't include outputs in the comparison
+	// // if beforeBuild != drv.prettyJSON() {
+	// // 	panic(beforeBuild + drv.prettyJSON())
+	// // }
 	_, filename, err := drv.computeDerivation()
 	if err != nil {
 		return
@@ -256,6 +257,13 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 	return
 }
 
+func (f *DerivationFunction) fetchDerivationOutputPath(id InputDerivation) string {
+	return f.joinStorePath(
+		f.derivations[id.Path].
+			Outputs[id.Output].Path,
+	)
+}
+
 func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
 	drv = &Derivation{
 		Outputs:  map[string]Output{"out": {}},
@@ -278,7 +286,6 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		"sources?", &sources,
 		"env?", &env,
 		"outputs?", &outputs,
-		"build_inputs", &buildInputs,
 	); err != nil {
 		return
 	}
@@ -317,7 +324,6 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 				Path:   filename,
 				Output: "out", // TODO: support passing other outputs
 			})
-			drv.Env[input.Name] = "$bramble_path/" + input.Outputs["out"].Path
 		}
 	}
 	if outputs != nil {
@@ -362,8 +368,9 @@ type Derivation struct {
 	// InputDerivations are derivations that are using as imports to this build, outputs
 	// dependencies are tracked in the outputs
 	InputDerivations InputDerivations
-	// InputSource is the source directory and relative build location path for the build
-	InputSource InputSource
+	// BuildContextSource is the source directory that
+	BuildContextSource       string
+	BuildContextRelativePath string
 	// SourcePaths are all paths that must exist to support this build
 	SourcePaths []string
 
@@ -371,11 +378,6 @@ type Derivation struct {
 	sources  []string
 	function *DerivationFunction
 	location string
-}
-
-type InputSource struct {
-	Path             string
-	RelativeLocation string
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
@@ -392,6 +394,10 @@ type Output struct {
 type InputDerivation struct {
 	Path   string
 	Output string
+}
+
+func (id InputDerivation) templateString() string {
+	return fmt.Sprintf("{{ %s %s }}", id.Path, id.Output)
 }
 
 type InputDerivations []InputDerivation
@@ -423,14 +429,51 @@ var (
 
 func (drv *Derivation) Freeze()               {}
 func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
-func (drv *Derivation) String() string        { return fmt.Sprintf("<derivation %q>", drv.Name) }
 func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
 func (drv *Derivation) Type() string          { return "derivation" }
 
+func (drv *Derivation) String() string {
+	return drv.templateString(drv.mainOutput())
+}
+
+func (drv *Derivation) templateString(output string) string {
+	outputPath := drv.Outputs[output].Path
+	if drv.Outputs[output].Path != "" {
+		return outputPath
+	}
+	_, fn, _ := drv.computeDerivation()
+	return fmt.Sprintf("{{ %s %s }}", fn, output)
+}
+
+func (drv *Derivation) mainOutput() string {
+	if _, ok := drv.Outputs["out"]; ok || len(drv.Outputs) == 0 {
+		return "out"
+	}
+	names := []string{}
+	for name := range drv.Outputs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names[0]
+}
+
+func (drv *Derivation) env() (env []string) {
+	for k, v := range drv.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	// TODO
+	// for _, id := range drv.InputDerivations {
+	// 	env = append(env, fmt.Sprintf("%s=%s", id.name(), drv.function.fetchDerivationOutputPath(id)))
+	// }
+	return
+}
+
 func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
-	output, ok := drv.Outputs[name]
+	_, ok := drv.Outputs[name]
 	if ok {
-		return starlark.String(fmt.Sprintf("$bramble_path/%s", output.Path)), nil
+		return starlark.String(
+			drv.templateString(name),
+		), nil
 	}
 	return nil, nil
 }
@@ -470,8 +513,12 @@ func (drv *Derivation) computeDerivation() (fileBytes []byte, filename string, e
 		return
 	}
 	outputs := drv.Outputs
-	// content is hashed without the outputs attribute
-	drv.Outputs = nil
+	// content is hashed withoutderi the outputs attribute
+	drv.Outputs = map[string]Output{}
+	for name := range outputs {
+		// ensure the names are in the hash, changing them should change the input value
+		drv.Outputs[name] = Output{}
+	}
 	var jsonBytesForHashing []byte
 	jsonBytesForHashing, err = json.Marshal(drv)
 	if err != nil {
@@ -557,8 +604,8 @@ func (drv *Derivation) calculateInputSources() (err error) {
 			return
 		}
 	}
-	drv.InputSource.Path = hasher.String()
-	drv.InputSource.RelativeLocation = relBramblefileLocation
+	drv.BuildContextSource = hasher.String()
+	drv.BuildContextRelativePath = relBramblefileLocation
 	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
 	return
 }
@@ -582,32 +629,24 @@ func (drv *Derivation) createTmpDir() (tempDir string, err error) {
 	return ioutil.TempDir(drv.storePath(), TempDirPrefix)
 }
 
-func (drv *Derivation) expand(s string) string {
-	return os.Expand(s, func(i string) string {
-		if i == "bramble_path" {
-			return drv.storePath()
-		}
-		if v, ok := drv.Env[i]; ok {
-			return v
-		}
-		return ""
-	})
-}
-
 func (drv *Derivation) regularBuilder(buildDir, outPath string) (err error) {
-	builderLocation := drv.expand(drv.Builder)
+	spew.Dump(drv.function.derivations)
+	spew.Dump(drv.Builder)
+	// drv.function.
+	builderLocation := "TODO"
+	panic(builderLocation)
+	//filepath.Join(
+	// drv.function.fetchDerivationOutputPath(drv.Builder.Derivation),
+	// drv.Builder.FilePath)
+
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "error checking if builder location exists")
 	}
 	cmd := exec.Command(builderLocation, drv.Args...)
-	cmd.Dir = filepath.Join(buildDir, drv.InputSource.RelativeLocation)
-	cmd.Env = []string{}
-	for k, v := range drv.Env {
-		v = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
+	cmd.Dir = filepath.Join(buildDir, drv.BuildContextRelativePath)
+	cmd.Env = drv.env()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "bramble_path", drv.storePath()))
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -618,7 +657,8 @@ func (drv *Derivation) fetchURLBuilder(outPath string) (err error) {
 	if !ok {
 		return errors.New("fetch_url requires the environment variable 'url' to be set")
 	}
-	hash, _ := drv.Env["hash"]
+	// derivation can provide a hash, but usually this is just in the lockfile
+	hash := drv.Env["hash"]
 	path, err := drv.function.DownloadFile(url, hash)
 	if err != nil {
 		return err
@@ -640,7 +680,7 @@ func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
 	if err != nil {
 		return
 	}
-	if err = session.cd(filepath.Join(buildDir, drv.InputSource.RelativeLocation)); err != nil {
+	if err = session.cd(filepath.Join(buildDir, drv.BuildContextRelativePath)); err != nil {
 		return
 	}
 	session.setEnv("out", outPath)
@@ -670,8 +710,8 @@ func (drv *Derivation) build() (err error) {
 		return
 	}
 
-	if drv.InputSource.Path != "" {
-		if err = copyDirectory(drv.function.joinStorePath(drv.InputSource.Path), buildDir); err != nil {
+	if drv.BuildContextSource != "" {
+		if err = copyDirectory(drv.function.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
 			return errors.Wrap(err, "error copying sources into build dir")
 		}
 	}

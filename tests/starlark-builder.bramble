@@ -1,8 +1,8 @@
 def run_busybox():
     # this call triggers the derivation to calculate and build
     bb = busybox()
-
     # whoami is now available to run
+    print(bb.out)
     print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
 
 
@@ -19,7 +19,9 @@ def busybox():
     )
 
     # we pass the build_busybox callback here which is used to build this derivation
-    return derivation(name="busybox", builder=_build_busybox, build_inputs=[download],)
+    return derivation(
+        name="busybox", builder=_build_busybox, env=dict(download=download)
+    )
 
 
 def _build_busybox():

@@ -3,18 +3,17 @@ package bramble
 import (
 	"testing"
 
-	"github.com/alecthomas/assert"
 	"go.starlark.net/starlark"
 )
 
-type cmdTest struct {
-	name        string
-	script      string
-	errContains string
-	returnValue string
+type scriptTest struct {
+	name         string
+	script       string
+	errContains  string
+	respContains string
 }
 
-func runCmdTest(t *testing.T, tests []cmdTest) {
+func runCmdTest(t *testing.T, tests []scriptTest) {
 	session, err := newSession("", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -31,37 +30,18 @@ func runCmdTest(t *testing.T, tests []cmdTest) {
 				thread, tt.name+".bramble",
 				tt.script, starlark.StringDict{"cmd": cmd},
 			)
-			if err != nil || tt.errContains != "" {
-				if err == nil {
-					t.Error("error is nil")
-					return
-				}
-				assert.Contains(t, err.Error(), tt.errContains)
-				if tt.errContains == "" {
-					t.Error(err, tt.script)
-					return
-				}
-			}
-			if tt.returnValue == "" {
-				return
-			}
-			b, ok := globals["b"]
-			if !ok {
-				t.Errorf("%q doesn't output global value b", tt.script)
-				return
-			}
-			assert.Equal(t, tt.returnValue, b.String())
+			processExecResp(t, tt, globals, err)
 		})
 	}
 }
 
 func TestStarlarkCmd(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `
 c = cmd("ls")
 b = [getattr(c, x) for x in dir(c)]
 		`,
-			returnValue: ""},
+			respContains: ""},
 		{script: "cmd()",
 			errContains: "missing 1 required positional argument"},
 		{script: "cmd([])",
@@ -71,22 +51,22 @@ b = [getattr(c, x) for x in dir(c)]
 		{script: `cmd("    ")`,
 			errContains: `"    "`},
 		{script: `b=[getattr(cmd("echo"), x) for x in dir(cmd("echo"))]`,
-			returnValue: ``},
+			respContains: ``},
 		{script: `cmd("sleep 2").kill()`},
 		{script: `b=cmd(["ls", "-lah"])`,
-			returnValue: `<cmd 'ls' ['-lah']>`},
+			respContains: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls -lah")`,
-			returnValue: `<cmd 'ls' ['-lah']>`},
+			respContains: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls \"-lah\"")`,
-			returnValue: `<cmd 'ls' ['-lah']>`},
+			respContains: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls '-lah'")`,
-			returnValue: `<cmd 'ls' ['-lah']>`},
+			respContains: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("ls", "-lah")`,
-			returnValue: `<cmd 'ls' ['-lah']>`},
+			respContains: `<cmd 'ls' ['-lah']>`},
 		{script: `b=cmd("echo 'these are words'").pipe("tr ' ' '\n'").pipe("grep these").stdout()`,
-			returnValue: `"these\n"`},
+			respContains: `"these\n"`},
 		{script: `b=cmd("ls -lah").wait().exit_code`,
-			returnValue: `0`},
+			respContains: `0`},
 		{script: `c = cmd("echo")
 cmd("echo").wait()
 c.kill()`},
@@ -95,84 +75,84 @@ c.kill()`},
 }
 
 func TestPipe(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `b=cmd("echo 'these are words'").pipe("tr ' ' '\n'").pipe("grep these").stdout()`,
-			returnValue: `"these\n"`},
+			respContains: `"these\n"`},
 	}
 	runCmdTest(t, tests)
 }
 
 func TestCallback(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `
 def echo(*args, **kwargs):
   return cmd("echo", *args, **kwargs)
 
 b=echo("hi").stdout().strip()
 `,
-			returnValue: `"hi"`},
+			respContains: `"hi"`},
 	}
 	runCmdTest(t, tests)
 }
 
 func TestArgs(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `b=cmd("grep hi", stdin=cmd("echo hi")).output()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 		{script: `b=cmd("grep hi", stdin="hi").output()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 		{script: `b=cmd("env", clear_env=True).output()`,
-			returnValue: `""`},
+			respContains: `""`},
 		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).output()`,
-			returnValue: `"baz=1\nfoo=bar\n"`},
+			respContains: `"baz=1\nfoo=bar\n"`},
 	}
 	runCmdTest(t, tests)
 }
 
 func TestIfErr(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 	}
 	runCmdTest(t, tests)
 }
 
 func TestCallable(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `b=cmd("ls").pipe`,
-			returnValue: `<attribute 'pipe' of 'cmd'>`},
+			respContains: `<attribute 'pipe' of 'cmd'>`},
 		{script: `b=type(cmd("ls").if_err)`,
-			returnValue: `"builtin_function_or_method"`},
+			respContains: `"builtin_function_or_method"`},
 	}
 	runCmdTest(t, tests)
 }
 
 func TestByteStream(t *testing.T) {
-	tests := []cmdTest{
+	tests := []scriptTest{
 		{script: `b=cmd("ls", "notathing").stdout()`,
 			errContains: `exit`},
 		{script: `b=cmd("echo","hi").stdout()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 		{script: `b=list(cmd("echo","hi").stdout)`,
-			returnValue: `["hi"]`},
+			respContains: `["hi"]`},
 		{script: `b=cmd("echo","hi").stdout`,
-			returnValue: `<attribute 'stdout' of 'cmd'>`},
+			respContains: `<attribute 'stdout' of 'cmd'>`},
 		{script: `b=type(cmd("echo","hi").stdout)`,
-			returnValue: `"bytestream"`},
+			respContains: `"bytestream"`},
 		{script: `b=cmd("echo", "hi").output()`,
-			returnValue: `"hi\n"`},
+			respContains: `"hi\n"`},
 		{script: `b=cmd("echo", "hi").stderr()`,
-			returnValue: `""`},
+			respContains: `""`},
 		{script: `b=cmd("echo", "hi").stderr`,
-			returnValue: `<attribute 'stderr' of 'cmd'>`},
+			respContains: `<attribute 'stderr' of 'cmd'>`},
 		{script: `b=cmd("echo", "hi").stdout`,
-			returnValue: `<attribute 'stdout' of 'cmd'>`},
+			respContains: `<attribute 'stdout' of 'cmd'>`},
 		{script: `b=cmd("echo", "hi").output`,
-			returnValue: `<attribute 'output' of 'cmd'>`},
+			respContains: `<attribute 'output' of 'cmd'>`},
 		{script: `b=cmd("echo", 1).stdout()`,
-			returnValue: `"1\n"`},
+			respContains: `"1\n"`},
 		{script: `
 def run():
 	c = cmd("ls")
@@ -182,7 +162,7 @@ def run():
 			response = line
 	return response
 b = run()`,
-			returnValue: `"cmd_test.go"`},
+			respContains: `"cmd_test.go"`},
 		{script: `
 def run():
 	c = cmd("ls")
@@ -190,7 +170,7 @@ def run():
 		if "cmd_test" in line:
 			return line
 b = run()`,
-			returnValue: `"cmd_test.go"`},
+			respContains: `"cmd_test.go"`},
 	}
 	runCmdTest(t, tests)
 }

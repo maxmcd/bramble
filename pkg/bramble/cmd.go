@@ -119,11 +119,12 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	); err != nil {
 		return
 	}
-
+	var path string
 	if clearEnvKwarg == starlark.True {
 		cmd.Env = []string{}
 	} else {
 		cmd.Env = fn.session.envArray()
+		path = fn.session.getEnv("PATH")
 	}
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)
@@ -133,6 +134,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		for k, v := range kvs {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
+		path = kvs["PATH"]
 	}
 	// this feels like it's helping determinism, is it?
 	sort.Strings(cmd.Env)
@@ -166,9 +168,10 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	name := cmd.name()
 	if filepath.Base(name) == name {
 		var lp string
-		if lp, err = exec.LookPath(name); err != nil {
+		if lp, err = lookPath(name, path); err != nil {
 			return nil, err
 		}
+		fmt.Println(lp)
 		cmd.Path = lp
 	} else {
 		cmd.Path = name
