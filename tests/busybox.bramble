@@ -59,8 +59,8 @@ whoami, whois, xargs, xxd, xz, xzcat, yes, zcat, zcip
     script = (
         """
     set -e
-    $b/busybox-x86_64 mkdir $out/bin
-    $b/busybox-x86_64 cp $b/busybox-x86_64 $out/bin/busybox
+    $busybox_download/busybox-x86_64 mkdir $out/bin
+    $busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
     cd $out/bin
     ./busybox ln -s busybox ln
     %s
@@ -70,7 +70,7 @@ whoami, whois, xargs, xxd, xz, xzcat, yes, zcat, zcip
 
     return derivation(
         name="busybox",
-        env={"b": b.out},
-        builder="%s/busybox-x86_64" % b.out,
+        build_inputs=[b],
+        builder=(b, "/busybox-x86_64"),
         args=["sh", "-c", script],
     )

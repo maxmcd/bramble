@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -346,4 +347,35 @@ func validSymlinkExists(path string) (dest string, ok bool) {
 		}
 	}
 	return "", false
+}
+
+func lookPath(file string, path string) (string, error) {
+	if strings.Contains(file, "/") {
+		err := findExecutable(file)
+		if err == nil {
+			return file, nil
+		}
+		return "", &exec.Error{Name: file, Err: err}
+	}
+	for _, dir := range filepath.SplitList(path) {
+		if dir == "" {
+			// Unix shell semantics: path element "" means "."
+			dir = "."
+		}
+		path := filepath.Join(dir, file)
+		if err := findExecutable(path); err == nil {
+			return path, nil
+		}
+	}
+	return "", &exec.Error{Name: file, Err: exec.ErrNotFound}
+}
+func findExecutable(file string) error {
+	d, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
+		return nil
+	}
+	return os.ErrPermission
 }

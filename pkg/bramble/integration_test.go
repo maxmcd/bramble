@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/assert"
 	"github.com/maxmcd/bramble/pkg/reptar"
 )
 
@@ -18,13 +17,20 @@ var (
 	TestTmpDirPrefix = "bramble-test-"
 )
 
-func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
-	hasher := NewHasher()
+func tmpDir() string {
 	dir, err := ioutil.TempDir("", TestTmpDirPrefix)
-	assert.NoError(t, err)
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
+
+func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
+	var err error
+	hasher := NewHasher()
+	dir := tmpDir()
 	hasher2 := NewHasher()
-	dir2, err := ioutil.TempDir("", TestTmpDirPrefix)
-	assert.NoError(t, err)
+	dir2 := tmpDir()
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir)
 	cb(t)
@@ -56,7 +62,7 @@ func TestIntegration(t *testing.T) {
 	runTwiceAndCheck(t, runTests)
 }
 
-func TestRunAllPublicFunctions(t *testing.T) {
+func assembleModules(t *testing.T) []string {
 	modules := []string{}
 	if err := filepath.Walk("../..", func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
@@ -89,17 +95,22 @@ func TestRunAllPublicFunctions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	return modules
+}
 
+func TestRunAlmostAllPublicFunctions(t *testing.T) {
+	modules := assembleModules(t)
 	runTwiceAndCheck(t, func(t *testing.T) {
 		for _, module := range modules {
 			b := Bramble{}
 			if strings.Contains(module, "lib/std") {
 				continue
 			}
-			fmt.Println("running module", module)
-			if err := b.run([]string{module}); err != nil {
-				t.Fatal(err)
-			}
+			t.Run(module, func(t *testing.T) {
+				if err := b.run([]string{module}); err != nil {
+					t.Fatal(err)
+				}
+			})
 		}
 	})
 }

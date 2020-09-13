@@ -50,6 +50,9 @@ func DictToGoStringMap(dict *starlark.Dict) (out map[string]string, err error) {
 }
 
 func ValueToString(val starlark.Value) (out string, err error) {
+	if val.Type() == "derivation" {
+		return val.String(), nil
+	}
 	switch v := val.(type) {
 	case starlark.String:
 		out = v.GoString()
