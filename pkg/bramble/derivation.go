@@ -183,27 +183,30 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return
 	}
 
-	// we're running inside a derivation build and we need to exit with this function and function context
-	if f.bramble.DerivationCallCount() == f.DerivationCallCount {
+	// We're running inside a derivation build and we need to exit with this
+	// function and function context.
+	if f.bramble.derivationCallCount == f.DerivationCallCount {
 		return nil, ErrFoundBuildContext{thread: thread, Fn: getBuilderFunction(kwargs)}
 	}
-	if args.Len() > 0 {
-		return nil, errors.New("builtin function build() takes no positional arguments")
-	}
+
+	// Parse function arguments and assemble the basic derivation
 	drv, err := f.newDerivationFromArgs(args, kwargs)
 	if err != nil {
 		return nil, err
 	}
 
-	// // At(0) is within this function, we want the file of the caller
-	// drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
-	// if err = drv.calculateInputDerivations(); err != nil {
-	// 	return nil, err
-	// }
+	// Make sure the location of the derivation is set using the call stack
+	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 
-	// if err = drv.calculateInputSources(); err != nil {
-	// 	return
-	// }
+	// find all source files that are used for this derivation
+	if err = drv.calculateInputSources(); err != nil {
+		return
+	}
+
+	fmt.Println(drv.prettyJSON())
+
+	filename := drv.filename()
+	f.derivations[filename] = drv
 
 	// // derivation calculation complete, hard barier
 	// // TODO: expand on this nonsensical comment
@@ -218,8 +221,6 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	// // if beforeBuild != drv.prettyJSON() {
 	// // 	panic(beforeBuild + drv.prettyJSON())
 	// // }
-	filename := drv.filename()
-	f.derivations[filename] = drv
 	return drv, nil
 }
 
@@ -239,10 +240,11 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 	case *starlark.Function:
 		drv.Builder = "function"
 		meta := functionBuilderMeta{
-			DerivationCallCount: drv.function.bramble.DerivationCallCount(),
-			ModuleCache:         drv.function.bramble.ModuleCache(),
+			DerivationCallCount: drv.function.bramble.derivationCallCount,
+			ModuleCache:         drv.function.bramble.moduleCache,
 		}
-		meta.Module, meta.Function = drv.function.bramble.RunEntrypoint()
+		meta.Module = drv.function.bramble.moduleEntrypoint
+		meta.Function = drv.function.bramble.calledFunction
 
 		b, _ := json.Marshal(meta)
 		drv.Env["function_builder_meta"] = string(b)
@@ -333,6 +335,8 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 	if err = setBuilder(drv, builder); err != nil {
 		return
 	}
+
+	drv.InputDerivations = drv.SearchForDerivationOutputs()
 
 	return drv, nil
 }
@@ -440,6 +444,15 @@ func (drv Derivation) String() string {
 	return drv.templateString(drv.mainOutput())
 }
 
+func (drv Derivation) HasOutput(name string) bool {
+	for _, o := range drv.OutputNames {
+		if o == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (drv Derivation) Output(name string) Output {
 	for i, o := range drv.OutputNames {
 		if o == name {
@@ -493,8 +506,7 @@ func (drv *Derivation) env() (env []string) {
 }
 
 func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
-	out := drv.Output(name)
-	if out.Empty() {
+	if !drv.HasOutput(name) {
 		return nil, nil
 	}
 	return starlark.String(
@@ -509,23 +521,6 @@ func (drv *Derivation) AttrNames() (out []string) {
 func (drv *Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
-}
-
-func (drv *Derivation) calculateInputDerivations() (err error) {
-	// TODO: combine this with checking of build_inputs
-	// TODO: also check derivations passed to cmd run
-
-	fileBytes, err := json.Marshal(drv)
-	if err != nil {
-		return
-	}
-
-	drv.InputDerivations = sortAndUniqueInputDerivations(append(
-		drv.InputDerivations,
-		drv.function.checkBytesForDerivations(fileBytes)...,
-	))
-
-	return nil
 }
 
 // TemplateStringRegexp is the regular expression that matches template strings

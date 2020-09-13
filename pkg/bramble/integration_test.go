@@ -18,7 +18,7 @@ var (
 )
 
 func tmpDir() string {
-	dir, err := ioutil.TempDir("", TestTmpDirPrefix)
+	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
 	if err != nil {
 		panic(err)
 	}

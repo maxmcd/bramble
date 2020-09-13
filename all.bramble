@@ -1,0 +1,8 @@
+load("github.com/maxmcd/bramble/lib/seed", "seed", "ldd")
+load("github.com/maxmcd/bramble/tests/simple/simple", "simple")
+load("github.com/maxmcd/bramble/tests/busybox", "busybox")
+load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested", "nested")
+
+
+def all():
+    return [seed(), busybox(), nested(), ldd(), simple()]
