@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
+	"github.com/hashicorp/terraform/dag"
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -43,17 +44,56 @@ type Bramble struct {
 	calledFunction   string
 }
 
-// implement derivation.Bramble
-func (b *Bramble) ModuleCache() map[string]string  { return b.moduleCache }
-func (b *Bramble) DerivationCallCount() int        { return b.derivationCallCount }
-func (b *Bramble) RunEntrypoint() (string, string) { return b.moduleEntrypoint, b.calledFunction }
-func (b *Bramble) AfterDerivation()                { b.afterDerivation = true }
+// AfterDerivation is called when a builtin function is called that can't be
+// run before an derivation call. This allows us to track when
+func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
 func (b *Bramble) CalledDerivation() error {
 	b.derivationCallCount++
 	if b.afterDerivation {
 		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
 	}
 	return nil
+}
+
+func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
+	graph := NewAcyclicGraph()
+	_ = graph
+	root := "root"
+	graph.Add(root)
+	var processDO func(do DerivationOutput)
+	processDO = func(do DerivationOutput) {
+		drv, ok := b.derivationFn.derivations[do.Filename]
+		if !ok {
+			panic(do)
+		}
+		for _, inputDO := range drv.InputDerivations {
+			graph.Add(inputDO)
+			graph.Connect(dag.BasicEdge(do, inputDO))
+			processDO(inputDO) // TODO, not recursive
+		}
+	}
+	fmt.Println(drvs)
+	for _, drv := range drvs {
+		filename := drv.filename()
+		for _, do := range drv.InputDerivations {
+			graph.Add(do)
+		}
+		for _, name := range drv.OutputNames {
+			vertex := DerivationOutput{Filename: filename, OutputName: name}
+			graph.Add(vertex)
+			graph.Connect(dag.BasicEdge(root, vertex))
+
+			// All inputs are inputs of all outputs
+			for _, do := range drv.InputDerivations {
+				graph.Connect(dag.BasicEdge(vertex, do))
+				processDO(do)
+			}
+		}
+	}
+
+	fmt.Println(string(graph.Dot(nil)))
+	return nil
+	// TODO!
 }
 
 func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session *session) (err error) {
@@ -361,7 +401,11 @@ func (b *Bramble) run(args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "error running")
 	}
-	return b.writeConfigMetadata(valuesToDerivations(values))
+	returnedDerivations := valuesToDerivations(values)
+
+	b.buildDerivations(returnedDerivations)
+
+	return b.writeConfigMetadata(returnedDerivations)
 }
 
 func (b *Bramble) gc(args []string) (err error) {

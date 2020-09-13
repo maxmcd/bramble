@@ -44,3 +44,6 @@ go: install
 
 seed: install
 	bramble run lib/seed:seed
+
+all_bramble: install
+	bramble run all:all
