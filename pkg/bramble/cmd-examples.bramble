@@ -52,7 +52,7 @@ def main():
         stdin=cmd("echo"),
         dir="../",
         env={"FOO": "BAR", "X": "Y"},
-        clear_env=True,
+        clear_env=False,
         ignore_failure=True,
         print_output=True,
     )
