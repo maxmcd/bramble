@@ -54,7 +54,28 @@ type Bramble struct {
 	moduleEntrypoint string
 	calledFunction   string
 
-	derivations map[string]*Derivation
+	derivations *DerivationsMap
+}
+
+type DerivationsMap struct {
+	sync.Map
+}
+
+func (dm *DerivationsMap) Get(id string) *Derivation {
+	d, ok := dm.Load(id)
+	if !ok {
+		return nil
+	}
+	return d.(*Derivation)
+}
+func (dm *DerivationsMap) Set(id string, drv *Derivation) {
+	dm.Store(id, drv)
+}
+
+func (dm *DerivationsMap) Range(f func(filename string, drv *Derivation) bool) {
+	dm.Map.Range(func(key, value interface{}) bool {
+		return f(key.(string), value.(*Derivation))
+	})
 }
 
 // AfterDerivation is called when a builtin function is called that can't be
@@ -98,7 +119,7 @@ func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
 	}
 	if exists {
 		drv.Outputs = outputs
-		b.derivations[filename] = drv
+		b.derivations.Set(filename, drv)
 		return
 	}
 	fmt.Println("Building derivation", filename)
@@ -169,11 +190,15 @@ func (b *Bramble) hashAndScanDirectory(location string) (matches []string, hashS
 	oldStorePath := b.store.storePath
 	new := BramblePrefixOfRecord
 
-	for _, derivation := range b.derivations {
-		for _, output := range derivation.Outputs {
+	// TODO:
+	// just use input derivations?
+	// ensure we don't use values that aren't in input derivations?
+	b.derivations.Range(func(_ string, drv *Derivation) bool {
+		for _, output := range drv.Outputs {
 			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
 		}
-	}
+		return true
+	})
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
@@ -182,7 +207,7 @@ func (b *Bramble) hashAndScanDirectory(location string) (matches []string, hashS
 		if err := reptar.Reptar(location, pipeWriter); err != nil {
 			errChan <- err
 		}
-		if err = pipeWriter.Close(); err != nil {
+		if err := pipeWriter.Close(); err != nil {
 			errChan <- err
 		}
 	}()
@@ -441,8 +466,8 @@ func (b *Bramble) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer
 	// become filesystem paths
 	replacements := []string{}
 	for _, do := range outputs {
-		d, ok := b.derivations[do.Filename]
-		if !ok {
+		d := b.derivations.Get(do.Filename)
+		if d == nil {
 			return nil, errors.Errorf(
 				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
 		}
@@ -504,8 +529,8 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 	graph.Add(root)
 	var processDO func(do DerivationOutput)
 	processDO = func(do DerivationOutput) {
-		drv, ok := b.derivations[do.Filename]
-		if !ok {
+		drv := b.derivations.Get(do.Filename)
+		if drv == nil {
 			panic(do)
 		}
 		for _, inputDO := range drv.InputDerivations {
@@ -526,19 +551,19 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	graph := b.assembleDerivationDependencyGraph(dos)
 
 	errChan := make(chan error)
-	lock := sync.Mutex{}
+	semaphore := make(chan struct{}, 2)
 
 	go func() {
 		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
-			lock.Lock()
-			defer lock.Unlock()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 			// serial for now
 
 			if root, ok := v.(string); ok && root == "root" {
 				return nil
 			}
 			do := v.(DerivationOutput)
-			drv := b.derivations[do.Filename]
+			drv := b.derivations.Get(do.Filename)
 			if drv.Output(do.OutputName).Path != "" {
 				return nil
 			}
@@ -601,7 +626,7 @@ func (b *Bramble) init() (err error) {
 
 	b.moduleCache = map[string]string{}
 	b.filenameCache = map[string]string{}
-	b.derivations = map[string]*Derivation{}
+	b.derivations = &DerivationsMap{}
 	b.importGraph = NewAcyclicGraph()
 
 	if b.store, err = NewStore(); err != nil {
