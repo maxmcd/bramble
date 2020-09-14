@@ -34,10 +34,13 @@ func TestDerivationValueReplacement(t *testing.T) {
 	fetchURL.Outputs = []Output{{Path: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
 	other.Outputs = []Output{{Path: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
 
-	buildCopy, err := building.replaceDerivationOutputsWithOutputPaths("/bramble/store", map[string]*Derivation{
+	b := Bramble{}
+	b.derivations = map[string]*Derivation{
 		fetchURL.filename(): &fetchURL,
 		other.filename():    &other,
-	})
+	}
+	b.store = Store{storePath: "/bramble/store"}
+	buildCopy, err := b.copyDerivationWithOutputValuesReplaced(&building)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,9 +102,7 @@ func processExecResp(t *testing.T, tt scriptTest, globals starlark.StringDict, e
 		t.Errorf("%q doesn't output global value b", tt.script)
 		return
 	}
-	if d, ok := globals["d"]; ok {
-		fmt.Println(d.(*Derivation).prettyJSON())
-	}
+
 	if drv, ok := b.(*Derivation); ok {
 		fmt.Println(drv.prettyJSON())
 		assert.Contains(t, drv.prettyJSON(), tt.respContains)

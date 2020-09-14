@@ -56,16 +56,13 @@ func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple
 	return fn.newCmd(thread, args, kwargs, nil)
 }
 
-func (fn *CmdFunction) calculateInputDerivations(cmd *Cmd) {
+func (cmd *Cmd) searchForDerivationOutputs() DerivationOutputs {
 	var buf bytes.Buffer
 	fmt.Fprint(&buf, cmd.Path)
 	fmt.Fprint(&buf, strings.Join(cmd.Args, ""))
 	fmt.Fprint(&buf, strings.Join(cmd.Env, ""))
 
-	fn.inputDerivations = append(
-		fn.inputDerivations,
-		fn.bramble.derivationFn.checkBytesForDerivations(buf.Bytes())...,
-	)
+	return searchForDerivationOutputs(buf.String())
 }
 
 func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
@@ -97,6 +94,12 @@ func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
 	return starutil.IterableToGoList(args)
 }
 
+func (cmd *Cmd) expandArguments() {
+	for i, arg := range cmd.Args {
+		cmd.Args[i] = cmd.fn.session.expand(arg)
+	}
+}
+
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
 func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
@@ -119,12 +122,10 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	); err != nil {
 		return
 	}
-	var path string
 	if clearEnvKwarg == starlark.True {
 		cmd.Env = []string{}
 	} else {
 		cmd.Env = fn.session.envArray()
-		path = fn.session.getEnv("PATH")
 	}
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)
@@ -134,7 +135,6 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		for k, v := range kvs {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
-		path = kvs["PATH"]
 	}
 	// this feels like it's helping determinism, is it?
 	sort.Strings(cmd.Env)
@@ -153,6 +153,22 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	if err != nil {
 		return
 	}
+
+	// +------------------------------------+
+	// | Basic input validation is complete |
+	// +------------------------------------+
+
+	// Search for input derivations
+
+	dos := cmd.searchForDerivationOutputs()
+	if err = fn.bramble.buildDerivationOutputs(dos); err != nil {
+		return
+	}
+
+	if err = fn.bramble.replaceOutputValuesInCmd(&cmd); err != nil {
+		return
+	}
+
 	// expand shell variables in arguments
 	cmd.expandArguments()
 
@@ -161,24 +177,18 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			return
 		}
 	}
-	// kwargs:
-	// stdin
-	// dir
-	// env
+
 	name := cmd.name()
 	if filepath.Base(name) == name {
 		var lp string
-		if lp, err = lookPath(name, path); err != nil {
+		if lp, err = lookPath(name, cmd.path()); err != nil {
 			return nil, err
 		}
-		fmt.Println(lp)
 		cmd.Path = lp
 	} else {
 		cmd.Path = name
 	}
-
-	fn.calculateInputDerivations(&cmd)
-
+	fmt.Println(cmd.PythonFunctionString())
 	cmd.wg = &sync.WaitGroup{}
 	cmd.wg.Add(1)
 
@@ -191,7 +201,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
-	fmt.Println(cmd.String())
+
 	err = cmd.Start()
 	go func() {
 		err := cmd.Cmd.Wait()
@@ -249,6 +259,20 @@ func (cmd *Cmd) String() string {
 	sb.WriteString(">")
 	return sb.String()
 }
+
+func (cmd *Cmd) PythonFunctionString() string {
+	s := fmt.Sprintf
+	var sb strings.Builder
+	sb.WriteString("cmd(")
+	sb.WriteString(s("%q", cmd.name()))
+	if len(cmd.Args) > 1 {
+		sb.WriteString(` "`)
+		sb.WriteString(strings.Join(cmd.Args[1:], `", "`))
+		sb.WriteString(`"`)
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
 func (cmd *Cmd) Freeze() {
 	// TODO: don't implement functionality that does nothing
 	if cmd != nil {
@@ -258,6 +282,16 @@ func (cmd *Cmd) Freeze() {
 func (cmd *Cmd) Type() string          { return "cmd" }
 func (cmd *Cmd) Truth() starlark.Bool  { return cmd != nil }
 func (cmd *Cmd) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
+
+func (cmd *Cmd) path() string {
+	for _, ev := range cmd.Env {
+		p := strings.SplitN(ev, "=", 2)
+		if p[0] == "PATH" && len(p) == 2 {
+			return p[1]
+		}
+	}
+	return ""
+}
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
 	switch name {
@@ -322,12 +356,6 @@ func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []sta
 func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	_ = cmd.setOutput(true, false)
 	return cmd.fn.newCmd(thread, args, kwargs, cmd)
-}
-
-func (cmd *Cmd) expandArguments() {
-	for i, arg := range cmd.Args {
-		cmd.Args[i] = cmd.fn.session.expand(arg)
-	}
 }
 
 func (cmd *Cmd) starlarkWait(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

@@ -2,24 +2,31 @@ package bramble
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
 	"github.com/hashicorp/terraform/dag"
 	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/maxmcd/bramble/pkg/textreplace"
 	"go.starlark.net/starlark"
 )
 
@@ -46,6 +53,8 @@ type Bramble struct {
 
 	moduleEntrypoint string
 	calledFunction   string
+
+	derivations map[string]*Derivation
 }
 
 // AfterDerivation is called when a builtin function is called that can't be
@@ -58,14 +67,444 @@ func (b *Bramble) CalledDerivation() error {
 	return nil
 }
 
-func (b *Bramble) assembleDerivationDepedencyGraph(drvs []*Derivation) *AcyclicGraph {
+func (b *Bramble) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	fileLocation := b.store.joinStorePath(filename)
+	_, err = os.Stat(fileLocation)
+	if err != nil {
+		return nil, false, nil
+	}
+	file, err := os.Open(fileLocation)
+	if err != nil {
+		return nil, false, err
+	}
+	drv = &Derivation{}
+	return drv, true, json.NewDecoder(file).Decode(drv)
+}
+func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output, exists bool, err error) {
+	existingDrv, exists, err := b.LoadDerivation(filename)
+	// It doesn't exist if it doesn't exist
+	if !exists {
+		return nil, exists, err
+	}
+	// It doesn't exist if it doesn't have the outputs we need
+	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
+}
+
+func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
+	filename := drv.filename()
+	outputs, exists, err := b.checkForExistingDerivation(filename)
+	if err != nil {
+		return err
+	}
+	if exists {
+		drv.Outputs = outputs
+		b.derivations[filename] = drv
+		return
+	}
+	fmt.Println("Building derivation", filename)
+	if err = b.buildDerivation(drv); err != nil {
+		return
+	}
+	return b.writeDerivation(drv)
+}
+
+func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
+	buildDir, err := b.createTmpDir()
+	if err != nil {
+		return
+	}
+	if drv.BuildContextSource != "" {
+		if err = copyDirectory(b.store.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
+			err = errors.Wrap(err, "error copying sources into build dir")
+			return
+		}
+	}
+	outputPaths := map[string]string{}
+	for _, name := range drv.OutputNames {
+		// TODO: use diretory within store instead so that we can rewrite self-referential paths
+		if outputPaths[name], err = b.createTmpDir(); err != nil {
+			return
+		}
+	}
+	drvCopy, err := b.copyDerivationWithOutputValuesReplaced(drv)
+	if err != nil {
+		return
+	}
+	switch drv.Builder {
+	case "fetch_url":
+		err = b.fetchURLBuilder(&drvCopy, outputPaths)
+	case "function":
+		err = b.functionBuilder(&drvCopy, buildDir, outputPaths)
+	default:
+		err = b.regularBuilder(&drvCopy, buildDir, outputPaths)
+	}
+	if err != nil {
+		return
+	}
+
+	for outputName, outputPath := range outputPaths {
+		matches, hashString, err := b.hashAndScanDirectory(outputPath)
+		if err != nil {
+			return err
+		}
+		folderName := hashString + "-" + drv.Name
+		drv.SetOutput(outputName, Output{Path: folderName, Dependencies: matches})
+		newPath := b.store.joinStorePath() + "/" + folderName
+		fmt.Println("Output at ", newPath)
+		// We ignore an existing build directory with the same name. It contains the same contents
+		if !pathExists(newPath) {
+			err = os.Rename(outputPath, newPath)
+		} else {
+			err = os.RemoveAll(outputPath)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return
+}
+
+func (b *Bramble) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
+	var storeValues []string
+	oldStorePath := b.store.storePath
+	new := BramblePrefixOfRecord
+
+	for _, derivation := range b.derivations {
+		for _, output := range derivation.Outputs {
+			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
+		}
+	}
+	errChan := make(chan error)
+	resultChan := make(chan map[string]struct{})
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		if err := reptar.Reptar(location, pipeWriter); err != nil {
+			errChan <- err
+		}
+		if err = pipeWriter.Close(); err != nil {
+			errChan <- err
+		}
+	}()
+	hasher := NewHasher()
+	go func() {
+		_, matches, err := textreplace.ReplaceStringsPrefix(
+			pipeReader, hasher, storeValues, oldStorePath, new)
+		if err != nil {
+			errChan <- err
+		}
+		resultChan <- matches
+	}()
+	select {
+	case err := <-errChan:
+		return nil, "", err
+	case result := <-resultChan:
+		for k := range result {
+			// TODO: does this still need to happen?
+			matches = append(matches, strings.Replace(k, oldStorePath, "$bramble_path", 1))
+		}
+		return matches, hasher.String(), nil
+	}
+}
+
+// setDerivationBuilder is used during instantiation to set various attributes on the
+// derivation for a specific builder
+func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) (err error) {
+	switch v := builder.(type) {
+	case starlark.String:
+		drv.Builder = v.GoString()
+	case *starlark.Function:
+		meta := functionBuilderMeta{
+			ModuleCache: map[string]string{},
+		}
+		globals := v.Globals()
+		var match bool
+		for name, fn := range globals {
+			if fn == v {
+				match = true
+				meta.Function = name
+				break
+			}
+		}
+		if !match {
+			return errors.Errorf("function %q must be a global function to be used in a function builder", v)
+		}
+		meta.Module = b.filenameCache[v.Position().Filename()]
+
+		meta.ModuleCache[meta.Module] = b.moduleCache[meta.Module]
+		set, err := b.importGraph.Descendents(meta.Module)
+		if err != nil {
+			return err
+		}
+		for _, m := range set {
+			moduleName := m.(string)
+			meta.ModuleCache[moduleName] = b.moduleCache[moduleName]
+		}
+
+		drv.Builder = "function"
+
+		b, _ := json.Marshal(meta)
+		drv.Env["function_builder_meta"] = string(b)
+		for _, p := range meta.ModuleCache {
+			drv.SourcePaths = append(drv.SourcePaths, p)
+		}
+		// TODO: put these validation checks somehere singular?
+		sort.Strings(drv.SourcePaths)
+	default:
+		return errors.Errorf("no builder for %q", builder.Type())
+	}
+	return
+}
+
+func (b *Bramble) createTmpDir() (tempDir string, err error) {
+	return ioutil.TempDir(b.store.storePath, TempDirPrefix)
+}
+func (b *Bramble) writeDerivation(drv *Derivation) error {
+	filename := drv.filename()
+	fileLocation := b.store.joinStorePath(filename)
+
+	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
+}
+
+func (b *Bramble) fetchURLBuilder(drv *Derivation, outputPaths map[string]string) (err error) {
+	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
+		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
+	}
+	url, ok := drv.Env["url"]
+	if !ok {
+		return errors.New("fetch_url requires the environment variable 'url' to be set")
+	}
+	// derivation can provide a hash, but usually this is just in the lockfile
+	hash := drv.Env["hash"]
+	path, err := b.DownloadFile(url, hash)
+	if err != nil {
+		return err
+	}
+	// TODO: what if this package changes?
+	if err = archiver.Unarchive(path, outputPaths["out"]); err != nil {
+		return errors.Wrap(err, "error unpacking url archive")
+	}
+	return nil
+}
+
+func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	// drv.function.
+	builderLocation := drv.Builder
+
+	if _, err := os.Stat(builderLocation); err != nil {
+		return errors.Wrap(err, "error checking if builder location exists")
+	}
+	cmd := exec.Command(builderLocation, drv.Args...)
+	cmd.Dir = filepath.Join(buildDir, drv.BuildContextRelativePath)
+	cmd.Env = drv.env()
+	for outputName, outputPath := range outputPaths {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", outputName, outputPath))
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	var meta functionBuilderMeta
+
+	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
+		return errors.Wrap(err, "error parsing function_builder_meta")
+	}
+	session, err := newSession(buildDir, drv.Env)
+	if err != nil {
+		return
+	}
+	if err = session.cd(filepath.Join(buildDir, drv.BuildContextRelativePath)); err != nil {
+		return
+	}
+	for outputName, outputPath := range outputPaths {
+		session.setEnv(outputName, outputPath)
+	}
+	for k, v := range session.env {
+		session.env[k] = strings.Replace(v, "$bramble_path", b.store.storePath, -1)
+	}
+	return b.CallInlineDerivationFunction(
+		meta, session,
+	)
+}
+
+// DownloadFile downloads a file into the store. Must include an expected hash
+// of the downloaded file as a hex string of a  sha256 hash
+func (b *Bramble) DownloadFile(url string, hash string) (path string, err error) {
+	fmt.Printf("Downloading url %s\n", url)
+
+	if hash != "" {
+		byt, err := hex.DecodeString(hash)
+		if err != nil {
+			err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
+			return "", err
+		}
+		storePrefixHash := bytesToBase32Hash(byt)
+		matches, err := filepath.Glob(b.store.joinStorePath(storePrefixHash) + "*")
+		if err != nil {
+			err = errors.Wrap(err, "error searching for existing hashed content")
+			return "", err
+		}
+		if len(matches) != 0 {
+			return matches[0], nil
+		}
+	}
+
+	existingHash, exists := b.lockFile.URLHashes[url]
+	if exists && hash != "" && hash != existingHash {
+		return "", errors.Errorf("when downloading the file %q a hash %q was provided in"+
+			" code but the hash %q was in the lock file, exiting", url, hash, existingHash)
+	}
+
+	// if we don't have a hash to validate, validate the one we already have
+	if hash == "" && exists {
+		hash = existingHash
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
+		return
+	}
+	defer resp.Body.Close()
+	contentHash, path, err := b.store.writeReader(resp.Body, filepath.Base(url), hash)
+	if err == errHashMismatch {
+		err = errors.Errorf(
+			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
+			url, hash, contentHash)
+	} else if err != nil {
+		return
+	}
+	return path, b.addURLHashToLockfile(url, contentHash)
+}
+
+func (b *Bramble) calculateDerivationInputSources(drv *Derivation) (err error) {
+	if len(drv.sources) == 0 {
+		return
+	}
+	tmpDir, err := b.createTmpDir()
+	if err != nil {
+		return
+	}
+
+	sources := drv.sources
+	drv.sources = []string{}
+	absDir, err := filepath.Abs(drv.location)
+	if err != nil {
+		return
+	}
+	// get absolute paths for all sources
+	for i, src := range sources {
+		sources[i] = filepath.Join(absDir, src)
+	}
+	prefix := commonFilepathPrefix(append(sources, absDir))
+	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
+	if err != nil {
+		return
+	}
+
+	if err = copyFilesByPath(prefix, sources, tmpDir); err != nil {
+		return
+	}
+	// sometimes the location the derivation runs from is not present
+	// in the structure of the copied source files. ensure that we add it
+	runLocation := filepath.Join(tmpDir, relBramblefileLocation)
+	if err = os.MkdirAll(runLocation, 0755); err != nil {
+		return
+	}
+
+	hasher := NewHasher()
+	if err = reptar.Reptar(tmpDir, hasher); err != nil {
+		return
+	}
+	storeLocation := b.store.joinStorePath(hasher.String())
+	if pathExists(storeLocation) {
+		if err = os.RemoveAll(tmpDir); err != nil {
+			return
+		}
+	} else {
+		if err = os.Rename(tmpDir, storeLocation); err != nil {
+			return
+		}
+	}
+	drv.BuildContextSource = hasher.String()
+	drv.BuildContextRelativePath = relBramblefileLocation
+	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
+	sort.Strings(drv.SourcePaths)
+	return
+}
+
+func (b *Bramble) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer *strings.Replacer, err error) {
+	// Find all the replacements we need to make, template strings need to
+	// become filesystem paths
+	replacements := []string{}
+	for _, do := range outputs {
+		d, ok := b.derivations[do.Filename]
+		if !ok {
+			return nil, errors.Errorf(
+				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
+		}
+		path := filepath.Join(
+			b.store.storePath,
+			d.Output(do.OutputName).Path,
+		)
+		replacements = append(replacements, do.templateString(), path)
+	}
+	// Replace the content using the json body and then convert it back into a
+	// new derivation
+	return strings.NewReplacer(replacements...), nil
+}
+
+func (b *Bramble) replaceOutputValuesInCmd(cmd *Cmd) (err error) {
+	outputs := cmd.searchForDerivationOutputs()
+	replacer, err := b.stringsReplacerForOutputs(outputs)
+	if err != nil {
+		return
+	}
+	cmd.Path = replacer.Replace(cmd.Path)
+	for i, arg := range cmd.Args {
+		cmd.Args[i] = replacer.Replace(arg)
+	}
+	for i, env := range cmd.Env {
+		cmd.Env[i] = replacer.Replace(env)
+	}
+	return nil
+}
+
+func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy Derivation, err error) {
+	// Find all derivation output template strings within the derivation
+	outputs := drv.searchForDerivationOutputs()
+
+	replacer, err := b.stringsReplacerForOutputs(outputs)
+	if err != nil {
+		return
+	}
+	replacedJSON := replacer.Replace(string(drv.JSON()))
+	err = json.Unmarshal([]byte(replacedJSON), &copy)
+	copy.location = drv.location
+	return copy, err
+}
+
+func (b *Bramble) derivationsToDerivationOutputs(drvs []*Derivation) (dos DerivationOutputs) {
+	for _, drv := range drvs {
+		filename := drv.filename()
+		for _, name := range drv.OutputNames {
+			dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
+		}
+	}
+	return dos
+}
+
+func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *AcyclicGraph {
 	graph := NewAcyclicGraph()
 	_ = graph
 	root := "root"
 	graph.Add(root)
 	var processDO func(do DerivationOutput)
 	processDO = func(do DerivationOutput) {
-		drv, ok := b.derivationFn.derivations[do.Filename]
+		drv, ok := b.derivations[do.Filename]
 		if !ok {
 			panic(do)
 		}
@@ -75,33 +514,19 @@ func (b *Bramble) assembleDerivationDepedencyGraph(drvs []*Derivation) *AcyclicG
 			processDO(inputDO) // TODO, not recursive
 		}
 	}
-	for _, drv := range drvs {
-		filename := drv.filename()
-		for _, do := range drv.InputDerivations {
-			graph.Add(do)
-		}
-		for _, name := range drv.OutputNames {
-			vertex := DerivationOutput{Filename: filename, OutputName: name}
-			graph.Add(vertex)
-			graph.Connect(dag.BasicEdge(root, vertex))
-
-			// All inputs are inputs of all outputs
-			for _, do := range drv.InputDerivations {
-				graph.Connect(dag.BasicEdge(vertex, do))
-				processDO(do)
-			}
-		}
+	for _, do := range dos {
+		graph.Add(do)
+		graph.Connect(dag.BasicEdge(root, do))
+		processDO(do)
 	}
 	return graph
 }
 
-func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
-	graph := b.assembleDerivationDepedencyGraph(drvs)
+func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
+	graph := b.assembleDerivationDependencyGraph(dos)
 
 	errChan := make(chan error)
 	lock := sync.Mutex{}
-
-	b.importGraph.PrintDot()
 
 	go func() {
 		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
@@ -113,12 +538,11 @@ func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
 				return nil
 			}
 			do := v.(DerivationOutput)
-			drv := b.derivationFn.derivations[do.Filename]
+			drv := b.derivations[do.Filename]
 			if drv.Output(do.OutputName).Path != "" {
 				return nil
 			}
-			fmt.Println("building", drv.filename())
-			if err := drv.buildIfNew(); err != nil {
+			if err := b.buildDerivationIfNew(drv); err != nil {
 				errChan <- err
 			}
 			return nil
@@ -148,7 +572,7 @@ func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session
 	if err = newBramble.initPredeclared(); err != nil {
 		return
 	}
-	newBramble.derivationFn.derivations = b.derivationFn.derivations
+	newBramble.derivations = b.derivations
 
 	globals, err := newBramble.resolveModule(meta.Module)
 	if err != nil {
@@ -177,6 +601,7 @@ func (b *Bramble) init() (err error) {
 
 	b.moduleCache = map[string]string{}
 	b.filenameCache = map[string]string{}
+	b.derivations = map[string]*Derivation{}
 	b.importGraph = NewAcyclicGraph()
 
 	if b.store, err = NewStore(); err != nil {
@@ -443,7 +868,7 @@ func (b *Bramble) run(args []string) (err error) {
 	}
 	returnedDerivations := valuesToDerivations(values)
 
-	if err = b.buildDerivations(returnedDerivations); err != nil {
+	if err = b.buildDerivationOutputs(b.derivationsToDerivationOutputs(returnedDerivations)); err != nil {
 		return
 	}
 
