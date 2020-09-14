@@ -2,23 +2,15 @@ package bramble
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 
-	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
@@ -35,9 +27,7 @@ var (
 
 // DerivationFunction is the function that creates derivations
 type DerivationFunction struct {
-	bramble             *Bramble
-	derivations         map[string]*Derivation
-	DerivationCallCount int
+	bramble *Bramble
 }
 
 var (
@@ -66,8 +56,7 @@ func init() {
 // bramble store exists and creates it if it does not.
 func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 	fn := &DerivationFunction{
-		derivations: make(map[string]*Derivation),
-		bramble:     bramble,
+		bramble: bramble,
 	}
 
 	return fn, nil
@@ -75,20 +64,6 @@ func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 
 func (f *DerivationFunction) joinStorePath(v ...string) string {
 	return f.bramble.store.joinStorePath(v...)
-}
-
-func (f *DerivationFunction) checkBytesForDerivations(b []byte) (inputDerivations DerivationOutputs) {
-	for location, derivation := range f.derivations {
-		for i, output := range derivation.Outputs {
-			if bytes.Contains(b, []byte(output.Path)) {
-				inputDerivations = append(inputDerivations, DerivationOutput{
-					Filename:   location,
-					OutputName: derivation.OutputNames[i],
-				})
-			}
-		}
-	}
-	return
 }
 
 // Load derivation will load and parse a derivation from the bramble store1
@@ -106,56 +81,6 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 	return drv, true, json.NewDecoder(file).Decode(drv)
 }
 
-// DownloadFile downloads a file into the store. Must include an expected hash
-// of the downloaded file as a hex string of a  sha256 hash
-func (f *DerivationFunction) DownloadFile(url string, hash string) (path string, err error) {
-	fmt.Printf("Downloading url %s\n", url)
-
-	if hash != "" {
-		b, err := hex.DecodeString(hash)
-		if err != nil {
-			err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
-			return "", err
-		}
-		storePrefixHash := bytesToBase32Hash(b)
-		matches, err := filepath.Glob(f.joinStorePath(storePrefixHash) + "*")
-		if err != nil {
-			err = errors.Wrap(err, "error searching for existing hashed content")
-			return "", err
-		}
-		if len(matches) != 0 {
-			return matches[0], nil
-		}
-	}
-
-	existingHash, exists := f.bramble.lockFile.URLHashes[url]
-	if exists && hash != "" && hash != existingHash {
-		return "", errors.Errorf("when downloading the file %q a hash %q was provided in"+
-			" code but the hash %q was in the lock file, exiting", url, hash, existingHash)
-	}
-
-	// if we don't have a hash to validate, validate the one we already have
-	if hash == "" && exists {
-		hash = existingHash
-	}
-
-	resp, err := http.Get(url)
-	if err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
-		return
-	}
-	defer resp.Body.Close()
-	contentHash, path, err := f.bramble.store.writeReader(resp.Body, filepath.Base(url), hash)
-	if err == errHashMismatch {
-		err = errors.Errorf(
-			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
-			url, hash, contentHash)
-	} else if err != nil {
-		return
-	}
-	return path, f.bramble.addURLHashToLockfile(url, contentHash)
-}
-
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if err = f.bramble.CalledDerivation(); err != nil {
 		return
@@ -170,30 +95,13 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 
 	// find all source files that are used for this derivation
-	if err = drv.calculateInputSources(); err != nil {
+	if err = f.bramble.calculateDerivationInputSources(drv); err != nil {
 		return
 	}
 
 	filename := drv.filename()
+	f.bramble.derivations[filename] = drv
 
-	fmt.Println(filename)
-	fmt.Println(drv.prettyJSON())
-
-	f.derivations[filename] = drv
-
-	// // derivation calculation complete, hard barier
-	// // TODO: expand on this nonsensical comment
-	// // ---------------------------------------------------------------
-
-	// fmt.Printf("Building derivation %q\n", drv.Name)
-	// if err = drv.buildIfNew(); err != nil {
-	// 	return nil, err
-	// }
-	// fmt.Println("Completed derivation:", drv.Outputs)
-	// // TODO: add this panic but don't include outputs in the comparison
-	// // if beforeBuild != drv.prettyJSON() {
-	// // 	panic(beforeBuild + drv.prettyJSON())
-	// // }
 	return drv, nil
 }
 
@@ -203,60 +111,10 @@ type functionBuilderMeta struct {
 	ModuleCache map[string]string
 }
 
-// setBuilder is used during instantiation to set various attributes on the
-// derivation for a specific builder
-func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
-	switch v := builder.(type) {
-	case starlark.String:
-		drv.Builder = v.GoString()
-	case *starlark.Function:
-		meta := functionBuilderMeta{
-			ModuleCache: map[string]string{},
-		}
-		globals := v.Globals()
-		var match bool
-		for name, fn := range globals {
-			if fn == v {
-				match = true
-				meta.Function = name
-				break
-			}
-		}
-		if !match {
-			return errors.Errorf("function %q must be a global function to be used in a function builder", v)
-		}
-		meta.Module = drv.function.bramble.filenameCache[v.Position().Filename()]
-
-		meta.ModuleCache[meta.Module] = drv.function.bramble.moduleCache[meta.Module]
-		set, err := drv.function.bramble.importGraph.Descendents(meta.Module)
-		if err != nil {
-			return err
-		}
-		for _, m := range set {
-			moduleName := m.(string)
-			meta.ModuleCache[moduleName] = drv.function.bramble.moduleCache[moduleName]
-		}
-
-		drv.Builder = "function"
-
-		b, _ := json.Marshal(meta)
-		drv.Env["function_builder_meta"] = string(b)
-		for _, p := range meta.ModuleCache {
-			drv.SourcePaths = append(drv.SourcePaths, p)
-		}
-		// TODO: put these validation checks somehere singular?
-		sort.Strings(drv.SourcePaths)
-	default:
-		return errors.Errorf("no builder for %q", builder.Type())
-	}
-	return
-}
-
 func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
 	drv = &Derivation{
 		OutputNames: []string{"out"},
 		Env:         map[string]string{},
-		function:    f,
 	}
 	var (
 		name        starlark.String
@@ -320,7 +178,7 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		drv.OutputNames = outputsList
 	}
 
-	if err = setBuilder(drv, builder); err != nil {
+	if err = f.bramble.setDerivationBuilder(drv, builder); err != nil {
 		return
 	}
 
@@ -365,7 +223,6 @@ type Derivation struct {
 
 	// internal fields
 	sources  []string
-	function *DerivationFunction
 	location string
 }
 
@@ -432,6 +289,31 @@ func (drv Derivation) String() string {
 	return drv.templateString(drv.mainOutput())
 }
 
+func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
+	if !drv.HasOutput(name) {
+		return nil, nil
+	}
+	return starlark.String(
+		drv.templateString(name),
+	), nil
+}
+
+func (drv *Derivation) AttrNames() (out []string) {
+	return drv.OutputNames
+}
+
+func (drv Derivation) MissingOutput() bool {
+	if len(drv.Outputs) == 0 {
+		return true
+	}
+	for _, v := range drv.Outputs {
+		if v.Path == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (drv Derivation) HasOutput(name string) bool {
 	for _, o := range drv.OutputNames {
 		if o == name {
@@ -453,7 +335,6 @@ func (drv Derivation) Output(name string) Output {
 }
 
 func (drv *Derivation) SetOutput(name string, o Output) {
-	fmt.Println(name, o)
 	for i, on := range drv.OutputNames {
 		if on == name {
 			// grow if we need to
@@ -490,19 +371,6 @@ func (drv *Derivation) env() (env []string) {
 	return
 }
 
-func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
-	if !drv.HasOutput(name) {
-		return nil, nil
-	}
-	return starlark.String(
-		drv.templateString(name),
-	), nil
-}
-
-func (drv *Derivation) AttrNames() (out []string) {
-	return drv.OutputNames
-}
-
 func (drv *Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
@@ -520,40 +388,18 @@ func (drv *Derivation) prettyJSON() string {
 var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv) (.*?) \}\}`)
 
 func (drv Derivation) searchForDerivationOutputs() DerivationOutputs {
+	return searchForDerivationOutputs(string(drv.JSON()))
+}
+
+func searchForDerivationOutputs(s string) DerivationOutputs {
 	out := DerivationOutputs{}
-	for _, match := range TemplateStringRegexp.FindAllStringSubmatch(string(drv.JSON()), -1) {
+	for _, match := range TemplateStringRegexp.FindAllStringSubmatch(s, -1) {
 		out = append(out, DerivationOutput{
 			Filename:   match[1],
 			OutputName: match[2],
 		})
 	}
 	return sortAndUniqueInputDerivations(out)
-}
-
-func (drv Derivation) replaceDerivationOutputsWithOutputPaths(storePath string, derivations map[string]*Derivation) (
-	drvCopy Derivation, err error) {
-	// Find all derivation output template strings within the derivation
-	outputs := drv.searchForDerivationOutputs()
-
-	// Find all the replacements we need to make, template strings need to
-	// become filesystem paths
-	replacements := []string{}
-	for _, do := range outputs {
-		d, ok := derivations[do.Filename]
-		if !ok {
-			return drvCopy, errors.Errorf(
-				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
-		}
-		path := filepath.Join(
-			storePath,
-			d.Output(do.OutputName).Path,
-		)
-		replacements = append(replacements, do.templateString(), path)
-	}
-	// Replace the content using the json body and then convert it back into a
-	// new derivation
-	replacedJSON := strings.NewReplacer(replacements...).Replace(string(drv.JSON()))
-	return drvCopy, json.Unmarshal([]byte(replacedJSON), &drvCopy)
 }
 
 func (drv Derivation) JSON() []byte {
@@ -577,257 +423,4 @@ func (drv *Derivation) filename() (filename string) {
 	// in memory. Is this safe?
 	_, filename, _ = hashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
 	return
-}
-
-func (drv *Derivation) checkForExisting() (exists bool, err error) {
-	// TODO, have this take a specific output
-	filename := drv.filename()
-	if err != nil {
-		return
-	}
-	fmt.Println("derivation " + drv.Name + " evaluates to " + filename)
-	existingDrv, exists, err := drv.function.LoadDerivation(filename)
-	if err != nil || !exists || len(existingDrv.Outputs) == 0 {
-		return false, err
-	}
-	for _, v := range existingDrv.Outputs {
-		if v.Path == "" {
-			return false, nil
-		}
-	}
-	drv.Outputs = existingDrv.Outputs
-	return true, nil
-}
-
-func (drv *Derivation) calculateInputSources() (err error) {
-	if len(drv.sources) == 0 {
-		return
-	}
-	tmpDir, err := drv.createTmpDir()
-	if err != nil {
-		return
-	}
-
-	sources := drv.sources
-	drv.sources = []string{}
-	absDir, err := filepath.Abs(drv.location)
-	if err != nil {
-		return
-	}
-	// get absolute paths for all sources
-	for i, src := range sources {
-		sources[i] = filepath.Join(absDir, src)
-	}
-	prefix := commonFilepathPrefix(append(sources, absDir))
-	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
-	if err != nil {
-		return
-	}
-
-	if err = copyFilesByPath(prefix, sources, tmpDir); err != nil {
-		return
-	}
-	// sometimes the location the derivation runs from is not present
-	// in the structure of the copied source files. ensure that we add it
-	runLocation := filepath.Join(tmpDir, relBramblefileLocation)
-	if err = os.MkdirAll(runLocation, 0755); err != nil {
-		return
-	}
-
-	hasher := NewHasher()
-	if err = reptar.Reptar(tmpDir, hasher); err != nil {
-		return
-	}
-	storeLocation := drv.function.joinStorePath(hasher.String())
-	if pathExists(storeLocation) {
-		if err = os.RemoveAll(tmpDir); err != nil {
-			return
-		}
-	} else {
-		if err = os.Rename(tmpDir, storeLocation); err != nil {
-			return
-		}
-	}
-	drv.BuildContextSource = hasher.String()
-	drv.BuildContextRelativePath = relBramblefileLocation
-	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
-	sort.Strings(drv.SourcePaths)
-	return
-}
-
-func (drv *Derivation) writeDerivation() (err error) {
-	filename := drv.filename()
-	fileLocation := drv.function.joinStorePath(filename)
-
-	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
-}
-
-func (drv *Derivation) storePath() string { return drv.function.bramble.store.storePath }
-
-func (drv *Derivation) createTmpDir() (tempDir string, err error) {
-	return ioutil.TempDir(drv.storePath(), TempDirPrefix)
-}
-
-func (drv *Derivation) regularBuilder(buildDir, outPath string) (err error) {
-	// drv.function.
-	builderLocation := drv.Builder
-
-	if _, err := os.Stat(builderLocation); err != nil {
-		return errors.Wrap(err, "error checking if builder location exists")
-	}
-	cmd := exec.Command(builderLocation, drv.Args...)
-	cmd.Dir = filepath.Join(buildDir, drv.BuildContextRelativePath)
-	cmd.Env = drv.env()
-	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "out", outPath))
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (drv *Derivation) fetchURLBuilder(outPath string) (err error) {
-	url, ok := drv.Env["url"]
-	if !ok {
-		return errors.New("fetch_url requires the environment variable 'url' to be set")
-	}
-	// derivation can provide a hash, but usually this is just in the lockfile
-	hash := drv.Env["hash"]
-	path, err := drv.function.DownloadFile(url, hash)
-	if err != nil {
-		return err
-	}
-	// TODO: what if this package changes?
-	if err = archiver.Unarchive(path, outPath); err != nil {
-		return errors.Wrap(err, "error unarchiving")
-	}
-	return nil
-}
-
-func (drv *Derivation) functionBuilder(buildDir, outPath string) (err error) {
-	var meta functionBuilderMeta
-
-	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
-		return errors.Wrap(err, "error parsing function_builder_meta")
-	}
-	session, err := newSession(buildDir, drv.Env)
-	if err != nil {
-		return
-	}
-	if err = session.cd(filepath.Join(buildDir, drv.BuildContextRelativePath)); err != nil {
-		return
-	}
-	session.setEnv("out", outPath)
-	for k, v := range session.env {
-		session.env[k] = strings.Replace(v, "$bramble_path", drv.storePath(), -1)
-	}
-	return drv.function.bramble.CallInlineDerivationFunction(
-		meta, session,
-	)
-}
-
-func (drv *Derivation) buildIfNew() (err error) {
-	var exists bool
-	exists, err = drv.checkForExisting()
-	if err != nil || exists {
-		return
-	}
-	if err = drv.build(); err != nil {
-		return
-	}
-	return drv.writeDerivation()
-}
-
-func (drv *Derivation) build() (err error) {
-	buildDir, err := drv.createTmpDir()
-	if err != nil {
-		return
-	}
-
-	if drv.BuildContextSource != "" {
-		if err = copyDirectory(drv.function.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
-			return errors.Wrap(err, "error copying sources into build dir")
-		}
-	}
-
-	outPath, err := drv.createTmpDir()
-	if err != nil {
-		return err
-	}
-	if err = os.MkdirAll(outPath, 0755); err != nil {
-		return
-	}
-	drvCopy, err := drv.replaceDerivationOutputsWithOutputPaths(drv.storePath(), drv.function.derivations)
-	if err != nil {
-		return
-	}
-	fmt.Println(drvCopy.prettyJSON())
-	drvCopy.function = drv.function
-	drvCopy.location = drv.location
-	switch drv.Builder {
-	case "fetch_url":
-		err = drvCopy.fetchURLBuilder(outPath)
-	case "function":
-		err = drvCopy.functionBuilder(buildDir, outPath)
-	default:
-		err = drvCopy.regularBuilder(buildDir, outPath)
-	}
-	if err != nil {
-		return
-	}
-
-	matches, hashString, err := drv.hashAndScanDirectory(outPath)
-	if err != nil {
-		return
-	}
-	folderName := hashString + "-" + drv.Name
-	drv.SetOutput("out", Output{Path: folderName, Dependencies: matches})
-	newPath := drv.function.joinStorePath() + "/" + folderName
-	_, doesnotExistErr := os.Stat(newPath)
-	fmt.Println("Output at ", newPath)
-	if doesnotExistErr != nil {
-		return os.Rename(outPath, newPath)
-	}
-	return
-}
-
-func (drv *Derivation) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
-	var storeValues []string
-	oldStorePath := drv.storePath()
-	new := BramblePrefixOfRecord
-
-	for _, derivation := range drv.function.derivations {
-		for _, output := range derivation.Outputs {
-			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
-		}
-	}
-	errChan := make(chan error)
-	resultChan := make(chan map[string]struct{})
-	pipeReader, pipeWriter := io.Pipe()
-
-	go func() {
-		if err := reptar.Reptar(location, pipeWriter); err != nil {
-			errChan <- err
-		}
-		if err = pipeWriter.Close(); err != nil {
-			errChan <- err
-		}
-	}()
-	hasher := NewHasher()
-	go func() {
-		_, matches, err := textreplace.ReplaceStringsPrefix(
-			pipeReader, hasher, storeValues, oldStorePath, new)
-		if err != nil {
-			errChan <- err
-		}
-		resultChan <- matches
-	}()
-	select {
-	case err := <-errChan:
-		return nil, "", err
-	case result := <-resultChan:
-		for k := range result {
-			matches = append(matches, strings.Replace(k, drv.storePath(), "$bramble_path", 1))
-		}
-		return matches, hasher.String(), nil
-	}
 }

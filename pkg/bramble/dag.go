@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform/dag"
 )
@@ -15,5 +16,6 @@ func NewAcyclicGraph() *AcyclicGraph {
 }
 
 func (ag AcyclicGraph) PrintDot() {
-	fmt.Println(string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true})))
+	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
+	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
 }
