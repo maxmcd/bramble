@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -157,38 +156,10 @@ func (f *DerivationFunction) DownloadFile(url string, hash string) (path string,
 	return path, f.bramble.addURLHashToLockfile(url, contentHash)
 }
 
-type ErrFoundBuildContext struct {
-	thread *starlark.Thread
-	Fn     *starlark.Function
-}
-
-func (efbc ErrFoundBuildContext) Error() string {
-	return "internal err found build context error"
-}
-
-func getBuilderFunction(kwargs []starlark.Tuple) *starlark.Function {
-	for _, tup := range kwargs {
-		key, val := tup[0].(starlark.String), tup[1]
-		if key == "builder" {
-			if fn, ok := val.(*starlark.Function); ok {
-				return fn
-			}
-		}
-	}
-	return nil
-}
-
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if err = f.bramble.CalledDerivation(); err != nil {
 		return
 	}
-
-	// We're running inside a derivation build and we need to exit with this
-	// function and function context.
-	if f.bramble.derivationCallCount == f.DerivationCallCount {
-		return nil, ErrFoundBuildContext{thread: thread, Fn: getBuilderFunction(kwargs)}
-	}
-
 	// Parse function arguments and assemble the basic derivation
 	drv, err := f.newDerivationFromArgs(args, kwargs)
 	if err != nil {
@@ -203,9 +174,11 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return
 	}
 
+	filename := drv.filename()
+
+	fmt.Println(filename)
 	fmt.Println(drv.prettyJSON())
 
-	filename := drv.filename()
 	f.derivations[filename] = drv
 
 	// // derivation calculation complete, hard barier
@@ -225,10 +198,9 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 }
 
 type functionBuilderMeta struct {
-	DerivationCallCount int
-	ModuleCache         map[string]string
-	Module              string
-	Function            string
+	Module      string
+	Function    string
+	ModuleCache map[string]string
 }
 
 // setBuilder is used during instantiation to set various attributes on the
@@ -238,30 +210,46 @@ func setBuilder(drv *Derivation, builder starlark.Value) (err error) {
 	case starlark.String:
 		drv.Builder = v.GoString()
 	case *starlark.Function:
-		drv.Builder = "function"
 		meta := functionBuilderMeta{
-			DerivationCallCount: drv.function.bramble.derivationCallCount,
-			ModuleCache:         drv.function.bramble.moduleCache,
+			ModuleCache: map[string]string{},
 		}
-		meta.Module = drv.function.bramble.moduleEntrypoint
-		meta.Function = drv.function.bramble.calledFunction
+		globals := v.Globals()
+		var match bool
+		for name, fn := range globals {
+			if fn == v {
+				match = true
+				meta.Function = name
+				break
+			}
+		}
+		if !match {
+			return errors.Errorf("function %q must be a global function to be used in a function builder", v)
+		}
+		meta.Module = drv.function.bramble.filenameCache[v.Position().Filename()]
+
+		meta.ModuleCache[meta.Module] = drv.function.bramble.moduleCache[meta.Module]
+		set, err := drv.function.bramble.importGraph.Descendents(meta.Module)
+		if err != nil {
+			return err
+		}
+		for _, m := range set {
+			moduleName := m.(string)
+			meta.ModuleCache[moduleName] = drv.function.bramble.moduleCache[moduleName]
+		}
+
+		drv.Builder = "function"
 
 		b, _ := json.Marshal(meta)
 		drv.Env["function_builder_meta"] = string(b)
 		for _, p := range meta.ModuleCache {
 			drv.SourcePaths = append(drv.SourcePaths, p)
 		}
+		// TODO: put these validation checks somehere singular?
+		sort.Strings(drv.SourcePaths)
 	default:
 		return errors.Errorf("no builder for %q", builder.Type())
 	}
 	return
-}
-
-func (f *DerivationFunction) fetchDerivationOutputPath(do DerivationOutput) string {
-	return f.joinStorePath(
-		f.derivations[do.Filename].
-			Output(do.OutputName).Path,
-	)
 }
 
 func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
@@ -336,7 +324,7 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		return
 	}
 
-	drv.InputDerivations = drv.SearchForDerivationOutputs()
+	drv.InputDerivations = drv.searchForDerivationOutputs()
 
 	return drv, nil
 }
@@ -464,11 +452,12 @@ func (drv Derivation) Output(name string) Output {
 	return Output{}
 }
 
-func (drv Derivation) SetOutput(name string, o Output) {
+func (drv *Derivation) SetOutput(name string, o Output) {
+	fmt.Println(name, o)
 	for i, on := range drv.OutputNames {
 		if on == name {
 			// grow if we need to
-			for len(drv.Outputs) < i {
+			for len(drv.Outputs) <= i {
 				drv.Outputs = append(drv.Outputs, Output{})
 			}
 			drv.Outputs[i] = o
@@ -498,10 +487,6 @@ func (drv *Derivation) env() (env []string) {
 	for k, v := range drv.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	// TODO
-	// for _, id := range drv.InputDerivations {
-	// 	env = append(env, fmt.Sprintf("%s=%s", id.name(), drv.function.fetchDerivationOutputPath(id)))
-	// }
 	return
 }
 
@@ -534,7 +519,7 @@ func (drv *Derivation) prettyJSON() string {
 // limitation alone. Maybe this is ok?
 var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv) (.*?) \}\}`)
 
-func (drv Derivation) SearchForDerivationOutputs() DerivationOutputs {
+func (drv Derivation) searchForDerivationOutputs() DerivationOutputs {
 	out := DerivationOutputs{}
 	for _, match := range TemplateStringRegexp.FindAllStringSubmatch(string(drv.JSON()), -1) {
 		out = append(out, DerivationOutput{
@@ -545,10 +530,10 @@ func (drv Derivation) SearchForDerivationOutputs() DerivationOutputs {
 	return sortAndUniqueInputDerivations(out)
 }
 
-func (drv Derivation) ReplaceDerivationOutputsWithOutputPaths(storePath string, derivations map[string]Derivation) (
+func (drv Derivation) replaceDerivationOutputsWithOutputPaths(storePath string, derivations map[string]*Derivation) (
 	drvCopy Derivation, err error) {
 	// Find all derivation output template strings within the derivation
-	outputs := drv.SearchForDerivationOutputs()
+	outputs := drv.searchForDerivationOutputs()
 
 	// Find all the replacements we need to make, template strings need to
 	// become filesystem paths
@@ -595,17 +580,15 @@ func (drv *Derivation) filename() (filename string) {
 }
 
 func (drv *Derivation) checkForExisting() (exists bool, err error) {
+	// TODO, have this take a specific output
 	filename := drv.filename()
 	if err != nil {
 		return
 	}
 	fmt.Println("derivation " + drv.Name + " evaluates to " + filename)
 	existingDrv, exists, err := drv.function.LoadDerivation(filename)
-	if err != nil {
+	if err != nil || !exists || len(existingDrv.Outputs) == 0 {
 		return false, err
-	}
-	if !exists {
-		return false, nil
 	}
 	for _, v := range existingDrv.Outputs {
 		if v.Path == "" {
@@ -668,6 +651,7 @@ func (drv *Derivation) calculateInputSources() (err error) {
 	drv.BuildContextSource = hasher.String()
 	drv.BuildContextRelativePath = relBramblefileLocation
 	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
+	sort.Strings(drv.SourcePaths)
 	return
 }
 
@@ -675,10 +659,7 @@ func (drv *Derivation) writeDerivation() (err error) {
 	filename := drv.filename()
 	fileLocation := drv.function.joinStorePath(filename)
 
-	if !pathExists(fileLocation) {
-		return ioutil.WriteFile(fileLocation, drv.JSON(), 0444)
-	}
-	return nil
+	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
 
 func (drv *Derivation) storePath() string { return drv.function.bramble.store.storePath }
@@ -688,14 +669,8 @@ func (drv *Derivation) createTmpDir() (tempDir string, err error) {
 }
 
 func (drv *Derivation) regularBuilder(buildDir, outPath string) (err error) {
-	spew.Dump(drv.function.derivations)
-	spew.Dump(drv.Builder)
 	// drv.function.
-	builderLocation := "TODO"
-	panic(builderLocation)
-	//filepath.Join(
-	// drv.function.fetchDerivationOutputPath(drv.Builder.Derivation),
-	// drv.Builder.FilePath)
+	builderLocation := drv.Builder
 
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "error checking if builder location exists")
@@ -781,14 +756,20 @@ func (drv *Derivation) build() (err error) {
 	if err = os.MkdirAll(outPath, 0755); err != nil {
 		return
 	}
-
+	drvCopy, err := drv.replaceDerivationOutputsWithOutputPaths(drv.storePath(), drv.function.derivations)
+	if err != nil {
+		return
+	}
+	fmt.Println(drvCopy.prettyJSON())
+	drvCopy.function = drv.function
+	drvCopy.location = drv.location
 	switch drv.Builder {
 	case "fetch_url":
-		err = drv.fetchURLBuilder(outPath)
+		err = drvCopy.fetchURLBuilder(outPath)
 	case "function":
-		err = drv.functionBuilder(buildDir, outPath)
+		err = drvCopy.functionBuilder(buildDir, outPath)
 	default:
-		err = drv.regularBuilder(buildDir, outPath)
+		err = drvCopy.regularBuilder(buildDir, outPath)
 	}
 	if err != nil {
 		return
@@ -800,7 +781,6 @@ func (drv *Derivation) build() (err error) {
 	}
 	folderName := hashString + "-" + drv.Name
 	drv.SetOutput("out", Output{Path: folderName, Dependencies: matches})
-
 	newPath := drv.function.joinStorePath() + "/" + folderName
 	_, doesnotExistErr := os.Stat(newPath)
 	fmt.Println("Output at ", newPath)

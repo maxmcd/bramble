@@ -47,3 +47,6 @@ seed: install
 
 all_bramble: install
 	bramble run all:all
+
+bb2: install
+	bramble run all:bb2

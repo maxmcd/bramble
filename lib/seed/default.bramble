@@ -16,7 +16,7 @@ def seed():
 def ldd():
     s = seed()
 
-    return derivation(name="ld", builder=_build_ldd, build_inputs=[s])
+    return derivation(name="ld", builder=_build_ldd, env={"seed": s})
 
 
 def _build_ldd():

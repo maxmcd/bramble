@@ -47,5 +47,4 @@ func TestNewAcyclicGraph(t *testing.T) {
 		fmt.Println(v, time.Now())
 		return nil
 	})
-
 }

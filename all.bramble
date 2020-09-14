@@ -2,7 +2,13 @@ load("github.com/maxmcd/bramble/lib/seed", "seed", "ldd")
 load("github.com/maxmcd/bramble/tests/simple/simple", "simple")
 load("github.com/maxmcd/bramble/tests/busybox", "busybox")
 load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested", "nested")
+load("github.com/maxmcd/bramble/tests/starlark-builder",
+    bb="busybox", "busybox_drv")
 
 
 def all():
-    return [seed(), busybox(), nested(), ldd(), simple()]
+    return [seed(), busybox, nested(), ldd, simple(), bb]
+
+
+def bb2():
+    return [bb, busybox_drv()]

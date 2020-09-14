@@ -34,9 +34,9 @@ func TestDerivationValueReplacement(t *testing.T) {
 	fetchURL.Outputs = []Output{{Path: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
 	other.Outputs = []Output{{Path: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
 
-	buildCopy, err := building.ReplaceDerivationOutputsWithOutputPaths("/bramble/store", map[string]Derivation{
-		fetchURL.filename(): fetchURL,
-		other.filename():    other,
+	buildCopy, err := building.replaceDerivationOutputsWithOutputPaths("/bramble/store", map[string]*Derivation{
+		fetchURL.filename(): &fetchURL,
+		other.filename():    &other,
 	})
 	if err != nil {
 		t.Fatal(err)

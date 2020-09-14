@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/hashicorp/terraform/dag"
+	"github.com/hashicorp/terraform/tfdiags"
 	"github.com/pkg/errors"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -36,9 +38,11 @@ type Bramble struct {
 
 	store Store
 
-	moduleCache         map[string]string
-	afterDerivation     bool
-	derivationCallCount int
+	moduleCache   map[string]string
+	filenameCache map[string]string
+	importGraph   *AcyclicGraph
+
+	afterDerivation bool
 
 	moduleEntrypoint string
 	calledFunction   string
@@ -48,14 +52,13 @@ type Bramble struct {
 // run before an derivation call. This allows us to track when
 func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
 func (b *Bramble) CalledDerivation() error {
-	b.derivationCallCount++
 	if b.afterDerivation {
 		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
 	}
 	return nil
 }
 
-func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
+func (b *Bramble) assembleDerivationDepedencyGraph(drvs []*Derivation) *AcyclicGraph {
 	graph := NewAcyclicGraph()
 	_ = graph
 	root := "root"
@@ -72,7 +75,6 @@ func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
 			processDO(inputDO) // TODO, not recursive
 		}
 	}
-	fmt.Println(drvs)
 	for _, drv := range drvs {
 		filename := drv.filename()
 		for _, do := range drv.InputDerivations {
@@ -90,10 +92,40 @@ func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
 			}
 		}
 	}
+	return graph
+}
 
-	fmt.Println(string(graph.Dot(nil)))
-	return nil
-	// TODO!
+func (b *Bramble) buildDerivations(drvs []*Derivation) (err error) {
+	graph := b.assembleDerivationDepedencyGraph(drvs)
+
+	errChan := make(chan error)
+	lock := sync.Mutex{}
+
+	b.importGraph.PrintDot()
+
+	go func() {
+		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
+			lock.Lock()
+			defer lock.Unlock()
+			// serial for now
+
+			if root, ok := v.(string); ok && root == "root" {
+				return nil
+			}
+			do := v.(DerivationOutput)
+			drv := b.derivationFn.derivations[do.Filename]
+			if drv.Output(do.OutputName).Path != "" {
+				return nil
+			}
+			fmt.Println("building", drv.filename())
+			if err := drv.buildIfNew(); err != nil {
+				errChan <- err
+			}
+			return nil
+		})
+		errChan <- nil
+	}()
+	return <-errChan
 }
 
 func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session *session) (err error) {
@@ -104,45 +136,48 @@ func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session
 		store:          b.store,
 
 		// populate for this task
-		moduleEntrypoint:    meta.Module,
-		calledFunction:      meta.Function,
-		moduleCache:         meta.ModuleCache,
-		derivationCallCount: 0,
-		session:             session,
+		moduleEntrypoint: meta.Module,
+		calledFunction:   meta.Function,
+		moduleCache:      meta.ModuleCache,
+		filenameCache:    map[string]string{},
+		importGraph:      NewAcyclicGraph(),
+		session:          session,
 	}
 	newBramble.thread = &starlark.Thread{Load: newBramble.load}
 	// this will pass the session to cmd and os
 	if err = newBramble.initPredeclared(); err != nil {
 		return
 	}
-	newBramble.derivationFn.DerivationCallCount = meta.DerivationCallCount
+	newBramble.derivationFn.derivations = b.derivationFn.derivations
 
 	globals, err := newBramble.resolveModule(meta.Module)
 	if err != nil {
 		return
 	}
 
-	_, intentionalError := starlark.Call(
+	_, err = starlark.Call(
 		newBramble.thread,
 		globals[meta.Function].(*starlark.Function),
 		nil, nil,
 	)
-	fn := intentionalError.(*starlark.EvalError).Unwrap().(ErrFoundBuildContext).Fn
-	_, err = starlark.Call(newBramble.thread, fn, nil, nil)
 	return
 }
 
 func (b *Bramble) reset() {
 	b.moduleCache = map[string]string{}
-	b.derivationCallCount = 0
+	b.filenameCache = map[string]string{}
 }
 
 func (b *Bramble) init() (err error) {
+	log.SetOutput(ioutil.Discard)
+
 	if b.configLocation != "" {
 		return errors.New("can't initialize Bramble twice")
 	}
 
 	b.moduleCache = map[string]string{}
+	b.filenameCache = map[string]string{}
+	b.importGraph = NewAcyclicGraph()
 
 	if b.store, err = NewStore(); err != nil {
 		return
@@ -191,6 +226,10 @@ func (b *Bramble) initPredeclared() (err error) {
 }
 
 func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
+	thisFilesModuleName := b.filenameCache[thread.CallFrame(0).Pos.Filename()]
+	b.importGraph.Add(thisFilesModuleName)
+	b.importGraph.Add(module)
+	b.importGraph.Connect(dag.BasicEdge(module, thisFilesModuleName))
 	globals, err = b.resolveModule(module)
 	return
 }
@@ -256,6 +295,7 @@ func (b *Bramble) compilePath(path string) (prog *starlark.Program, err error) {
 }
 
 func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Program, err error) {
+	b.filenameCache[filename] = moduleName
 	storeLocation, ok := b.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
@@ -403,7 +443,9 @@ func (b *Bramble) run(args []string) (err error) {
 	}
 	returnedDerivations := valuesToDerivations(values)
 
-	b.buildDerivations(returnedDerivations)
+	if err = b.buildDerivations(returnedDerivations); err != nil {
+		return
+	}
 
 	return b.writeConfigMetadata(returnedDerivations)
 }

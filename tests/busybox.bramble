@@ -69,5 +69,8 @@ whoami, whois, xargs, xxd, xz, xzcat, yes, zcat, zcip
     )
 
     return derivation(
-        name="busybox", builder=b.out + "/busybox-x86_64", args=["sh", "-c", script],
+        name="busybox",
+        builder=b.out + "/busybox-x86_64",
+        args=["sh", "-c", script],
+        env={"busybox_download": b},
     )
