@@ -18,7 +18,7 @@ def patchelf():
     )
 
     return derivation(
-        name="patchelf", builder=_install_patchelf, build_inputs=[patch_dl]
+        name="patchelf", builder=_install_patchelf, env=dict(patch_dl=patch_dl)
     )
 
 
