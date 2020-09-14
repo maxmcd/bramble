@@ -207,6 +207,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		err := cmd.Cmd.Wait()
 		{
 			cmd.lock.Lock()
+			cmd.processState = cmd.ProcessState
 			if err != nil {
 				cmd.err = err
 			}
@@ -228,6 +229,8 @@ type Cmd struct {
 	err      error
 
 	lock sync.Mutex
+
+	processState *os.ProcessState
 
 	wg *sync.WaitGroup
 
@@ -329,8 +332,10 @@ func (cmd *Cmd) AttrNames() []string {
 }
 
 func (cmd *Cmd) ExitCode() starlark.Value {
-	if cmd.ProcessState != nil {
-		code := cmd.ProcessState.ExitCode()
+	cmd.lock.Lock()
+	defer cmd.lock.Unlock()
+	if cmd.processState != nil {
+		code := cmd.processState.ExitCode()
 		if code > -1 {
 			return starlark.MakeInt(code)
 		}

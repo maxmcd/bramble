@@ -100,7 +100,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	}
 
 	filename := drv.filename()
-	f.bramble.derivations[filename] = drv
+	f.bramble.derivations.Set(filename, drv)
 
 	return drv, nil
 }

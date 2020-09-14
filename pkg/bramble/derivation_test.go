@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/alecthomas/assert"
+	"github.com/stretchr/testify/assert"
 	"go.starlark.net/starlark"
 )
 
@@ -35,10 +35,9 @@ func TestDerivationValueReplacement(t *testing.T) {
 	other.Outputs = []Output{{Path: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
 
 	b := Bramble{}
-	b.derivations = map[string]*Derivation{
-		fetchURL.filename(): &fetchURL,
-		other.filename():    &other,
-	}
+	b.derivations = &DerivationsMap{}
+	b.derivations.Set(fetchURL.filename(), &fetchURL)
+	b.derivations.Set(other.filename(), &other)
 	b.store = Store{storePath: "/bramble/store"}
 	buildCopy, err := b.copyDerivationWithOutputValuesReplaced(&building)
 	if err != nil {
