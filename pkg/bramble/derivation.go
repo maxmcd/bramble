@@ -280,12 +280,12 @@ var (
 	_ starlark.HasAttrs = new(Derivation)
 )
 
-func (drv *Derivation) Freeze()              {}
-func (drv Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
-func (drv Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv Derivation) Type() string          { return "derivation" }
+func (drv *Derivation) Freeze()               {}
+func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
+func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
+func (drv *Derivation) Type() string          { return "derivation" }
 
-func (drv Derivation) String() string {
+func (drv *Derivation) String() string {
 	return drv.templateString(drv.mainOutput())
 }
 
@@ -302,7 +302,7 @@ func (drv *Derivation) AttrNames() (out []string) {
 	return drv.OutputNames
 }
 
-func (drv Derivation) MissingOutput() bool {
+func (drv *Derivation) MissingOutput() bool {
 	if len(drv.Outputs) == 0 {
 		return true
 	}
@@ -314,7 +314,7 @@ func (drv Derivation) MissingOutput() bool {
 	return false
 }
 
-func (drv Derivation) HasOutput(name string) bool {
+func (drv *Derivation) HasOutput(name string) bool {
 	for _, o := range drv.OutputNames {
 		if o == name {
 			return true
@@ -323,7 +323,7 @@ func (drv Derivation) HasOutput(name string) bool {
 	return false
 }
 
-func (drv Derivation) Output(name string) Output {
+func (drv *Derivation) Output(name string) Output {
 	for i, o := range drv.OutputNames {
 		if o == name {
 			if len(drv.Outputs) > i {
@@ -387,7 +387,7 @@ func (drv *Derivation) prettyJSON() string {
 // limitation alone. Maybe this is ok?
 var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv) (.*?) \}\}`)
 
-func (drv Derivation) searchForDerivationOutputs() DerivationOutputs {
+func (drv *Derivation) searchForDerivationOutputs() DerivationOutputs {
 	return searchForDerivationOutputs(string(drv.JSON()))
 }
 
@@ -402,7 +402,7 @@ func searchForDerivationOutputs(s string) DerivationOutputs {
 	return sortAndUniqueInputDerivations(out)
 }
 
-func (drv Derivation) JSON() []byte {
+func (drv *Derivation) JSON() []byte {
 	// This seems safe to ignore since we won't be updating the type signature
 	// of Derivation. Is it?
 	b, _ := json.Marshal(drv)

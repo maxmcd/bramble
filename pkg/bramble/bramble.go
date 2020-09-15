@@ -153,18 +153,18 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	}
 	switch drv.Builder {
 	case "fetch_url":
-		err = b.fetchURLBuilder(&drvCopy, outputPaths)
+		err = b.fetchURLBuilder(drvCopy, outputPaths)
 	case "function":
-		err = b.functionBuilder(&drvCopy, buildDir, outputPaths)
+		err = b.functionBuilder(drvCopy, buildDir, outputPaths)
 	default:
-		err = b.regularBuilder(&drvCopy, buildDir, outputPaths)
+		err = b.regularBuilder(drvCopy, buildDir, outputPaths)
 	}
 	if err != nil {
 		return
 	}
 
 	for outputName, outputPath := range outputPaths {
-		matches, hashString, err := b.hashAndScanDirectory(outputPath)
+		matches, hashString, err := b.hashAndScanDirectory(drv, outputPath)
 		if err != nil {
 			return err
 		}
@@ -185,20 +185,19 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	return
 }
 
-func (b *Bramble) hashAndScanDirectory(location string) (matches []string, hashString string, err error) {
+func (b *Bramble) hashAndScanDirectory(drv *Derivation, location string) (matches []string, hashString string, err error) {
 	var storeValues []string
 	oldStorePath := b.store.storePath
 	new := BramblePrefixOfRecord
 
-	// TODO:
-	// just use input derivations?
-	// ensure we don't use values that aren't in input derivations?
-	b.derivations.Range(func(_ string, drv *Derivation) bool {
-		for _, output := range drv.Outputs {
-			storeValues = append(storeValues, filepath.Join(oldStorePath, output.Path))
-		}
-		return true
-	})
+	for _, do := range drv.InputDerivations {
+		storeValues = append(storeValues,
+			b.store.joinStorePath(
+				b.derivations.Get(do.Filename).Output(do.OutputName).Path,
+			),
+		)
+	}
+
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
@@ -498,7 +497,7 @@ func (b *Bramble) replaceOutputValuesInCmd(cmd *Cmd) (err error) {
 	return nil
 }
 
-func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy Derivation, err error) {
+func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *Derivation, err error) {
 	// Find all derivation output template strings within the derivation
 	outputs := drv.searchForDerivationOutputs()
 
@@ -911,9 +910,9 @@ func (b *Bramble) gc(args []string) (err error) {
 	pathsToKeep := map[string]struct{}{}
 
 	// TODO: maybe this will get too big?
-	drvCache := map[string]Derivation{}
+	drvCache := map[string]*Derivation{}
 
-	loadDerivation := func(filename string) (drv Derivation, err error) {
+	loadDerivation := func(filename string) (drv *Derivation, err error) {
 		if drv, ok := drvCache[filename]; ok {
 			return drv, nil
 		}
@@ -1017,7 +1016,7 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 }
 
 func (b *Bramble) findDerivationsInputDerivationsToKeep(
-	loadDerivation func(string) (Derivation, error),
+	loadDerivation func(string) (*Derivation, error),
 	pathsToKeep map[string]struct{},
 	do DerivationOutput, runtimeDep bool) (
 	addToQueue map[DerivationOutput]bool, err error) {
@@ -1071,11 +1070,12 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 	return nil, nil
 }
 
-func (b *Bramble) loadDerivation(filename string) (drv Derivation, err error) {
+func (b *Bramble) loadDerivation(filename string) (drv *Derivation, err error) {
 	f, err := os.Open(b.store.joinStorePath(filename))
 	if err != nil {
 		return
 	}
+	drv = &Derivation{}
 	return drv, json.NewDecoder(f).Decode(&drv)
 }
 

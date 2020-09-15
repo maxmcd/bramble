@@ -161,6 +161,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	// Search for input derivations
 
 	dos := cmd.searchForDerivationOutputs()
+	fn.inputDerivations = append(fn.inputDerivations, dos...)
 	if err = fn.bramble.buildDerivationOutputs(dos); err != nil {
 		return
 	}
@@ -177,7 +178,6 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			return
 		}
 	}
-
 	name := cmd.name()
 	if filepath.Base(name) == name {
 		var lp string
