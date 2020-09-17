@@ -347,7 +347,7 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 		session.setEnv(outputName, outputPath)
 	}
 	for k, v := range session.env {
-		session.env[k] = strings.Replace(v, "$bramble_path", b.store.storePath, -1)
+		session.env[k] = strings.ReplaceAll(v, "$bramble_path", b.store.storePath)
 	}
 	return b.CallInlineDerivationFunction(
 		meta, session,
