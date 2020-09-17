@@ -372,6 +372,7 @@ func (drv *Derivation) env() (env []string) {
 }
 
 func (drv *Derivation) prettyJSON() string {
+	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
@@ -402,7 +403,29 @@ func searchForDerivationOutputs(s string) DerivationOutputs {
 	return sortAndUniqueInputDerivations(out)
 }
 
+func (drv *Derivation) makeConsistentNullJSONValues() {
+	if len(drv.Args) == 0 {
+		drv.Args = nil
+	}
+	if len(drv.Env) == 0 {
+		drv.Env = nil
+	}
+	if len(drv.OutputNames) == 0 {
+		drv.OutputNames = nil
+	}
+	if len(drv.Outputs) == 0 {
+		drv.Outputs = nil
+	}
+	if len(drv.SourcePaths) == 0 {
+		drv.SourcePaths = nil
+	}
+	if len(drv.InputDerivations) == 0 {
+		drv.InputDerivations = nil
+	}
+}
+
 func (drv *Derivation) JSON() []byte {
+	drv.makeConsistentNullJSONValues()
 	// This seems safe to ignore since we won't be updating the type signature
 	// of Derivation. Is it?
 	b, _ := json.Marshal(drv)
