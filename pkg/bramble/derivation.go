@@ -415,6 +415,7 @@ func (drv *Derivation) filename() (filename string) {
 	drv.Outputs = nil
 
 	jsonBytesForHashing := drv.JSON()
+	fmt.Println(string(jsonBytesForHashing))
 
 	drv.Outputs = outputs
 	fileName := fmt.Sprintf("%s.drv", drv.Name)
