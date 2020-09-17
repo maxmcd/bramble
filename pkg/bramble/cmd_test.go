@@ -35,7 +35,7 @@ func runCmdTest(t *testing.T, tests []scriptTest) {
 	}
 }
 
-func TestStarlarkCmd(t *testing.T) {
+func TestCmd(t *testing.T) {
 	tests := []scriptTest{
 		{script: `
 c = cmd("ls")
@@ -74,7 +74,7 @@ c.kill()`},
 	runCmdTest(t, tests)
 }
 
-func TestPipe(t *testing.T) {
+func TestCmdPipe(t *testing.T) {
 	tests := []scriptTest{
 		{script: `b=cmd("echo 'these are words'").pipe("tr ' ' '\n'").pipe("grep these").stdout()`,
 			respContains: `"these\n"`},
@@ -82,7 +82,7 @@ func TestPipe(t *testing.T) {
 	runCmdTest(t, tests)
 }
 
-func TestCallback(t *testing.T) {
+func TestCmdCallback(t *testing.T) {
 	tests := []scriptTest{
 		{script: `
 def echo(*args, **kwargs):
@@ -95,21 +95,21 @@ b=echo("hi").stdout().strip()
 	runCmdTest(t, tests)
 }
 
-func TestArgs(t *testing.T) {
+func TestCmdArgs(t *testing.T) {
 	tests := []scriptTest{
 		{script: `b=cmd("grep hi", stdin=cmd("echo hi")).output()`,
 			respContains: `"hi\n"`},
 		{script: `b=cmd("grep hi", stdin="hi").output()`,
 			respContains: `"hi\n"`},
 		{script: `b=cmd("env", clear_env=True).output()`,
-			errContains: `"not found"`},
+			errContains: `not found`},
 		{script: `b=cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).output()`,
-			errContains: `"not found"`},
+			errContains: `not found`},
 	}
 	runCmdTest(t, tests)
 }
 
-func TestIfErr(t *testing.T) {
+func TestCmdIfErr(t *testing.T) {
 	tests := []scriptTest{
 		{script: `b=cmd("ls", "notathing").if_err("echo", "hi").stdout()`,
 			respContains: `"hi\n"`},
