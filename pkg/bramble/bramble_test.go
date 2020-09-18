@@ -44,6 +44,11 @@ func Test_argsToImport(t *testing.T) {
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar/main",
 			wantFn:     "other",
 		}, {
+			name:       "full module name",
+			args:       []string{"github.com/maxmcd/bramble/all:all"},
+			wantModule: "github.com/maxmcd/bramble/all",
+			wantFn:     "all",
+		}, {
 			name:       "relative path to file with slash",
 			args:       []string{"./bar/main:other"},
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar/main",

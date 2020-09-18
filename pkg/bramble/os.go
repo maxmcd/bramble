@@ -129,7 +129,9 @@ func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 		}
 		paths[i] = str
 	}
-	return starlark.None, cp(os.session.currentDirectory, paths...)
+	err = cp(os.session.currentDirectory, paths...)
+	fmt.Printf("%+v", err)
+	return starlark.None, err
 }
 
 func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

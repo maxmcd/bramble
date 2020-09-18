@@ -7,5 +7,5 @@ def exec(*args, **kwargs):
     return c.wait()
 
 
-def fetch_url(name, url):
-    return derivation(name=name, builder="fetch_url", env={"url": url})
+def fetch_url(url):
+    return derivation(builder="fetch_url", env={"url": url})

@@ -94,6 +94,7 @@ func Reptar(location string, out io.Writer) (err error) {
 			if err != nil {
 				return fmt.Errorf("%s: copying contents: %v", fi.Name(), err)
 			}
+			_ = file.Close()
 		}
 		return nil
 	}); err != nil {

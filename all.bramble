@@ -1,14 +1,13 @@
+"""
+Run a handful of functions
+"""
+
 load("github.com/maxmcd/bramble/lib/seed", "seed", "ldd")
 load("github.com/maxmcd/bramble/tests/simple/simple", "simple")
 load("github.com/maxmcd/bramble/tests/busybox", "busybox")
 load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested", "nested")
-load("github.com/maxmcd/bramble/tests/starlark-builder",
-    bb="busybox", "busybox_drv")
+load("github.com/maxmcd/bramble/lib/busybox", bb="busybox")
 
 
 def all():
-    return [seed(), busybox, nested(), ldd, simple(), bb]
-
-
-def bb2():
-    return [bb, busybox_drv()]
+    return [seed(), busybox(), nested(), ldd, simple(), bb]

@@ -1,4 +1,7 @@
-def busybox_drv():
+"""busybox"""
+
+
+def busybox():
     # download the executable, this is the only way you are allowed
     # to use the network during builds
     download = derivation(
@@ -49,10 +52,8 @@ def _build_busybox():
             cmd("./ln -s busybox %s" % c).output()
 
 
-busybox = busybox_drv()
-
-
 def run_busybox():
+    bb = busybox()
     # whoami is now available to run
-    print(busybox.out)
-    print(cmd("whoami", clear_env=True, env={"PATH": busybox.out + "/bin"}).output())
+    print(bb.out)
+    print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())

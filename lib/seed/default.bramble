@@ -1,4 +1,22 @@
-# our seed
+"""the seed/stdenv"""
+
+load("github.com/maxmcd/bramble/lib/std", "fetch_url", "exec")
+load("github.com/maxmcd/bramble/lib/busybox", "busybox")
+
+
+def zig():
+    archive = fetch_url(
+        "https://github.com/ziglang/zig/releases/download/0.6.0/zig-linux-x86_64-0.6.0.tar.xz"
+    )
+    return derivation(
+        name="zig", builder=_build_zig, env=dict(zig=archive, PATH="%s/bin" % busybox())
+    )
+
+
+def _build_zig():
+    os.mkdir("$out/bin")
+    exec("cp $zig/zig-linux-x86_64-0.6.0/zig $out/bin")
+    exec("cp -r $zig/zig-linux-x86_64-0.6.0/lib $out")
 
 
 def seed():

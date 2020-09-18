@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/bramble/pkg/starutil"
 )
 
 var (
@@ -91,6 +92,7 @@ func assembleModules(t *testing.T) []string {
 				}
 				modules = append(modules, fmt.Sprintf("%s:%s", path, functionName))
 			}
+			_ = f.Close()
 		}
 		return nil
 	}); err != nil {
@@ -101,17 +103,21 @@ func assembleModules(t *testing.T) []string {
 
 func TestRunAlmostAllPublicFunctions(t *testing.T) {
 	modules := assembleModules(t)
+
+	fmt.Println(modules)
 	runTwiceAndCheck(t, func(t *testing.T) {
 		for _, module := range modules {
 			b := Bramble{}
 			if strings.Contains(module, "lib/std") {
 				continue
 			}
-			t.Run(module, func(t *testing.T) {
+			if !t.Run(module, func(t *testing.T) {
 				if err := b.run([]string{module}); err != nil {
-					t.Fatal(err)
+					t.Fatal(starutil.AnnotateError(err))
 				}
-			})
+			}) {
+				t.Fatal(module, "failed")
+			}
 		}
 	})
 }

@@ -124,9 +124,9 @@ func cp(wd string, paths ...string) (err error) {
 	if len(toCopy) == 1 && !pathExists(dest) {
 		f := toCopy[0]
 		if isDir(f) {
-			return copyDirectory(f, dest)
+			return errors.WithStack(copyDirectory(f, dest))
 		}
-		return copyFile(f, dest)
+		return errors.WithStack(copyFile(f, dest))
 	}
 
 	// otherwise copy each listed file into a directory with the given name
@@ -136,12 +136,16 @@ func cp(wd string, paths ...string) (err error) {
 			return errors.Errorf("%q doesn't exist", paths[i])
 		}
 		if fi.IsDir() {
+			destFolder := filepath.Join(dest, fi.Name())
+			if err = createDirIfNotExists(destFolder, 0755); err != nil {
+				return err
+			}
 			err = copyDirectory(path, filepath.Join(dest, fi.Name()))
 		} else {
 			err = copyFile(path, filepath.Join(dest, fi.Name()))
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -159,7 +163,7 @@ func copyDirectory(scrDir, dest string) error {
 
 		fileInfo, err := os.Stat(sourcePath)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
@@ -170,29 +174,29 @@ func copyDirectory(scrDir, dest string) error {
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
 			if err := createDirIfNotExists(destPath, 0755); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if err := copyDirectory(sourcePath, destPath); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		case os.ModeSymlink:
 			if err := copySymLink(sourcePath, destPath); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		default:
 			if err := copyFile(sourcePath, destPath); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 
 		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		isSymlink := entry.Mode()&os.ModeSymlink != 0
 		if !isSymlink {
 			if err := os.Chmod(destPath, entry.Mode()); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 	}
@@ -226,27 +230,27 @@ func copyFilesByPath(prefix string, files []string, dest string) (err error) {
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
 			if err := createDirIfNotExists(destPath, 0755); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		case os.ModeSymlink:
 			if err := copySymLink(file, destPath); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		default:
 			if err := copyFile(file, destPath); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 
 		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		// TODO: when does this happen???
 		isSymlink := fileInfo.Mode()&os.ModeSymlink != 0
 		if !isSymlink {
 			if err := os.Chmod(destPath, fileInfo.Mode()); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 	}
