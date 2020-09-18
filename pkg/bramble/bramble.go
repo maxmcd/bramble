@@ -98,6 +98,7 @@ func (b *Bramble) LoadDerivation(filename string) (drv *Derivation, exists bool,
 	if err != nil {
 		return nil, false, err
 	}
+	defer func() { _ = file.Close() }()
 	drv = &Derivation{}
 	return drv, true, json.NewDecoder(file).Decode(drv)
 }
@@ -166,7 +167,7 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	for outputName, outputPath := range outputPaths {
 		matches, hashString, err := b.hashAndScanDirectory(drv, outputPath)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "error scanning directory")
 		}
 		folderName := hashString + "-" + drv.Name
 		drv.SetOutput(outputName, Output{Path: folderName, Dependencies: matches})
@@ -552,6 +553,9 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 2)
 
+	if err = graph.Validate(); err != nil {
+		return
+	}
 	go func() {
 		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
 			semaphore <- struct{}{}
@@ -991,6 +995,7 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 		if _, err := toml.DecodeReader(f, &drvMap); err != nil {
 			return nil, err
 		}
+		_ = f.Close()
 		fmt.Println("assembling derivations for", drvMap.Location)
 		// delete the config if we can't find the project any more
 		tomlLoc := filepath.Join(drvMap.Location, "bramble.toml")
@@ -1075,6 +1080,7 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, err error) {
 	if err != nil {
 		return
 	}
+	defer func() { _ = f.Close() }()
 	drv = &Derivation{}
 	return drv, json.NewDecoder(f).Decode(&drv)
 }
@@ -1132,9 +1138,17 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 }
 
 func (b *Bramble) moduleFromPath(path string) (module string, err error) {
+
 	module = (b.config.Module.Name + "/" + b.relativePathFromConfig())
 	if path == "" {
 		return
+	}
+
+	// See if this path is actually the name of a module, for now we just
+	// support one module.
+	// TODO: search through all modules in scope for this config
+	if strings.HasPrefix(path, b.config.Module.Name) {
+		return path, nil
 	}
 
 	// if the relative path is nothing, we've already added the slash above

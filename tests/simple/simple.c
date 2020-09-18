@@ -1,3 +1,3 @@
 void main() {
-  puts("Simple Michael!");
+  puts("Simple!");
 }

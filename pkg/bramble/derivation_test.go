@@ -5,8 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkjson"
 )
 
 func TestDerivationValueReplacement(t *testing.T) {
@@ -109,4 +111,24 @@ func processExecResp(t *testing.T, tt scriptTest, globals starlark.StringDict, e
 	}
 
 	assert.Contains(t, b.String(), tt.respContains)
+}
+
+func TestJsonEncode(t *testing.T) {
+	m := starlarkjson.Module
+
+	fetchURL := &Derivation{
+		OutputNames: []string{"out"},
+		Builder:     "fetch_url",
+		Env:         map[string]string{"url": "1"},
+	}
+
+	v, err := m.Members["encode"].(*starlark.Builtin).CallInternal(nil, starlark.Tuple{starlark.Tuple{starlark.String("hi"), fetchURL}}, nil)
+	if err != nil {
+		return
+	}
+	v, err = m.Members["decode"].(*starlark.Builtin).CallInternal(nil, starlark.Tuple{v}, nil)
+	if err != nil {
+		return
+	}
+	spew.Dump(v)
 }

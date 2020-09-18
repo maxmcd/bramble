@@ -11,7 +11,9 @@ def _go():
         },
     )
 
-    return derivation(name="go 1.4", builder=_build_go, build_inputs=[go1_4, seed()],)
+    return derivation(
+        name="go 1.4", builder=_build_go, env=dict(go1_4=go1_4, seed=seed())
+    )
 
 
 def _build_go():

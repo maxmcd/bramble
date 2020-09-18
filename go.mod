@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/containerd/console v1.0.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/hashicorp/terraform v0.13.2
 	github.com/jaguilar/vt100 v0.0.0-20150826170717-2703a27b14ea
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51

@@ -7,9 +7,7 @@ def nix_stdenv():
 
 
 def autoconf():
-    autoconf = fetch_url(
-        "autoconf_src", "https://brmbl.s3.amazonaws.com/autoconf.tar.gz"
-    )
+    autoconf = fetch_url("https://brmbl.s3.amazonaws.com/autoconf.tar.gz")
     return derivation(
         name="autoconf",
         builder=_build_autoconf,
@@ -38,7 +36,9 @@ def _make():
         },
     )
     return derivation(
-        name="bash", builder=_build_make, build_inputs=[make_src, seed(), autoconf()],
+        name="bash",
+        builder=_build_make,
+        env=dict(make_srv=make_src, seed=seed(), autoconf=autoconf()),
     )
 
 
@@ -68,7 +68,7 @@ def _bash():
         },
     )
     return derivation(
-        name="bash", builder=_build_bash, build_inputs=[bash_src, seed()],
+        name="bash", builder=_build_bash, env=dict(bash_src=bash_src, seed=seed()),
     )
 
 

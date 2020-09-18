@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/pkg/errors"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -77,6 +76,7 @@ func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, e
 	if err != nil {
 		return nil, true, err
 	}
+	defer func() { _ = file.Close() }()
 	drv = &Derivation{}
 	return drv, true, json.NewDecoder(file).Decode(drv)
 }
@@ -117,13 +117,12 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		Env:         map[string]string{},
 	}
 	var (
-		name        starlark.String
-		builder     starlark.Value = starlark.None
-		argsParam   *starlark.List
-		sources     *starlark.List
-		env         *starlark.Dict
-		outputs     *starlark.List
-		buildInputs *starlark.List
+		name      starlark.String
+		builder   starlark.Value = starlark.None
+		argsParam *starlark.List
+		sources   *starlark.List
+		env       *starlark.Dict
+		outputs   *starlark.List
 	)
 	if err = starlark.UnpackArgs("derivation", args, kwargs,
 		"builder", &builder,
@@ -155,20 +154,6 @@ func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs [
 		}
 	}
 
-	if buildInputs != nil {
-		for _, item := range starutil.ListToValueList(buildInputs) {
-			input, ok := item.(*Derivation)
-			if !ok {
-				err = errors.Errorf("build_inputs takes a list of derivations, found type %q", item.Type())
-				return
-			}
-			filename := input.filename()
-			drv.InputDerivations = append(drv.InputDerivations, DerivationOutput{
-				Filename:   filename,
-				OutputName: "out", // TODO: support passing other outputs
-			})
-		}
-	}
 	if outputs != nil {
 		outputsList, err := starutil.IterableToGoList(outputs)
 		if err != nil {
@@ -255,15 +240,22 @@ func (do DerivationOutput) templateString() string {
 
 type DerivationOutputs []DerivationOutput
 
+func (a DerivationOutputs) Len() int      { return len(a) }
+func (a DerivationOutputs) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a DerivationOutputs) Less(i, j int) bool {
+	return a[i].Filename+a[i].OutputName < a[j].Filename+a[j].OutputName
+}
+
 func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
-	sort.Slice(dos, func(i, j int) bool {
-		do := dos[i]
-		jd := dos[j]
-		return do.Filename+do.OutputName < jd.Filename+do.OutputName
-	})
+	// sort
+	if !sort.IsSorted(dos) {
+		sort.Sort(dos)
+	}
 	if len(dos) == 0 {
 		return dos
 	}
+
+	// dedupe
 	j := 0
 	for i := 1; i < len(dos); i++ {
 		if dos[j] == dos[i] {
@@ -433,14 +425,14 @@ func (drv *Derivation) JSON() []byte {
 }
 
 func (drv *Derivation) filename() (filename string) {
-	outputs := drv.Outputs
 	// Content is hashed without derivation outputs.
+	outputs := drv.Outputs
 	drv.Outputs = nil
 
 	jsonBytesForHashing := drv.JSON()
-	fmt.Println(string(jsonBytesForHashing))
 
 	drv.Outputs = outputs
+
 	fileName := fmt.Sprintf("%s.drv", drv.Name)
 
 	// We ignore this error, the errors would result from bad writes and all reads/writes are
