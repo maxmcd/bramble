@@ -6,7 +6,9 @@ seed/linux-x86_64-seed.tar.gz:
 test: go_test bramblescripts_to_test seed simple drv_test
 
 go_test:
-	go test -v ./...
+	go test -race -v ./...
+	go test -run="(TestIntegration|TestRunAlmostAllPublicFunctions)" -v ./...
+
 
 install:
 	go install

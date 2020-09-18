@@ -1,10 +1,11 @@
+// +build !race
+
 package bramble
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,18 +15,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 )
-
-var (
-	TestTmpDirPrefix = "bramble-test-"
-)
-
-func tmpDir() string {
-	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
-	if err != nil {
-		panic(err)
-	}
-	return dir
-}
 
 func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	var err error

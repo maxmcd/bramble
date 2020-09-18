@@ -1,11 +1,24 @@
 package bramble
 
 import (
+	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+var (
+	TestTmpDirPrefix = "bramble-test-"
+)
+
+func tmpDir() string {
+	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
 
 func brambleBramble(t *testing.T) *Bramble {
 	if err := os.Chdir("./testfiles"); err != nil {
