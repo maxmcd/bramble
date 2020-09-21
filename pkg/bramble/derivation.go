@@ -60,8 +60,12 @@ func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 	return fn, nil
 }
 
+func isTopLevel(thread *starlark.Thread) bool {
+	return thread.CallStack().At(1).Name == "<toplevel>"
+}
+
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
-	if thread.CallStack().At(1).Name == "<toplevel>" {
+	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
 	}
 	if err = f.bramble.CalledDerivation(); err != nil {

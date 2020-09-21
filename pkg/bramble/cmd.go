@@ -53,6 +53,10 @@ func (fn *CmdFunction) Truth() starlark.Bool  { return true }
 
 // CallInternal defines the cmd() starlark function.
 func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	if isTopLevel(thread) {
+		return nil, errors.New("cmd call not within a function")
+	}
+
 	return fn.newCmd(thread, args, kwargs, nil)
 }
 
