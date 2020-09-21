@@ -86,12 +86,12 @@ func runDerivationTest(t *testing.T, tests []scriptTest) {
 				thread, tt.name+".bramble",
 				tt.script, b.predeclared,
 			)
-			processExecResp(t, tt, globals, err)
+			processExecResp(t, tt, globals["b"], err)
 		})
 	}
 }
 
-func processExecResp(t *testing.T, tt scriptTest, globals starlark.StringDict, err error) {
+func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 	if err != nil || tt.errContains != "" {
 		if err == nil {
 			t.Error("error is nil")
@@ -104,11 +104,6 @@ func processExecResp(t *testing.T, tt scriptTest, globals starlark.StringDict, e
 		}
 	}
 	if tt.respContains == "" {
-		return
-	}
-	b, ok := globals["b"]
-	if !ok {
-		t.Errorf("%q doesn't output global value b", tt.script)
 		return
 	}
 
