@@ -4,11 +4,11 @@ Bramble cmd examples
 
 
 def _grep(*args, **kwargs):
-    return cmd("grep", *args, **kwargs)
+    return os.cmd("grep", *args, **kwargs)
 
 
 def main():
-
+    cmd = os.cmd
     cmd("ls -lah")
     cmd("ls", "-lah")
     cmd(["ls", "-lah"])

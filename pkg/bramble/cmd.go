@@ -94,12 +94,6 @@ func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
 	return starutil.IterableToGoList(args)
 }
 
-func (cmd *Cmd) expandArguments() {
-	for i, arg := range cmd.Args {
-		cmd.Args[i] = cmd.fn.session.expand(arg)
-	}
-}
-
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
 func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
@@ -169,9 +163,6 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	if err = fn.bramble.replaceOutputValuesInCmd(&cmd); err != nil {
 		return
 	}
-
-	// expand shell variables in arguments
-	cmd.expandArguments()
 
 	if stdinKwarg != nil {
 		if err = cmdAttachStdin(&cmd, stdinKwarg); err != nil {

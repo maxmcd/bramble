@@ -9,10 +9,9 @@ def stdenv():
     return derivation(builder=_build_stdenv, env=dict(src=src, patchelf=patchelf()))
 
 
-def _build_stdenv():
-    os.getenv("out")
+def _build_stdenv(ctx):
     os.setenv("PATH", os.getenv("patchelf") + "/bin/")
-    os.mkdir("$out/bin")
+    os.mkdir(os.getenv("out") + "/bin")
 
     os.cp(os.getenv("src") + "/lib", os.getenv("out"))
     os.cp(os.getenv("src") + "/bin", os.getenv("out"))

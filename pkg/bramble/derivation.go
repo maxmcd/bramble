@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/pkg/errors"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -48,40 +48,22 @@ func init() {
 	resolve.AllowLambda = false
 	resolve.AllowNestedDef = false
 	resolve.AllowRecursion = false
-	resolve.AllowSet = true
+	resolve.AllowSet = true // sets seem harmless tho?
 }
 
-// NewDerivationFunction creates a new client. When initialized this function checks if the
+// NewDerivationFunction creates a new derivation function. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
 func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 	fn := &DerivationFunction{
 		bramble: bramble,
 	}
-
 	return fn, nil
 }
 
-func (f *DerivationFunction) joinStorePath(v ...string) string {
-	return f.bramble.store.joinStorePath(v...)
-}
-
-// Load derivation will load and parse a derivation from the bramble store1
-func (f *DerivationFunction) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := f.joinStorePath(filename)
-	_, err = os.Stat(fileLocation)
-	if err != nil {
-		return nil, false, nil
-	}
-	file, err := os.Open(fileLocation)
-	if err != nil {
-		return nil, true, err
-	}
-	defer func() { _ = file.Close() }()
-	drv = &Derivation{}
-	return drv, true, json.NewDecoder(file).Decode(drv)
-}
-
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	if thread.CallStack().At(1).Name == "<toplevel>" {
+		return nil, errors.New("derivation call not within a function")
+	}
 	if err = f.bramble.CalledDerivation(); err != nil {
 		return
 	}
