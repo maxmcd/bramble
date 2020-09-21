@@ -28,6 +28,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 type Bramble struct {
@@ -351,7 +352,9 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 		session.env[k] = strings.ReplaceAll(v, "$bramble_path", b.store.storePath)
 	}
 	return b.CallInlineDerivationFunction(
-		meta, session,
+		outputPaths,
+		meta,
+		session,
 	)
 }
 
@@ -580,7 +583,8 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	return <-errChan
 }
 
-func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session *session) (err error) {
+func (b *Bramble) CallInlineDerivationFunction(outputPaths map[string]string, meta functionBuilderMeta, session *session) (err error) {
+	// TODO: investigate if you actually need to create a new bramble
 	newBramble := &Bramble{
 		// retain from parent
 		config:         b.config,
@@ -607,10 +611,16 @@ func (b *Bramble) CallInlineDerivationFunction(meta functionBuilderMeta, session
 		return
 	}
 
+	d := starlark.NewDict(len(outputPaths))
+	for name, path := range outputPaths {
+		_ = d.SetKey(starlark.String(name), starlark.String(path))
+	}
+	ctx, _ := starlarkstruct.Make(nil, nil, nil, []starlark.Tuple{{starlark.String("outputs"), d}})
+
 	_, err = starlark.Call(
 		newBramble.thread,
 		globals[meta.Function].(*starlark.Function),
-		nil, nil,
+		starlark.Tuple{ctx}, nil,
 	)
 	return
 }
@@ -671,8 +681,7 @@ func (b *Bramble) initPredeclared() (err error) {
 
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
-		"cmd":        b.cmd,
-		"os":         NewOS(b, b.session),
+		"os":         NewOS(b, b.session, b.cmd),
 		"assert":     assertGlobals["assert"],
 	}
 	return
@@ -1138,7 +1147,6 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 }
 
 func (b *Bramble) moduleFromPath(path string) (module string, err error) {
-
 	module = (b.config.Module.Name + "/" + b.relativePathFromConfig())
 	if path == "" {
 		return

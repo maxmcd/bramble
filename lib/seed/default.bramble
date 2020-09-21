@@ -14,7 +14,7 @@ def _zig():
 
 
 def _build_zig():
-    os.mkdir("$out/bin")
+    os.mkdir(os.expand("$out/bin"))
     exec("cp $zig/zig-linux-x86_64-0.6.0/zig $out/bin")
     exec("cp -r $zig/zig-linux-x86_64-0.6.0/lib $out")
 
@@ -33,13 +33,12 @@ def seed():
 
 def ldd():
     s = seed()
-
     return derivation(name="ld", builder=_build_ldd, env={"seed": s})
 
 
-def _build_ldd():
-    os.mkdir("$out/bin")
-    f = os.create("$out/bin/ldd")
+def _build_ldd(ctx):
+    os.mkdir(ctx.outputs["out"] + "/bin")
+    f = os.create(os.expand("$out/bin/ldd"))
     f.write(
         """#!{seed}/bin/sh
 exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
@@ -49,4 +48,4 @@ exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
         )
     )
     f.close()
-    cmd("$seed/bin/chmod", "+x", "$out/bin/ldd").wait()
+    exec("$seed/bin/chmod", "+x", "$out/bin/ldd")

@@ -111,23 +111,21 @@ func TestRunAlmostAllPublicFunctions(t *testing.T) {
 	})
 }
 func TestBenchmarkFullCacheHit(t *testing.T) {
-	// t.Skip("don't run benchmarks")
+	t.Skip("don't run benchmarks")
 	bramble := Bramble{}
 	if err := bramble.run([]string{"../../all:all"}); err != nil {
 		t.Fatal(err)
 	}
 	res := testing.Benchmark(func(b *testing.B) {
-		b.Run("hash10", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				bramble := Bramble{}
-				if err := bramble.run([]string{"../../all:all"}); err != nil {
-					b.Fatal(err)
-				}
+		for i := 0; i < b.N; i++ {
+			bramble := Bramble{}
+			if err := bramble.run([]string{"../../all:all"}); err != nil {
+				b.Fatal(err)
 			}
-		})
+		}
 	})
 
-	fmt.Println(time.Duration(time.Nanosecond * time.Duration(res.NsPerOp())))
-	fmt.Printf("Time per run: %s\n", res.T)
+	fmt.Printf("Time per run: %s\n", time.Duration(time.Nanosecond*time.Duration(res.NsPerOp())))
+	fmt.Printf("Total time: %s\n", res.T)
 	fmt.Println(res.Extra)
 }

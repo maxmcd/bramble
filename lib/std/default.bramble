@@ -3,7 +3,10 @@
 
 def exec(*args, **kwargs):
     kwargs["print_output"] = True
-    c = cmd(*args, **kwargs)
+    expanded_args = []
+    for arg in args:
+        expanded_args.append(os.expand(str(arg)))
+    c = os.cmd(*expanded_args, **kwargs)
     return c.wait()
 
 
