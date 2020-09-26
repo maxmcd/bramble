@@ -22,6 +22,12 @@ var (
 	// this allows us to get a consistent hash even if we're building in a
 	// different location
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
+
+	// DerivationOutputTemplate is the template string we use to write
+	// derivation outputs into other derivations. It doesn't have spaces so
+	// that it can be passed to cmd() without messing with shellquote.Split. We
+	// might want to disallow spaces in output names to aide with this as well.
+	DerivationOutputTemplate = "{{%s:%s}}"
 )
 
 // DerivationFunction is the function that creates derivations
@@ -221,7 +227,7 @@ type DerivationOutput struct {
 }
 
 func (do DerivationOutput) templateString() string {
-	return fmt.Sprintf("{{ %s %s }}", do.Filename, do.OutputName)
+	return fmt.Sprintf(DerivationOutputTemplate, do.Filename, do.OutputName)
 }
 
 type DerivationOutputs []DerivationOutput
@@ -332,7 +338,7 @@ func (drv *Derivation) templateString(output string) string {
 		return outputPath
 	}
 	fn := drv.filename()
-	return fmt.Sprintf("{{ %s %s }}", fn, output)
+	return fmt.Sprintf(DerivationOutputTemplate, fn, output)
 }
 
 func (drv *Derivation) mainOutput() string {
@@ -364,7 +370,7 @@ func (drv *Derivation) prettyJSON() string {
 // be limited by filesystem rules. If we're not eager about warning about this
 // we risk having derivation names only work on certain systems through that
 // limitation alone. Maybe this is ok?
-var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv) (.*?) \}\}`)
+var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{([0-9a-z]{32}-.*?\.drv):(.+?)\}\}`)
 
 func (drv *Derivation) searchForDerivationOutputs() DerivationOutputs {
 	return searchForDerivationOutputs(string(drv.JSON()))

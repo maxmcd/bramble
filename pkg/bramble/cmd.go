@@ -87,6 +87,7 @@ func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
 		if str == "" {
 			return nil, errors.New("if the first argument is a string it can't be empty")
 		}
+
 		out, err = shellquote.Split(str)
 		if len(out) == 0 {
 			// whitespace bash characters will be removed by shellquote,
