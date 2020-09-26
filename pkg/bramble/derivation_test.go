@@ -17,7 +17,7 @@ func TestDerivationValueReplacement(t *testing.T) {
 		Builder:     "fetch_url",
 		Env:         map[string]string{"url": "1"},
 	}
-	assert.Equal(t, "{{ tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv out }}", fetchURL.templateString("out"))
+	assert.Equal(t, "{{tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv:out}}", fetchURL.templateString("out"))
 
 	other := Derivation{
 		OutputNames: []string{"out"},
@@ -64,7 +64,7 @@ def foo():
 	return derivation(builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)})
 b = foo()
 `,
-			respContains: `{{ tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv out }}`},
+			respContains: `{{tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv:out}}`},
 	}
 	runDerivationTest(t, tests)
 }
