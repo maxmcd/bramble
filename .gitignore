@@ -2,3 +2,4 @@ brambles
 *.gz
 .vscode
 .idea
+*.prof

@@ -165,29 +165,108 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 		return
 	}
 
-	for outputName, outputPath := range outputPaths {
-		matches, hashString, err := b.hashAndScanDirectory(drv, outputPath)
+	// fetch url just hashes the directory and moves it into the output location, no archiving and byte replacing
+	if drv.Builder == "fetch_url" {
+		hasher := NewHasher()
+		_, err := b.archiveAndScanOutputDirectory(ioutil.Discard, hasher, drv, filepath.Base(outputPaths["out"]))
 		if err != nil {
-			return errors.Wrap(err, "error scanning directory")
+			return err
 		}
-		folderName := hashString + "-" + drv.Name
-		drv.SetOutput(outputName, Output{Path: folderName, Dependencies: matches})
-		newPath := b.store.joinStorePath() + "/" + folderName
-		fmt.Println("Output at ", newPath)
-		// We ignore an existing build directory with the same name. It contains the same contents
-		if !pathExists(newPath) {
-			err = os.Rename(outputPath, newPath)
+		outputFolderName := hasher.String()
+		drv.SetOutput("out", Output{Path: outputFolderName})
+		outputStorePath := b.store.joinStorePath(outputFolderName)
+		if pathExists(outputStorePath) {
+			err = os.RemoveAll(outputPaths["out"])
 		} else {
-			err = os.RemoveAll(outputPath)
+			err = os.Rename(outputPaths["out"], outputStorePath)
 		}
 		if err != nil {
 			return err
+		}
+	} else {
+		for outputName, outputPath := range outputPaths {
+			hasher := NewHasher()
+			var reptarFile *os.File
+			reptarFile, err = b.createTmpFile()
+			if err != nil {
+				return
+			}
+			outputFolder := filepath.Base(outputPath)
+			matches, err := b.archiveAndScanOutputDirectory(reptarFile, hasher, drv, outputFolder)
+			if err != nil {
+				return errors.Wrap(err, "error scanning output")
+			}
+			// remove build output, we have it in an archive
+			if err = os.RemoveAll(outputPath); err != nil {
+				return err
+			}
+
+			hashedFolderName := hasher.String()
+
+			// Nix adds the name to the output path but we are a
+			// content-addressable-store so we remove so that derivations with
+			// different names can share outputs
+			newPath := b.store.joinStorePath(hashedFolderName)
+
+			if !pathExists(newPath) {
+				if err := b.unarchiveAndReplaceOutputFolderName(
+					reptarFile.Name(),
+					newPath,
+					outputFolder,
+					hashedFolderName); err != nil {
+					return err
+				}
+			}
+			if err := os.RemoveAll(reptarFile.Name()); err != nil {
+				return err
+			}
+
+			drv.SetOutput(outputName, Output{Path: hashedFolderName, Dependencies: matches})
+			fmt.Println("Output at ", newPath)
 		}
 	}
 	return
 }
 
-func (b *Bramble) hashAndScanDirectory(drv *Derivation, location string) (matches []string, hashString string, err error) {
+func (b *Bramble) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
+	pipeReader, pipWriter := io.Pipe()
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+
+	go func() {
+		if _, err := textreplace.ReplaceBytes(
+			f, pipWriter,
+			[]byte(outputFolder), []byte(hashedFolderName)); err != nil {
+			errChan <- err
+			return
+		}
+		if err := pipWriter.Close(); err != nil {
+			errChan <- err
+			return
+		}
+	}()
+	go func() {
+		tr := archiver.NewTar()
+		if err := tr.UnarchiveReader(pipeReader, archive, dst); err != nil {
+			errChan <- err
+		}
+		doneChan <- struct{}{}
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-doneChan:
+	}
+	return
+}
+
+func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer, drv *Derivation, storeFolder string) (
+	matches []string, err error) {
+
 	var storeValues []string
 	oldStorePath := b.store.storePath
 	new := BramblePrefixOfRecord
@@ -200,38 +279,82 @@ func (b *Bramble) hashAndScanDirectory(drv *Derivation, location string) (matche
 		)
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
+	pipeReader2, pipeWriter2 := io.Pipe()
+	_ = pipeReader2
 
+	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(location, pipeWriter); err != nil {
+		if err := reptar.Reptar(b.store.joinStorePath(storeFolder), pipeWriter); err != nil {
 			errChan <- err
+			return
 		}
 		if err := pipeWriter.Close(); err != nil {
 			errChan <- err
+			return
 		}
 	}()
-	hasher := NewHasher()
+
+	// replace all the bramble store path prefixes with a known fixed value
+	// also write this byte stream out as a tar to unpack later as the final output
 	go func() {
 		_, matches, err := textreplace.ReplaceStringsPrefix(
-			pipeReader, hasher, storeValues, oldStorePath, new)
+			pipeReader, io.MultiWriter(tarOutput, pipeWriter2), storeValues, oldStorePath, new)
 		if err != nil {
 			errChan <- err
+			return
 		}
 		resultChan <- matches
+		if err := pipeWriter2.Close(); err != nil {
+			errChan <- err
+			return
+		}
 	}()
+
+	// swap out references in the output to itself with null bytes so that
+	// builds with a different randomly named build directory will still
+	// match the hash of this one
+	go func() {
+		if _, err := textreplace.ReplaceBytes(
+			pipeReader2, hashOutput,
+			[]byte(storeFolder), make([]byte, len(storeFolder)),
+		); err != nil {
+			errChan <- err
+			return
+		}
+		wg.Done()
+	}()
+
 	select {
 	case err := <-errChan:
-		return nil, "", err
+		return nil, err
 	case result := <-resultChan:
-		for k := range result {
-			// TODO: does this still need to happen?
-			matches = append(matches, strings.Replace(k, oldStorePath, "$bramble_path", 1))
+		for match := range result {
+			// remove prefix from dependency path
+			match = strings.TrimPrefix(strings.Replace(match, oldStorePath, "", 1), "/")
+			matches = append(matches, match)
 		}
-		return matches, hasher.String(), nil
 	}
+	wg.Wait()
+	return
 }
+
+// func (b *Bramble) hashAndScanDirectory(drv *Derivation, storeFolder string) (matches []string, hashString string, err error) {
+
+// 	destination := b.store.joinStorePath(hashString)
+// 	fmt.Println(reptarFile.Name())
+// 	if pathExists(destination) {
+// 		if err = archiver.Unarchive(reptarFile.Name(), destination); err != nil {
+// 			return
+// 		}
+// 	}
+// 	return matches, hasher.String(), os.RemoveAll(reptarFile.Name())
+// }
 
 // setDerivationBuilder is used during instantiation to set various attributes on the
 // derivation for a specific builder
@@ -283,8 +406,13 @@ func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) 
 }
 
 func (b *Bramble) createTmpDir() (tempDir string, err error) {
-	return ioutil.TempDir(b.store.storePath, TempDirPrefix)
+	return ioutil.TempDir(b.store.storePath, BuildDirPattern)
 }
+
+func (b *Bramble) createTmpFile() (f *os.File, err error) {
+	return ioutil.TempFile(b.store.storePath, BuildDirPattern)
+}
+
 func (b *Bramble) writeDerivation(drv *Derivation) error {
 	filename := drv.filename()
 	fileLocation := b.store.joinStorePath(filename)
@@ -347,9 +475,6 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 	}
 	for outputName, outputPath := range outputPaths {
 		session.setEnv(outputName, outputPath)
-	}
-	for k, v := range session.env {
-		session.env[k] = strings.ReplaceAll(v, "$bramble_path", b.store.storePath)
 	}
 	return b.CallInlineDerivationFunction(
 		outputPaths,
@@ -1048,8 +1173,7 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 
 	dependencyOutputs := map[string]bool{}
 	if runtimeDep {
-		for _, dep := range drv.Output(do.OutputName).Dependencies {
-			filename := strings.ReplaceAll(dep, "$bramble_path/", "")
+		for _, filename := range drv.Output(do.OutputName).Dependencies {
 			// keep outputs for all runtime dependencies
 			pathsToKeep[filename] = struct{}{}
 			dependencyOutputs[filename] = false

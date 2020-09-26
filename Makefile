@@ -44,6 +44,15 @@ gc: install
 go: install
 	bramble run lib/go:go
 
+test_starlark_builder:
+	go test -v -run=TestStarlarkBuilder ./pkg/bramble/
+
+test_nix_seed:
+	go test -v -run=TestNixSeed ./pkg/bramble/
+
+test_simple:
+	go test -v -run=TestSimple ./pkg/bramble/
+
 seed: install
 	bramble run lib/seed:seed
 
@@ -52,3 +61,6 @@ all_bramble: install
 
 bb2: install
 	bramble run all:bb2
+
+install_reptar:
+	cd pkg/reptar/reptar && go install
