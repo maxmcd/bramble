@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/maxmcd/bramble/pkg/reptar"
 )
@@ -19,12 +21,23 @@ func run(args []string) error {
 	if len(args) < 3 {
 		return errors.New("reptar is run like: reptar outputfile.tar.gz ./files-to-package")
 	}
+
+	var fn func(a string, b io.Writer) error
+
+	switch {
+	case strings.HasSuffix(args[1], ".tar"):
+		fn = reptar.Reptar
+	case strings.HasSuffix(args[1], ".tar.gz"):
+		fn = reptar.GzipReptar
+	default:
+		return errors.New("archive name must end in .tar or .tar.gz")
+	}
+
 	f, err := os.Create(args[1])
 	if err != nil {
 		return err
 	}
-	if err = reptar.GzipReptar(args[2], f); err != nil {
-		return err
-	}
-	return f.Close()
+	defer f.Close()
+
+	return fn(args[2], f)
 }

@@ -100,7 +100,7 @@ func Reptar(location string, out io.Writer) (err error) {
 	}); err != nil {
 		return
 	}
-	return tw.Flush()
+	return tw.Close()
 }
 
 // GzipReptar just wraps reptar in gzip. This seems like a good place for a

@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	TempDirPrefix = "bramble-"
+	BuildDirPattern = "bramble_build_directory*"
 
 	// BramblePrefixOfRecord is the prefix we use when hashing the build output
 	// this allows us to get a consistent hash even if we're building in a

@@ -23,7 +23,7 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	hasher2 := NewHasher()
 	dir2 := tmpDir()
 	// set a unique bramble store for these tests
-	os.Setenv("BRAMBLE_PATH", dir)
+	os.Setenv("BRAMBLE_PATH", dir+"/")
 	cb(t)
 	if err = reptar.Reptar(dir+"/store", hasher); err != nil {
 		t.Error(err)
@@ -38,8 +38,8 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 		return
 	}
 
-	_ = os.RemoveAll(dir)
-	_ = os.RemoveAll(dir2)
+	// _ = os.RemoveAll(dir)
+	// _ = os.RemoveAll(dir2)
 }
 
 func TestIntegration(t *testing.T) {
@@ -107,6 +107,33 @@ func TestRunAlmostAllPublicFunctions(t *testing.T) {
 			}) {
 				t.Fatal(module, "failed")
 			}
+		}
+	})
+}
+
+func TestStarlarkBuilder(t *testing.T) {
+	runTwiceAndCheck(t, func(t *testing.T) {
+		b := Bramble{}
+		if err := b.run([]string{"github.com/maxmcd/bramble/lib/busybox:run_busybox"}); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
+
+func TestSimple(t *testing.T) {
+	runTwiceAndCheck(t, func(t *testing.T) {
+		b := Bramble{}
+		if err := b.run([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
+
+func TestNixSeed(t *testing.T) {
+	runTwiceAndCheck(t, func(t *testing.T) {
+		b := Bramble{}
+		if err := b.run([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
 		}
 	})
 }

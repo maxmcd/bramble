@@ -29,8 +29,9 @@ type Store struct {
 }
 
 func (s *Store) ensureBramblePath() (err error) {
-	s.bramblePath = os.Getenv("BRAMBLE_PATH")
-	if s.bramblePath == "" {
+	var exists bool
+	s.bramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
+	if !exists {
 		var home string
 		home, err = os.UserHomeDir()
 		if err != nil {
@@ -38,6 +39,8 @@ func (s *Store) ensureBramblePath() (err error) {
 			return
 		}
 		s.bramblePath = filepath.Join(home, "bramble")
+	} else {
+		s.bramblePath = filepath.Clean(s.bramblePath)
 	}
 	if !filepath.IsAbs(s.bramblePath) {
 		err = errors.Errorf("bramble path %s must be absolute", s.bramblePath)
