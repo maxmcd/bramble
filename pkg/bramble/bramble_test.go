@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -164,6 +166,43 @@ func TestBramble_resolveModule(t *testing.T) {
 			if !reflect.DeepEqual(globalNames, tt.wantGlobals) {
 				t.Errorf("Bramble.resolveModule() = %v, want %v", globalNames, tt.wantGlobals)
 			}
+		})
+	}
+}
+
+func TestBramble_moduleNameFromFileName(t *testing.T) {
+	b := brambleBramble(t)
+	defer func() { _ = os.Chdir("..") }()
+	tests := []struct {
+		filename       string
+		module         string
+		wantModuleName string
+		wantErr        string
+	}{
+		{
+			filename:       "bar.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/pkg/bramble/testfiles/bar",
+		}, {
+			filename: "noexist.bramble",
+			wantErr:  "doesn't exist",
+		}, {
+			filename:       "default.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/pkg/bramble/testfiles",
+		}, {
+			filename:       "../../../tests/busybox.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/tests/busybox",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.filename, func(t *testing.T) {
+			moduleName, err := b.moduleNameFromFileName(tt.filename)
+			if (err != nil) && tt.wantErr != "" {
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Bramble.resolveModule() error doesn't match\nwanted:     %q\nto contain: %q", err, tt.wantErr)
+				}
+				return
+			}
+			assert.Equal(t, tt.wantModuleName, moduleName)
 		})
 	}
 }

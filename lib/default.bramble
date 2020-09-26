@@ -23,7 +23,7 @@ def _build_autoconf(ctx):
 
 def test_autoconf():
     ac = autoconf()
-    print(os.cmd(ac.out + "/bin/aclocal").output())
+    print(os.cmd(ac.out + "/bin/autoconf/autoconf -h").output())
 
 
 def _make():

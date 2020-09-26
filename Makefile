@@ -3,7 +3,7 @@
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh
 
-test: go_test bramblescripts_to_test seed simple drv_test
+test: go_test bramblescripts_to_test seed simple drv_test bramble_tests
 
 go_test:
 	go test -race -v ./...
@@ -14,7 +14,7 @@ install:
 	go install
 
 bramble_tests: install
-	bramble test ./tests
+	bramble test
 
 docker_reptar: ## Used to compare reptar output to gnutar
 	cd pkg/reptar && docker build -t reptar . \

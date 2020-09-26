@@ -18,9 +18,9 @@ def _go():
 
 def _build_go():
     os.setenv("PATH", os.getenv("$seed") + "/bin")
-    cmd("cp -r $go_1_4_download/go .").wait()
-    print(cmd("ls -lah").output())
+    os.cmd("cp -r $go_1_4_download/go .").wait()
+    print(os.cmd("ls -lah").output())
     os.cd("./go/src")
     os.setenv("CGO_ENABLED", "0")
-    print(cmd("ls -lah").output())
-    cmd("$seed/bash").wait()
+    print(os.cmd("ls -lah").output())
+    os.cmd("$seed/bash").wait()

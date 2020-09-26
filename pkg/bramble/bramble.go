@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
+	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -266,10 +268,8 @@ func (b *Bramble) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder
 
 func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer, drv *Derivation, storeFolder string) (
 	matches []string, err error) {
-
 	var storeValues []string
 	oldStorePath := b.store.storePath
-	new := BramblePrefixOfRecord
 
 	for _, do := range drv.InputDerivations {
 		storeValues = append(storeValues,
@@ -286,7 +286,6 @@ func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer,
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
 	pipeReader2, pipeWriter2 := io.Pipe()
-	_ = pipeReader2
 
 	// write the output files into an archive
 	go func() {
@@ -303,6 +302,7 @@ func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer,
 	// replace all the bramble store path prefixes with a known fixed value
 	// also write this byte stream out as a tar to unpack later as the final output
 	go func() {
+		new := BramblePrefixOfRecord
 		_, matches, err := textreplace.ReplaceStringsPrefix(
 			pipeReader, io.MultiWriter(tarOutput, pipeWriter2), storeValues, oldStorePath, new)
 		if err != nil {
@@ -344,17 +344,28 @@ func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer,
 	return
 }
 
-// func (b *Bramble) hashAndScanDirectory(drv *Derivation, storeFolder string) (matches []string, hashString string, err error) {
-
-// 	destination := b.store.joinStorePath(hashString)
-// 	fmt.Println(reptarFile.Name())
-// 	if pathExists(destination) {
-// 		if err = archiver.Unarchive(reptarFile.Name(), destination); err != nil {
-// 			return
-// 		}
-// 	}
-// 	return matches, hasher.String(), os.RemoveAll(reptarFile.Name())
-// }
+func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, err error) {
+	filename, err = filepath.Abs(filename)
+	if err != nil {
+		return "", err
+	}
+	if !fileExists(filename) {
+		return "", errors.Errorf("bramble file %q doesn't exist", filename)
+	}
+	fmt.Println(filename)
+	if !strings.HasPrefix(filename, b.configLocation) {
+		return "", errors.New("we don't support external modules yet")
+	}
+	relativeWorkspacePath, err := filepath.Rel(b.configLocation, filename)
+	if err != nil {
+		return "", err
+	}
+	fmt.Println(relativeWorkspacePath)
+	moduleName = filepath.Join("github.com/maxmcd/bramble", relativeWorkspacePath)
+	moduleName = strings.TrimSuffix(moduleName, "/default"+BrambleExtension)
+	moduleName = strings.TrimSuffix(moduleName, BrambleExtension)
+	return
+}
 
 // setDerivationBuilder is used during instantiation to set various attributes on the
 // derivation for a specific builder
@@ -751,6 +762,7 @@ func (b *Bramble) CallInlineDerivationFunction(outputPaths map[string]string, me
 }
 
 func (b *Bramble) reset() {
+	b.afterDerivation = false
 	b.moduleCache = map[string]string{}
 	b.filenameCache = map[string]string{}
 }
@@ -804,10 +816,17 @@ func (b *Bramble) initPredeclared() (err error) {
 
 	b.cmd = NewCmdFunction(b.session, b)
 
+	debugger := starlark.NewBuiltin("debugger", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		// TODO: https://github.com/google/starlark-go/issues/304
+		repl.REPL(thread, b.predeclared)
+		return nil, nil
+	})
+
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
 		"os":         NewOS(b, b.session, b.cmd),
 		"assert":     assertGlobals["assert"],
+		"debugger":   debugger,
 	}
 	return
 }
@@ -821,39 +840,25 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 	return
 }
 
-var extension string = ".bramble"
+var BrambleExtension string = ".bramble"
 
-func isTestFile(name string) bool {
-	if !strings.HasSuffix(name, extension) {
-		return false
-	}
-	nameWithoutExtension := name[:len(name)-len(extension)]
-	return (strings.HasPrefix(nameWithoutExtension, "test_") ||
-		strings.HasSuffix(nameWithoutExtension, "_test"))
-}
-
-func findTestFiles(path string) (testFiles []string, err error) {
+func findBrambleFiles(path string) (brambleFiles []string, err error) {
 	if fileExists(path) {
 		return []string{path}, nil
 	}
-	if fileExists(path + extension) {
-		return []string{path + extension}, nil
+	if fileExists(path + BrambleExtension) {
+		return []string{path + BrambleExtension}, nil
 	}
-	files, err := ioutil.ReadDir(path)
-	if err != nil {
-		return
-	}
-	for _, file := range files {
-		name := file.Name()
-		if filepath.Ext(name) != extension {
-			continue
+	filepath.Walk(path, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-		if !isTestFile(name) {
-			continue
+		if filepath.Ext(fi.Name()) != BrambleExtension {
+			return nil
 		}
-		testFiles = append(testFiles, filepath.Join(path, name))
-	}
-
+		brambleFiles = append(brambleFiles, path)
+		return nil
+	})
 	return
 }
 
@@ -951,14 +956,20 @@ func (b *Bramble) test(args []string) (err error) {
 	if len(args) > 0 {
 		location = args[0]
 	}
-	testFiles, err := findTestFiles(location)
+	testFiles, err := findBrambleFiles(location)
 	if err != nil {
 		return errors.Wrap(err, "error finding test files")
 	}
+
 	for _, filename := range testFiles {
-		// TODO: need to calculate module name
+		moduleName, err := b.moduleNameFromFileName(filename)
+		if err != nil {
+			return err
+		}
 		b.reset()
-		globals, err := b.ExecFile("", filename)
+		absFilename, _ := filepath.Abs(filename)
+		fmt.Printf("Running tests in file %q\n", filename)
+		globals, err := b.ExecFile(moduleName, absFilename)
 		if err != nil {
 			return err
 		}
@@ -970,7 +981,7 @@ func (b *Bramble) test(args []string) (err error) {
 			if !ok {
 				continue
 			}
-			fmt.Printf("running test %q\n", name)
+			fmt.Printf("\trunning test %q\n", name)
 			errors := testErrorReporter{}
 			assert.SetReporter(b.thread, &errors)
 			_, err = starlark.Call(b.thread, starFn, nil, nil)
@@ -1225,6 +1236,7 @@ func (b *Bramble) derivationBuild(args []string) error {
 func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err error) {
 	if !strings.HasPrefix(module, b.config.Module.Name) {
 		// TODO: support other modules
+		debug.PrintStack()
 		err = errors.Errorf("can't find module %s", module)
 		return
 	}
@@ -1239,13 +1251,13 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 		directoryHasDefaultDotBramble = fileExists(path + "/default.bramble")
 	}
 
-	fileWithNameExists := fileExists(path + extension)
+	fileWithNameExists := fileExists(path + BrambleExtension)
 
 	switch {
 	case directoryWithNameExists && directoryHasDefaultDotBramble:
 		path += "/default.bramble"
 	case fileWithNameExists:
-		path += extension
+		path += BrambleExtension
 	default:
 		err = errModuleDoesNotExist(module)
 		return
@@ -1289,11 +1301,11 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 	}
 
 	// support things like bar/main.bramble:foo
-	if strings.HasSuffix(path, extension) && fileExists(path) {
-		return module + path[:len(path)-len(extension)], nil
+	if strings.HasSuffix(path, BrambleExtension) && fileExists(path) {
+		return module + path[:len(path)-len(BrambleExtension)], nil
 	}
 
-	fullName := path + extension
+	fullName := path + BrambleExtension
 	if !fileExists(fullName) {
 		if !fileExists(path + "/default.bramble") {
 			return "", errors.Errorf("can't find module at %q", path)
