@@ -1,19 +1,46 @@
 load("github.com/maxmcd/bramble/lib/static-patchelf", "patchelf")
 load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
+load("github.com/maxmcd/bramble/lib/busybox", "busybox")
 
 
 def stdenv():
+    """
+    the standard environment
+    """
     src = fetch_url(
         "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
     )
-    return derivation(builder=_build_stdenv, env=dict(src=src, patchelf=patchelf()))
+    return derivation(
+        builder=_build_stdenv, env=dict(src=src, patchelf=patchelf(), busybox=busybox())
+    )
+
+
+def _ldd(path):
+    return exec(os.getenv("out") + "/lib/ld-linux-x86-64.so.2", "--list", path).output()
 
 
 def _build_stdenv(ctx):
-    os.setenv("PATH", os.getenv("patchelf") + "/bin/")
-    os.mkdir(os.getenv("out") + "/bin")
+    # put busybox and patchelf in the path
+    os.setenv("PATH", os.getenv("patchelf") + "/bin/:" + os.getenv("busybox") + "/bin")
 
+    # move the lib bin and include dirs from the download into our output
     os.cp(os.getenv("src") + "/lib", os.getenv("out"))
+    os.cp(os.getenv("src") + "/include", os.getenv("out"))
     os.cp(os.getenv("src") + "/bin", os.getenv("out"))
-    exec("patchelf --set-interpreter $out/lib/ld-linux-x86-64.so.2 $out/bin/make")
-    exec("patchelf --set-rpath $out/lib $out/bin/make")
+
+    # set LD_LIBRARY_PATH to the output lib path
+    os.setenv("LD_LIBRARY_PATH", os.getenv("out") + "/lib")
+
+    os.cd(os.getenv("out"))
+    # list the contents of the bin directory
+    for line in exec("ls ./bin").output:
+        ldd_output = _ldd("./bin/" + line)
+        # if glibc is in the dynamic library links lets patch it
+        # TODO: could use more logic here
+        if "glibc" in ldd_output:
+            exec("patchelf --shrink-rpath $out/bin/" + line)
+            exec(
+                "patchelf --set-interpreter $out/lib/ld-linux-x86-64.so.2 $out/bin/"
+                + line
+            )
+            exec("patchelf --set-rpath $out/lib $out/bin/" + line)

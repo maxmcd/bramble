@@ -135,3 +135,13 @@ func TestJsonEncode(t *testing.T) {
 	}
 	spew.Dump(v)
 }
+
+func TestDerivationCaching(t *testing.T) {
+	b := Bramble{}
+	if err := b.init(); err != nil {
+		t.Fatal(err)
+	}
+	script := fixUpScript(`derivation(builder="hello")`)
+
+	fmt.Println(b.execTestFileContents(script))
+}

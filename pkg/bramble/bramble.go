@@ -29,9 +29,20 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
 	"go.starlark.net/repl"
+	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
+
+func init() {
+	// It's easier to start giving away free coffee than it is to take away
+	// free coffee
+	resolve.AllowFloat = false
+	resolve.AllowLambda = false
+	resolve.AllowNestedDef = true
+	resolve.AllowRecursion = false
+	resolve.AllowSet = true // sets seem harmless tho?
+}
 
 type Bramble struct {
 	thread      *starlark.Thread
@@ -838,6 +849,14 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 	b.importGraph.Connect(dag.BasicEdge(module, thisFilesModuleName))
 	globals, err = b.resolveModule(module)
 	return
+}
+
+func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err error) {
+	globals, err := starlark.ExecFile(b.thread, ".bramble", script, b.predeclared)
+	if err != nil {
+		return nil, err
+	}
+	return starlark.Call(b.thread, globals["test"], nil, nil)
 }
 
 var BrambleExtension string = ".bramble"
