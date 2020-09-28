@@ -11,7 +11,6 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
-	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
 
@@ -47,16 +46,6 @@ func (f *DerivationFunction) String() string        { return `<built-in function
 func (f *DerivationFunction) Truth() starlark.Bool  { return true }
 func (f *DerivationFunction) Type() string          { return "module" }
 
-func init() {
-	// It's easier to start giving away free coffee than it is to take away
-	// free coffee
-	resolve.AllowFloat = false
-	resolve.AllowLambda = false
-	resolve.AllowNestedDef = false
-	resolve.AllowRecursion = false
-	resolve.AllowSet = true // sets seem harmless tho?
-}
-
 // NewDerivationFunction creates a new derivation function. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
 func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
@@ -67,6 +56,11 @@ func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
 }
 
 func isTopLevel(thread *starlark.Thread) bool {
+	if thread.CallStackDepth() == 0 {
+		// TODO: figure out what we should actually do here, so far this is
+		// only for tests
+		return false
+	}
 	return thread.CallStack().At(1).Name == "<toplevel>"
 }
 
