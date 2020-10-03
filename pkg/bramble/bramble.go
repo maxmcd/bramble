@@ -31,7 +31,6 @@ import (
 	"go.starlark.net/repl"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 )
 
 func init() {
@@ -55,7 +54,7 @@ type Bramble struct {
 
 	derivationFn *DerivationFunction
 	cmd          *CmdFunction
-	session      *session
+	session      *Session
 
 	store Store
 
@@ -82,6 +81,10 @@ func (dm *DerivationsMap) Get(id string) *Derivation {
 	}
 	return d.(*Derivation)
 }
+
+func (dm *DerivationsMap) Has(id string) bool {
+	return dm.Get(id) != nil
+}
 func (dm *DerivationsMap) Set(id string, drv *Derivation) {
 	dm.Store(id, drv)
 }
@@ -95,8 +98,8 @@ func (dm *DerivationsMap) Range(f func(filename string, drv *Derivation) bool) {
 // AfterDerivation is called when a builtin function is called that can't be
 // run before an derivation call. This allows us to track when
 func (b *Bramble) AfterDerivation() { b.afterDerivation = true }
-func (b *Bramble) CalledDerivation() error {
-	if b.afterDerivation {
+func (b *Bramble) CalledDerivation(filename string) error {
+	if b.afterDerivation && !b.derivations.Has(filename) {
 		return errors.New("build context is dirty, can't call derivation after cmd() or other builtins")
 	}
 	return nil
@@ -730,7 +733,8 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	return <-errChan
 }
 
-func (b *Bramble) CallInlineDerivationFunction(outputPaths map[string]string, meta functionBuilderMeta, session *session) (err error) {
+func (b *Bramble) CallInlineDerivationFunction(
+	outputPaths map[string]string, meta functionBuilderMeta, session *Session) (err error) {
 	// TODO: investigate if you actually need to create a new bramble
 	newBramble := &Bramble{
 		// retain from parent
@@ -762,12 +766,10 @@ func (b *Bramble) CallInlineDerivationFunction(outputPaths map[string]string, me
 	for name, path := range outputPaths {
 		_ = d.SetKey(starlark.String(name), starlark.String(path))
 	}
-	ctx, _ := starlarkstruct.Make(nil, nil, nil, []starlark.Tuple{{starlark.String("outputs"), d}})
-
 	_, err = starlark.Call(
 		newBramble.thread,
 		globals[meta.Function].(*starlark.Function),
-		starlark.Tuple{ctx}, nil,
+		starlark.Tuple{session, d}, nil,
 	)
 	return
 }
@@ -835,7 +837,7 @@ func (b *Bramble) initPredeclared() (err error) {
 
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
-		"os":         NewOS(b, b.session, b.cmd),
+		"os":         NewOS(b, b.cmd),
 		"assert":     assertGlobals["assert"],
 		"debugger":   debugger,
 	}
@@ -868,7 +870,7 @@ func findBrambleFiles(path string) (brambleFiles []string, err error) {
 	if fileExists(path + BrambleExtension) {
 		return []string{path + BrambleExtension}, nil
 	}
-	filepath.Walk(path, func(path string, fi os.FileInfo, err error) error {
+	return brambleFiles, filepath.Walk(path, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -878,7 +880,6 @@ func findBrambleFiles(path string) (brambleFiles []string, err error) {
 		brambleFiles = append(brambleFiles, path)
 		return nil
 	})
-	return
 }
 
 // runErrorReporter reports errors during a run. These errors are just passed up the thread
@@ -1019,6 +1020,14 @@ func (b *Bramble) test(args []string) (err error) {
 		}
 	}
 	return
+}
+
+func (b *Bramble) repl(args []string) (err error) {
+	if err := b.init(); err != nil {
+		return err
+	}
+	repl.REPL(b.thread, b.predeclared)
+	return nil
 }
 
 func (b *Bramble) run(args []string) (err error) {

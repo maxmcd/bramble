@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"time"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
@@ -68,11 +69,13 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
 	}
-	if err = f.bramble.CalledDerivation(); err != nil {
-		return
-	}
 	// Parse function arguments and assemble the basic derivation
-	drv, err := f.newDerivationFromArgs(args, kwargs)
+	var drv *Derivation
+	start := time.Now()
+	defer func() {
+		drv.metrics.parseTime = time.Since(start)
+	}()
+	drv, err = f.newDerivationFromArgs(args, kwargs)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +89,9 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	}
 
 	filename := drv.filename()
+	if err = f.bramble.CalledDerivation(filename); err != nil {
+		return
+	}
 	f.bramble.derivations.Set(filename, drv)
 
 	return drv, nil
@@ -195,6 +201,14 @@ type Derivation struct {
 	// internal fields
 	sources  []string
 	location string
+
+	metrics derivationMetrics
+}
+
+type derivationMetrics struct {
+	parseTime time.Duration
+	buildTime time.Duration
+	cached    bool
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

@@ -1,3 +1,4 @@
-void main() {
+int main() {
   puts("Simple!");
+  return 0;
 }

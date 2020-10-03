@@ -38,11 +38,17 @@ nested: install
 ldd: install
 	bramble run lib/seed:ldd
 
+repl: install
+	bramble repl
+
 gc: install
 	bramble gc
 
 go: install
 	bramble run lib/go:go
+
+delete_store:
+	rm -rf ~/bramble
 
 test_starlark_builder:
 	go test -v -run=TestStarlarkBuilder ./pkg/bramble/

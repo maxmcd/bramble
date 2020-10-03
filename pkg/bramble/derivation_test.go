@@ -141,7 +141,11 @@ func TestDerivationCaching(t *testing.T) {
 	if err := b.init(); err != nil {
 		t.Fatal(err)
 	}
-	script := fixUpScript(`derivation(builder="hello")`)
+	script := fixUpScript(`derivation(builder="hello", sources=["."])`)
 
-	fmt.Println(b.execTestFileContents(script))
+	v, err := b.execTestFileContents(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(v.(*Derivation).metrics.parseTime)
 }
