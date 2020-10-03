@@ -24,6 +24,15 @@ Run a function
 		run:      b.run,
 	}
 	ci.AddCommand("run", runCommand)
+	ci.AddCommand("repl", command{
+		help: `
+Usage: bramble repl
+
+Open a Read Eval Print Loop
+`,
+		synopsis: "Run bramble tests",
+		run:      b.repl,
+	})
 	ci.AddCommand("test", command{
 		help: `
 Usage: bramble test [path]

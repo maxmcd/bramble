@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"fmt"
 	goos "os"
+	"path/filepath"
 
 	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
 
 type OS struct {
 	bramble *Bramble
-	session *session
 
 	cmdFunction *CmdFunction
 }
@@ -22,8 +23,8 @@ var (
 	_ starlark.HasAttrs = OS{}
 )
 
-func NewOS(bramble *Bramble, session *session, cmdFunction *CmdFunction) OS {
-	return OS{bramble: bramble, session: session, cmdFunction: cmdFunction}
+func NewOS(bramble *Bramble, cmdFunction *CmdFunction) OS {
+	return OS{bramble: bramble, cmdFunction: cmdFunction}
 }
 
 func (os OS) String() string        { return "<module 'os'>" }
@@ -34,16 +35,16 @@ func (os OS) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("os") }
 func (os OS) AttrNames() []string {
 	return []string{
 		"args",
-		"error",
-		"expand",
 		"cd",
 		"cmd",
 		"cp",
 		"create",
+		"error",
+		"expand",
 		"getenv",
-		"setenv",
 		"input",
 		"mkdir",
+		"setenv",
 	}
 }
 
@@ -62,40 +63,26 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 	switch name {
 	case "args":
 		return makeArgs()
-	case "error":
-		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
-	case "expand":
-		return starutil.Callable{ThisName: "expand", ParentName: "os", Callable: os.expand}, nil
-	case "cd":
-		return starutil.Callable{ThisName: "cd", ParentName: "os", Callable: os.cd}, nil
-	case "cmd":
-		return os.cmdFunction, nil
 	case "cp":
 		return starutil.Callable{ThisName: "cp", ParentName: "os", Callable: os.cp}, nil
+	case "cmd":
+		return os.cmdFunction, nil
 	case "create":
 		return starutil.Callable{ThisName: "create", ParentName: "os", Callable: os.create}, nil
-	case "getenv":
-		return starutil.Callable{ThisName: "getenv", ParentName: "os", Callable: os.getenv}, nil
-	case "setenv":
-		return starutil.Callable{ThisName: "setenv", ParentName: "os", Callable: os.setenv}, nil
+	case "error":
+		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
 	case "input":
 		return starutil.Callable{ThisName: "input", ParentName: "os", Callable: os.input}, nil
 	case "mkdir":
 		return starutil.Callable{ThisName: "mkdir", ParentName: "os", Callable: os.mkdir}, nil
+	case "session":
+		return starutil.Callable{ThisName: "session", ParentName: "os", Callable: os.session}, nil
 	}
 	return nil, nil
 }
 
 func (os OS) error(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	return assert.Error(thread, nil, args, kwargs)
-}
-
-func (os OS) expand(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var value starlark.String
-	if err = starlark.UnpackArgs("mkdir", args, kwargs, "value", &value); err != nil {
-		return
-	}
-	return starlark.String(os.session.expand(value.GoString())), nil
 }
 
 func (os OS) input(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
@@ -112,52 +99,36 @@ func (os OS) mkdir(thread *starlark.Thread, args starlark.Tuple, kwargs []starla
 	return starlark.None, goos.Mkdir(path.GoString(), 0755)
 }
 
-func (os OS) getenv(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var key starlark.String
-	if err = starlark.UnpackArgs("getenv", args, kwargs, "key", &key); err != nil {
+func (os OS) session(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	if err = starlark.UnpackArgs("session", args, kwargs); err != nil {
 		return
 	}
-	return starlark.String(os.session.getEnv(key.GoString())), nil
-}
-
-func (os OS) setenv(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var key starlark.String
-	var value starlark.String
-	if err = starlark.UnpackArgs("setenv", args, kwargs, "key", &key, "value", &value); err != nil {
-		return
-	}
-	os.session.setEnv(
-		key.GoString(),
-		value.GoString(),
-	)
-	return starlark.None, nil
-}
-
-func (os OS) cd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var path starlark.String
-	if err = starlark.UnpackArgs("cd", args, kwargs, "path", &path); err != nil {
-		return
-	}
-	return starlark.None, os.session.cd(path.GoString())
+	return newSession("/", map[string]string{})
 }
 
 func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	if err = starlark.UnpackArgs("cp", nil, kwargs); err != nil {
+		return
+	}
 	paths := make([]string, len(args))
 	for i, arg := range args {
 		str, err := starutil.ValueToString(arg)
 		if err != nil {
 			return nil, err
 		}
+		if !filepath.IsAbs(str) {
+			return nil, errors.New("cp doesn't support relative paths... yet!")
+		}
 		paths[i] = str
 	}
-	err = cp(os.session.currentDirectory, paths...)
+	err = cp("", paths...)
 	fmt.Printf("%+v", err)
 	return starlark.None, err
 }
 
 func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	var path starlark.String
-	if err = starlark.UnpackArgs("cd", args, kwargs, "path", &path); err != nil {
+	if err = starlark.UnpackArgs("create", args, kwargs, "path", &path); err != nil {
 		return
 	}
 	f, err := goos.Create(path.GoString())

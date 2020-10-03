@@ -27,7 +27,7 @@ var ErrInvalidRead = errors.New("can't read from command output more than once")
 // CmdFunction is the value for the builtin "cmd", calling it as a function
 // creates a new cmd instance, it also has various other attributes and methods
 type CmdFunction struct {
-	session *session
+	session *Session
 
 	bramble *Bramble
 
@@ -40,7 +40,7 @@ var (
 	_ starlark.Callable = new(CmdFunction)
 )
 
-func NewCmdFunction(session *session, bramble *Bramble) *CmdFunction {
+func NewCmdFunction(session *Session, bramble *Bramble) *CmdFunction {
 	return &CmdFunction{session: session, bramble: bramble}
 }
 
@@ -121,6 +121,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	); err != nil {
 		return
 	}
+	cmd.ignoreErr = bool(ignoreFailureKwarg)
 	if clearEnvKwarg == starlark.True {
 		cmd.Env = []string{}
 	} else {
@@ -205,7 +206,9 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			cmd.lock.Lock()
 			cmd.processState = cmd.ProcessState
 			if err != nil {
-				cmd.err = err
+				if !cmd.ignoreErr {
+					cmd.err = err
+				}
 			}
 			cmd.finished = true
 			cmd.lock.Unlock()
@@ -219,10 +222,11 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 type Cmd struct {
 	exec.Cmd
 
-	fn       *CmdFunction
-	frozen   bool
-	finished bool
-	err      error
+	fn        *CmdFunction
+	frozen    bool
+	finished  bool
+	err       error
+	ignoreErr bool
 
 	lock sync.Mutex
 

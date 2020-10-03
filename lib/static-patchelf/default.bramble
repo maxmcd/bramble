@@ -22,7 +22,8 @@ def patchelf():
     )
 
 
-def _install_patchelf(ctx):
-    out_dir = os.getenv("out") + "/bin"
+def _install_patchelf(s, outputs):
+    """hi"""
+    out_dir = s.getenv("out") + "/bin"
     os.mkdir(out_dir)
-    os.cp(os.getenv("patch_dl") + "/patchelf", out_dir)
+    os.cp(s.getenv("patch_dl") + "/patchelf", out_dir)

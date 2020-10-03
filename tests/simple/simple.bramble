@@ -1,5 +1,6 @@
 load("github.com/maxmcd/bramble/lib/seed", "seed")
-load("github.com/maxmcd/bramble/lib/stdenv", "gcc")
+load("github.com/maxmcd/bramble/lib/stdenv", "gcc", "build_inputs")
+load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
 
 
 def simple():
@@ -15,8 +16,13 @@ def simple():
 
 def simple2():
     s = seed()
-    return derivation(builder=_simple2, sources=["./simple.c", "simple_builder.sh"])
+    return derivation(
+        builder=_simple2,
+        sources=["./simple.c", "simple_builder.sh"],
+        env={"stdenv": build_inputs()[0]},
+    )
 
 
-def _simple2(ctx):
-    gcc("-o", os.getenv("output") + "/simple", "./simple.c")
+def _simple2(s, outputs):
+    gcc("-o", outputs["out"] + "/simple", "./simple.c")
+    exec(s, outputs["out"] + "/simple")

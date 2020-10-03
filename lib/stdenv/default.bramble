@@ -6,6 +6,10 @@ load("github.com/maxmcd/bramble/lib/busybox", "busybox")
 load("github.com/maxmcd/bramble/lib/nix-seed", "stdenv")
 
 
+def build_inputs():
+    return [stdenv()]
+
+
 def make(*args):
     return exec(stdenv().out + "/bin/make", *args)
 
@@ -13,15 +17,18 @@ def make(*args):
 def gcc(*args):
     """hi"""
     output = stdenv().out
+    s = os.session()
+    s.setenv("PATH", "{}/bin".format(output))
 
     return exec(
+        s,
         output + "/bin/gcc",
         "-L",
         "{}/lib".format(output),
         "-I",
         "{}/include".format(output),
         "-ffile-prefix-map=OLD=NEW",
-        '-Wl,--rpath="{}/lib"'.format(output),
-        '-Wl,--dynamic-linker="{}/lib/ld-musl-x86_64.so.1"'.format(output),
+        "-Wl,--rpath={}/lib".format(output),
+        "-Wl,--dynamic-linker={}/lib/ld-linux-x86-64.so.2".format(output),
         *args,
     )

@@ -15,32 +15,46 @@ def stdenv():
     )
 
 
-def _ldd(path):
-    return exec(os.getenv("out") + "/lib/ld-linux-x86-64.so.2", "--list", path).output()
+def _ldd(s, path):
+    return exec(
+        s,
+        s.getenv("out") + "/lib/ld-linux-x86-64.so.2",
+        "--list",
+        path,
+        print_output=False,
+    ).output()
 
 
-def _build_stdenv(ctx):
+def _build_stdenv(s, outputs):
     # put busybox and patchelf in the path
-    os.setenv("PATH", os.getenv("patchelf") + "/bin/:" + os.getenv("busybox") + "/bin")
+    s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")
 
     # move the lib bin and include dirs from the download into our output
-    os.cp(os.getenv("src") + "/lib", os.getenv("out"))
-    os.cp(os.getenv("src") + "/include", os.getenv("out"))
-    os.cp(os.getenv("src") + "/bin", os.getenv("out"))
+    os.cp(s.getenv("src") + "/lib", s.getenv("out"))
+    os.cp(s.getenv("src") + "/include", s.getenv("out"))
+    os.cp(s.getenv("src") + "/libexec", s.getenv("out"))
+    os.cp(s.getenv("src") + "/include-glibc", s.getenv("out"))
+    os.cp(s.getenv("src") + "/bin", s.getenv("out"))
 
     # set LD_LIBRARY_PATH to the output lib path
-    os.setenv("LD_LIBRARY_PATH", os.getenv("out") + "/lib")
+    s.setenv("LD_LIBRARY_PATH", s.getenv("out") + "/lib")
 
-    os.cd(os.getenv("out"))
-    # list the contents of the bin directory
-    for line in exec("ls ./bin").output:
-        ldd_output = _ldd("./bin/" + line)
-        # if glibc is in the dynamic library links lets patch it
-        # TODO: could use more logic here
-        if "glibc" in ldd_output:
-            exec("patchelf --shrink-rpath $out/bin/" + line)
-            exec(
-                "patchelf --set-interpreter $out/lib/ld-linux-x86-64.so.2 $out/bin/"
-                + line
-            )
-            exec("patchelf --set-rpath $out/lib $out/bin/" + line)
+    s.cd(s.getenv("out"))
+
+    for folder in ["bin", "libexec/gcc/x86_64-unknown-linux-gnu/8.3.0"]:
+        for line in exec(s, "ls ./" + folder).output:
+            if "liblto" in line:
+                continue
+            ldd_output = _ldd(s, "./" + folder + "/" + line)
+            # if glibc is in the dynamic library links lets patch it
+            # TODO: could use more logic here
+
+            binary = "{}/{}/{}".format(s.getenv("out"), folder, line)
+            if "glibc" in ldd_output:
+                exec(s, "patchelf --shrink-rpath " + binary)
+                exec(
+                    s,
+                    "patchelf --set-interpreter $out/lib/ld-linux-x86-64.so.2 "
+                    + binary,
+                )
+                exec(s, "patchelf --set-rpath $out/lib " + binary)

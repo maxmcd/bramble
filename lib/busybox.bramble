@@ -1,4 +1,4 @@
-load("github.com/maxmcd/bramble/lib/std", "fetch_url", "exec")
+load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
 
 """busybox"""
 
@@ -10,16 +10,17 @@ def busybox():
 
     # we pass the build_busybox callback here which is used to build this derivation
     return derivation(
-        name="busybox", builder=_build_busybox, env=dict(download=download)
+        name="busybox", builder=_build_busybox, env=dict(download=download),
     )
 
 
-def _build_busybox(ctx):
-    os.mkdir(ctx.outputs["out"] + "/bin")  # using the builtin os module
+def _build_busybox(s, outputs):
+    os.mkdir(outputs["out"] + "/bin")  # using the builtin os module
 
     # move the busybox executable into the output for this build
 
     exec(
+        s,
         "$download/busybox-x86_64",
         "cp",
         "$download/busybox-x86_64",
@@ -29,7 +30,7 @@ def _build_busybox(ctx):
     # extract the available commands from the busybox help text
     commands = []
     commands_started = False
-    for line in exec("$out/bin/busybox").output:
+    for line in exec(s, "$out/bin/busybox").output:
         if commands_started:
             for name in line.strip().split(","):
                 name = name.strip()
@@ -39,17 +40,18 @@ def _build_busybox(ctx):
             commands_started = True
 
     # cd into the output directory so that symlinks are relative
-    os.cd(os.expand("$out/bin"))
-    os.cmd("./busybox ln -s busybox ln").wait()
+    s.cd(s.expand("$out/bin"))
+    exec(s, "./busybox ln -s busybox ln")
 
     # link each command so that we can use all the available busybox commands
     for c in commands:
         if c != "ln":
-            os.cmd("./ln -s busybox %s" % c).output()
+            exec(s, "./ln -s busybox %s" % c)
 
 
 def run_busybox():
     bb = busybox()
+
     # whoami is now available to run
     print(bb.out)
     print(os.cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
