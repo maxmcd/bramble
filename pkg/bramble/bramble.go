@@ -115,7 +115,7 @@ func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output,
 	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
 }
 
-func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
+func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (err error) {
 	filename := drv.filename()
 	outputs, exists, err := b.checkForExistingDerivation(filename)
 	if err != nil {
@@ -127,13 +127,13 @@ func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
 		return
 	}
 	fmt.Println("Building derivation", filename)
-	if err = b.buildDerivation(drv); err != nil {
+	if err = b.buildDerivation(ctx, drv); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
 	return b.writeDerivation(drv)
 }
 
-func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
+func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err error) {
 	buildDir, err := b.createStoreTmpDir()
 	if err != nil {
 		return
@@ -157,11 +157,11 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	}
 	switch drv.Builder {
 	case "fetch_url":
-		err = b.fetchURLBuilder(drvCopy, outputPaths)
+		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
 	case "function":
-		err = b.dockerFunctionBuilder(drvCopy, buildDir, outputPaths)
+		err = b.dockerFunctionBuilder(ctx, drvCopy, buildDir, outputPaths)
 	default:
-		err = b.regularBuilder(drvCopy, buildDir, outputPaths)
+		err = b.dockerRegularBuilder(ctx, drvCopy, buildDir, outputPaths)
 	}
 	if err != nil {
 		return
@@ -441,7 +441,7 @@ func (b *Bramble) writeDerivation(drv *Derivation) error {
 	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
 
-func (b *Bramble) fetchURLBuilder(drv *Derivation, outputPaths map[string]string) (err error) {
+func (b *Bramble) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
 	}
@@ -451,7 +451,7 @@ func (b *Bramble) fetchURLBuilder(drv *Derivation, outputPaths map[string]string
 	}
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
-	path, err := b.DownloadFile(url, hash)
+	path, err := b.DownloadFile(ctx, url, hash)
 	if err != nil {
 		return err
 	}
@@ -462,8 +462,35 @@ func (b *Bramble) fetchURLBuilder(drv *Derivation, outputPaths map[string]string
 	return nil
 }
 
+func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	builderLocation := drv.Builder
+	if _, err := os.Stat(builderLocation); err != nil {
+		return errors.Wrap(err, "error checking if builder location exists")
+	}
+
+	replacer := strings.NewReplacer(b.store.storePath, DockerBrambleStorePath)
+	builderLocation = replacer.Replace(builderLocation)
+
+	options := runDockerContainerOptions{
+		buildDir:    strings.TrimPrefix(buildDir, b.store.storePath),
+		outputPaths: map[string]string{},
+		env:         drv.env(),
+		cmd:         append([]string{builderLocation}, drv.Args...),
+		workingDir:  replacer.Replace(filepath.Join(buildDir, drv.BuildContextRelativePath)),
+	}
+	for outputName, outputPath := range outputPaths {
+		options.env = append(options.env, fmt.Sprintf("%s=%s", outputName, outputPath))
+		options.outputPaths[outputName] = strings.TrimPrefix(outputPath, b.store.storePath)
+	}
+
+	for i, v := range options.env {
+		options.env[i] = replacer.Replace(v)
+	}
+
+	return b.runDockerContainer(ctx, drv.filename(), options)
+}
+
 func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
-	// drv.function.
 	builderLocation := drv.Builder
 
 	if _, err := os.Stat(builderLocation); err != nil {
@@ -561,7 +588,7 @@ func brambleFunctionBuildSingleton() (err error) {
 	return err
 }
 
-func (b *Bramble) dockerFunctionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
 	var meta functionBuilderMeta
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")
@@ -599,8 +626,14 @@ func (b *Bramble) dockerFunctionBuilder(drv *Derivation, buildDir string, output
 		outputPaths[k] = strings.TrimPrefix(v, b.store.storePath)
 	}
 
-	return b.DockerContainer(context.Background(),
-		drv.filename(), buildDir, outputPaths, bufOut)
+	return b.runDockerContainer(ctx,
+		drv.filename(), runDockerContainerOptions{
+			buildDir:           buildDir,
+			outputPaths:        outputPaths,
+			stdin:              bufOut,
+			cmd:                []string{"/bin/bramble", BrambleFunctionBuildHiddenCommand},
+			mountBrambleBinary: true,
+		})
 }
 
 func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
@@ -627,7 +660,7 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 
 // DownloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
-func (b *Bramble) DownloadFile(url string, hash string) (path string, err error) {
+func (b *Bramble) DownloadFile(ctx context.Context, url string, hash string) (path string, err error) {
 	fmt.Printf("Downloading url %s\n", url)
 
 	if hash != "" {
@@ -658,7 +691,14 @@ func (b *Bramble) DownloadFile(url string, hash string) (path string, err error)
 		hash = existingHash
 	}
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	client := http.Client{
+		// TODO: timeout?
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
 		return
@@ -820,16 +860,20 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	graph := b.assembleDerivationDependencyGraph(dos)
 
+	var wg sync.WaitGroup
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 2)
 
 	if err = graph.Validate(); err != nil {
-		return
+		return err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
 			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
+			defer func() {
+				<-semaphore
+			}()
 			// serial for now
 
 			if root, ok := v.(string); ok && root == "root" {
@@ -840,18 +884,25 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 			if drv.Output(do.OutputName).Path != "" {
 				return nil
 			}
-			if err := b.buildDerivationIfNew(drv); err != nil {
+			wg.Add(1)
+			if err := b.buildDerivationIfNew(ctx, drv); err != nil {
+				// Passing the error might block, so we need an explicit Done call here.
+				wg.Done()
 				errChan <- err
+				return nil
 			}
+			wg.Done()
 			return nil
 		})
 		errChan <- nil
 	}()
-	return <-errChan
-}
-
-func (b *Bramble) constructFunctionBuildProto() {
-
+	err = <-errChan
+	cancel() // Call cancel on the context, no-op if nothing is running
+	if err != nil {
+		// If we receive an error cancel the context and wait for any jobs that are running.
+		wg.Wait()
+	}
+	return err
 }
 
 func (b *Bramble) callInlineDerivationFunction(

@@ -30,88 +30,97 @@ type Store struct {
 
 func (s *Store) ensureBramblePath() (err error) {
 	var exists bool
+	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
+	// the user's home directory.
 	s.bramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
 	if !exists {
 		var home string
 		home, err = os.UserHomeDir()
 		if err != nil {
-			err = errors.Wrap(err, "error searching for users home directory")
-			return
+			return errors.Wrap(err, "error searching for users home directory")
 		}
 		s.bramblePath = filepath.Join(home, "bramble")
 	} else {
+		// Ensure we clean the path so that our padding calculation is consistent.
 		s.bramblePath = filepath.Clean(s.bramblePath)
 	}
+
+	// No support for relative bramble paths.
 	if !filepath.IsAbs(s.bramblePath) {
-		err = errors.Errorf("bramble path %s must be absolute", s.bramblePath)
-		return
+		return errors.Errorf("bramble path %s must be absolute", s.bramblePath)
 	}
 
-	if _, err = os.Stat(s.bramblePath); err != nil {
+	if !pathExists(s.bramblePath) {
 		fmt.Println("bramble path directory doesn't exist, creating")
 		if err = os.Mkdir(s.bramblePath, 0755); err != nil {
-			return
+			return err
 		}
 	}
 
 	fileMap := map[string]struct{}{}
-	files, err := ioutil.ReadDir(s.bramblePath)
-	if err != nil {
-		return errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
-	}
-	for _, file := range files {
-		fileMap[file.Name()] = struct{}{}
-	}
-	files, _ = ioutil.ReadDir(s.joinBramblePath("var"))
-	if len(files) > 0 {
+	{
+		// List all files in the bramble folder.
+		files, err := ioutil.ReadDir(s.bramblePath)
+		if err != nil {
+			return errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
+		}
 		for _, file := range files {
-			fileMap["var/"+file.Name()] = struct{}{}
+			fileMap[file.Name()] = struct{}{}
+		}
+
+		// Specifically check for files in the var folder.
+		files, _ = ioutil.ReadDir(s.joinBramblePath("var"))
+		if len(files) > 0 {
+			for _, file := range files {
+				fileMap["var/"+file.Name()] = struct{}{}
+			}
 		}
 	}
 
 	var storeDirectoryName string
-	storeDirectoryName, err = calculatePaddedDirectoryName(s.bramblePath, PathPaddingLength)
-	if err != nil {
-		return
+	if storeDirectoryName, err = calculatePaddedDirectoryName(s.bramblePath, PathPaddingLength); err != nil {
+		return err
 	}
 
 	s.storePath = s.joinBramblePath(storeDirectoryName)
 
+	// Add store folder with the correct padding and add a convenience symlink
+	// in the bramble folder.
 	if _, ok := fileMap["store"]; !ok {
 		if err = os.MkdirAll(s.storePath, 0755); err != nil {
-			return
+			return err
 		}
 		if err = os.Symlink("."+storeDirectoryName, s.joinBramblePath("store")); err != nil {
-			return
+			return err
 		}
 	}
-	if _, ok := fileMap["tmp"]; !ok {
-		// TODO: move this to a common cache directory or somewhere else that this would
-		// be expected to be
-		if err = os.Mkdir(s.joinBramblePath("tmp"), 0755); err != nil {
-			return
-		}
+
+	folders := []string{
+		// TODO: move this to a common cache directory or somewhere else that
+		// this would be expected to be
+		"tmp", // Tmp folder, probably shouldn't exist.
+
+		"var", // The var folder.
+
+		// Metadata for config files to store recently built derivations so that
+		// they're not wiped during GC
+		"var/config-registry",
+
+		// Cache for starlark file compilation.
+		"var/star-cache",
 	}
-	if _, ok := fileMap["var"]; !ok {
-		if err = os.Mkdir(s.joinBramblePath("var"), 0755); err != nil {
-			return
-		}
-	}
-	if _, ok := fileMap["var/config-registry"]; !ok {
-		if err = os.Mkdir(s.joinBramblePath("var/config-registry"), 0755); err != nil {
-			return
-		}
-	}
-	if _, ok := fileMap["var/star-cache"]; !ok {
-		if err = os.Mkdir(s.joinBramblePath("var/star-cache"), 0755); err != nil {
-			return
+
+	for _, folder := range folders {
+		if _, ok := fileMap[folder]; !ok {
+			if err = os.Mkdir(s.joinBramblePath(folder), 0755); err != nil {
+				return errors.Wrap(err, fmt.Sprintf("error creating bramble folder %q", folder))
+			}
 		}
 	}
 
 	// otherwise, check if the exact store path we need exists
 	if _, err = os.Stat(s.storePath); err != nil {
-		err = ErrStoreDoesNotExist
-		return
+		return ErrStoreDoesNotExist
 	}
 
 	return

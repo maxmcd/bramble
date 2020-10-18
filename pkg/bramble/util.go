@@ -275,7 +275,6 @@ func expandPathDirectories(files []string) (out []string, err error) {
 }
 
 func copyFile(srcFile, dstFile string) error {
-	fmt.Println(srcFile, dstFile)
 	in, err := os.Open(srcFile)
 	if err != nil {
 		return errors.WithStack(err)
@@ -283,7 +282,6 @@ func copyFile(srcFile, dstFile string) error {
 	defer in.Close()
 
 	fi, err := in.Stat()
-	fmt.Println(fi)
 	if err != nil {
 		return errors.WithStack(err)
 	}
