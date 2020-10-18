@@ -53,15 +53,20 @@ func (s *Store) ensureBramblePath() (err error) {
 			return
 		}
 	}
-	files, err := ioutil.ReadDir(s.bramblePath)
-	if err != nil {
-		err = errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
-		return
-	}
 
 	fileMap := map[string]struct{}{}
+	files, err := ioutil.ReadDir(s.bramblePath)
+	if err != nil {
+		return errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
+	}
 	for _, file := range files {
 		fileMap[file.Name()] = struct{}{}
+	}
+	files, _ = ioutil.ReadDir(s.joinBramblePath("var"))
+	if len(files) > 0 {
+		for _, file := range files {
+			fileMap["var/"+file.Name()] = struct{}{}
+		}
 	}
 
 	var storeDirectoryName string
@@ -72,8 +77,7 @@ func (s *Store) ensureBramblePath() (err error) {
 
 	s.storePath = s.joinBramblePath(storeDirectoryName)
 
-	// No files exist in the store, make the store
-	if len(files) == 0 {
+	if _, ok := fileMap["store"]; !ok {
 		if err = os.MkdirAll(s.storePath, 0755); err != nil {
 			return
 		}
@@ -92,9 +96,13 @@ func (s *Store) ensureBramblePath() (err error) {
 		if err = os.Mkdir(s.joinBramblePath("var"), 0755); err != nil {
 			return
 		}
+	}
+	if _, ok := fileMap["var/config-registry"]; !ok {
 		if err = os.Mkdir(s.joinBramblePath("var/config-registry"), 0755); err != nil {
 			return
 		}
+	}
+	if _, ok := fileMap["var/star-cache"]; !ok {
 		if err = os.Mkdir(s.joinBramblePath("var/star-cache"), 0755); err != nil {
 			return
 		}

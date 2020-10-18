@@ -2,11 +2,11 @@ load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
 load("github.com/maxmcd/bramble/lib/nix-seed", "stdenv")
 
 
-def go():
+def _go():
     go1_4 = fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
 
     return derivation(
-        name="go 1.4", builder=_build_go, env=dict(go1_4=go1_4, stdenv=stdenv()),
+        name="go-1.4", builder=_build_go, env=dict(go1_4=go1_4, stdenv=stdenv()),
     )
 
 

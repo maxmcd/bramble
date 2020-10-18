@@ -3,9 +3,11 @@
 seed/linux-x86_64-seed.tar.gz:
 	./seed/build.sh
 
-test: go_test bramblescripts_to_test seed simple drv_test bramble_tests
+test: seed go_test bramblescripts_to_test \
+	simple drv_test bramble_tests \
+	test_integration
 
-go_test:
+go_test: install
 	go test -race -v ./...
 	go test -run="(TestIntegration|TestRunAlmostAllPublicFunctions)"unique -v ./...
 
@@ -15,6 +17,7 @@ generate_proto: ./pkg/bramblepb/bramble_pb.proto
 
 install: generate_proto
 	go install
+	mkdir -p ~/bramble/var
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' . && mv bramble ~/bramble/var/linux-binary
 
 bramble_tests: install
@@ -57,14 +60,8 @@ go: install
 delete_store:
 	rm -rf ~/bramble
 
-test_starlark_builder:
-	go test -v -run=TestStarlarkBuilder ./pkg/bramble/
-
-test_nix_seed:
-	go test -v -run=TestNixSeed ./pkg/bramble/
-
-test_simple:
-	go test -v -run=TestSimple ./pkg/bramble/
+test_integration:
+	go test -v -run=TestIntegration ./pkg/bramble/
 
 seed: install
 	bramble run lib/seed:seed

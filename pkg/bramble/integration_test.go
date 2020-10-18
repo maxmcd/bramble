@@ -24,11 +24,22 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	dir2 := tmpDir()
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
+	hd, _ := os.UserHomeDir()
+	dest := filepath.Join(dir, "var")
+	_ = os.MkdirAll(dest, 0755)
+	if err = cp("", filepath.Join(hd, "bramble/var/linux-binary"), dest); err != nil {
+		t.Fatal(err)
+	}
 	cb(t)
 	if err = reptar.Reptar(dir+"/store", hasher); err != nil {
 		t.Error(err)
 	}
 	os.Setenv("BRAMBLE_PATH", dir2)
+	dest2 := filepath.Join(dir2, "var")
+	_ = os.MkdirAll(dest2, 0755)
+	if err = cp("", filepath.Join(hd, "bramble/var/linux-binary"), dest2); err != nil {
+		t.Fatal(err)
+	}
 	cb(t)
 	if err = reptar.Reptar(dir2+"/store", hasher2); err != nil {
 		t.Error(err)
@@ -37,7 +48,7 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 		t.Error("content doesn't match, non deterministic", dir, dir2)
 		return
 	}
-
+	fmt.Println(dir, dir2)
 	// _ = os.RemoveAll(dir)
 	// _ = os.RemoveAll(dir2)
 }
@@ -90,7 +101,7 @@ func assembleModules(t *testing.T) []string {
 	return modules
 }
 
-func TestRunAlmostAllPublicFunctions(t *testing.T) {
+func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 	modules := assembleModules(t)
 
 	fmt.Println(modules)
@@ -111,7 +122,7 @@ func TestRunAlmostAllPublicFunctions(t *testing.T) {
 	})
 }
 
-func TestStarlarkBuilder(t *testing.T) {
+func TestIntegrationStarlarkBuilder(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
 		b := Bramble{}
 		if err := b.run([]string{"github.com/maxmcd/bramble/lib/busybox:run_busybox"}); err != nil {
@@ -120,7 +131,7 @@ func TestStarlarkBuilder(t *testing.T) {
 	})
 }
 
-func TestSimple(t *testing.T) {
+func TestIntegrationSimple(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
 		b := Bramble{}
 		if err := b.run([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
@@ -129,7 +140,7 @@ func TestSimple(t *testing.T) {
 	})
 }
 
-func TestNixSeed(t *testing.T) {
+func TestIntegrationNixSeed(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
 		b := Bramble{}
 		if err := b.run([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
@@ -137,7 +148,7 @@ func TestNixSeed(t *testing.T) {
 		}
 	})
 }
-func TestBenchmarkFullCacheHit(t *testing.T) {
+func TestIntegrationBenchmarkFullCacheHit(t *testing.T) {
 	t.Skip("don't run benchmarks")
 	bramble := Bramble{}
 	if err := bramble.run([]string{"../../all:all"}); err != nil {
