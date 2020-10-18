@@ -14,6 +14,13 @@ def make(*args):
     return exec(stdenv().out + "/bin/make", *args)
 
 
+def cp(s, *args):
+    output = stdenv().out
+    s.setenv("PATH", "{}/bin".format(output))
+
+    return exec(s, "cp", *args,)
+
+
 def gcc(*args):
     """hi"""
     output = stdenv().out

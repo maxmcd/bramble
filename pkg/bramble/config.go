@@ -9,9 +9,9 @@ import (
 )
 
 type Config struct {
-	Module Module `toml:"module"`
+	Module ConfigModule `toml:"module"`
 }
-type Module struct {
+type ConfigModule struct {
 	Name string `toml:"name"`
 }
 

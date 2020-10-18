@@ -3,6 +3,8 @@ package bramble
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 
@@ -10,8 +12,13 @@ import (
 	"github.com/mitchellh/cli"
 )
 
+var (
+	BrambleFunctionBuildHiddenCommand = "__bramble-function-build"
+)
+
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	log.SetOutput(ioutil.Discard)
 	ci := NewCLI()
 	b := Bramble{}
 	runCommand := command{
@@ -154,14 +161,24 @@ func (ci *CLI) run(args []string) {
 	ci.Version = "0.0.1"
 	ci.Args = args
 
-	if len(ci.Args) > 1 && ci.Args[0] == "run" && !ci.containsHelp() {
-		// we must run this one manually so that cli doesn't parse [args] and
-		// [options] for -v and -h
-		v := ci.Commands["run"]
-		c, _ := v()
-		ci.exit(c.Run(args[1:]))
-		return
+	if len(ci.Args) >= 1 && !ci.containsHelp() {
+		if ci.Args[0] == "run" {
+			// we must run this one manually so that cli doesn't parse [args] and
+			// [options] for -v and -h
+			v := ci.Commands["run"]
+			c, _ := v()
+			ci.exit(c.Run(args[1:]))
+			return
+		} else if ci.Args[0] == BrambleFunctionBuildHiddenCommand {
+			if err := brambleFunctionBuildSingleton(); err != nil {
+				fmt.Fprintln(ci.stderr, err)
+				ci.exit(1)
+			}
+			ci.exit(0)
+			return
+		}
 	}
+
 	exitCode, err := ci.Run()
 	if err != nil {
 		fmt.Fprintln(ci.stderr, err)

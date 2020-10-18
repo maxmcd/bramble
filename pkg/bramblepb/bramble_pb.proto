@@ -1,0 +1,51 @@
+syntax = "proto3";
+package bramblepb;
+option go_package = ".;bramblepb";
+
+message Bramble {
+  map<string, Derivation> derivations = 1;
+  map<string, string> filename_cache = 2;
+  Store store = 3;
+}
+message Store {
+  string bramble_path = 1;
+  string store_path = 2;
+}
+
+message Derivation {
+  repeated string args = 1;
+  string build_context_source = 2;
+  string build_context_relative_path = 3;
+  string builder = 4;
+  map<string, string> env = 5;
+  repeated DerivationOutput input_derivations = 6;
+  string name = 7;
+  repeated string output_names = 8;
+  repeated Output outputs = 9;
+  string platform = 10;
+  repeated string source_paths = 11;
+}
+
+message Output {
+  string path = 1;
+  repeated string dependencies = 2;
+}
+
+message DerivationOutput {
+  string filename = 1;
+  string output_name = 2;
+}
+
+message FunctionBuild {
+  Bramble bramble = 1;
+  FunctionBuilderMeta function_builder_meta = 2;
+  map<string, string> output_paths = 3;
+  string build_directory = 4;
+  Derivation derivation = 5;
+}
+
+message FunctionBuilderMeta {
+  string module = 1;
+  string function = 2;
+  map<string, string> module_cache = 3;
+}
