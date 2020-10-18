@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkjson"
@@ -132,7 +131,7 @@ func TestJsonEncode(t *testing.T) {
 	if err != nil {
 		return
 	}
-	spew.Dump(v)
+	fmt.Println(v)
 }
 
 func TestDerivationCaching(t *testing.T) {

@@ -289,7 +289,7 @@ func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer,
 
 	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(b.store.joinStorePath(storeFolder), pipeWriter); err != nil {
+		if err := reptar.Reptar(b.store.joinStorePath(storeFolder), io.MultiWriter(tarOutput, pipeWriter)); err != nil {
 			errChan <- err
 			return
 		}
@@ -304,7 +304,7 @@ func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer,
 	go func() {
 		new := BramblePrefixOfRecord
 		_, matches, err := textreplace.ReplaceStringsPrefix(
-			pipeReader, io.MultiWriter(tarOutput, pipeWriter2), storeValues, oldStorePath, new)
+			pipeReader, pipeWriter2, storeValues, oldStorePath, new)
 		if err != nil {
 			errChan <- err
 			return
@@ -468,23 +468,17 @@ func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, bui
 		return errors.Wrap(err, "error checking if builder location exists")
 	}
 
-	replacer := strings.NewReplacer(b.store.storePath, DockerBrambleStorePath)
-	builderLocation = replacer.Replace(builderLocation)
-
 	options := runDockerContainerOptions{
-		buildDir:    strings.TrimPrefix(buildDir, b.store.storePath),
+		buildDir:    buildDir,
 		outputPaths: map[string]string{},
 		env:         drv.env(),
 		cmd:         append([]string{builderLocation}, drv.Args...),
-		workingDir:  replacer.Replace(filepath.Join(buildDir, drv.BuildContextRelativePath)),
-	}
-	for outputName, outputPath := range outputPaths {
-		options.env = append(options.env, fmt.Sprintf("%s=%s", outputName, outputPath))
-		options.outputPaths[outputName] = strings.TrimPrefix(outputPath, b.store.storePath)
+		workingDir:  filepath.Join(buildDir, drv.BuildContextRelativePath),
 	}
 
-	for i, v := range options.env {
-		options.env[i] = replacer.Replace(v)
+	for outputName, outputPath := range outputPaths {
+		options.env = append(options.env, fmt.Sprintf("%s=%s", outputName, outputPath))
+		options.outputPaths[outputName] = outputPath
 	}
 
 	return b.runDockerContainer(ctx, drv.filename(), options)
@@ -595,8 +589,6 @@ func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, bu
 	}
 
 	brambleProto := b.constructBrambleProto()
-	brambleProto.Store.StorePath = DockerBrambleStorePath
-	brambleProto.Store.BramblePath = DockerBramblePath
 	functionBuild := &bramblepb.FunctionBuild{
 		Bramble:             brambleProto,
 		FunctionBuilderMeta: meta.constructFunctionBuilderMetaProto(),
@@ -609,28 +601,12 @@ func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, bu
 		return err
 	}
 	builderReader := bytes.NewReader(buf)
-	bufOut := bytes.NewBuffer(nil)
-
-	// this shouldn't be necessary. somewhere upstream we expand the env values into a store path
-	// we should only expand the drv here with the docker store path...
-	//
-	// hmm, we also replace the output paths and buildDir here, would need more there as well
-	//
-	// oh man, any expanded metadata on any derivation is replaced by this as well, hmm...
-	if _, err = textreplace.ReplaceBytes(builderReader, bufOut, []byte(b.store.storePath), []byte(DockerBrambleStorePath)); err != nil {
-		return err
-	}
-
-	buildDir = strings.TrimPrefix(buildDir, b.store.storePath)
-	for k, v := range outputPaths {
-		outputPaths[k] = strings.TrimPrefix(v, b.store.storePath)
-	}
 
 	return b.runDockerContainer(ctx,
 		drv.filename(), runDockerContainerOptions{
 			buildDir:           buildDir,
 			outputPaths:        outputPaths,
-			stdin:              bufOut,
+			stdin:              builderReader,
 			cmd:                []string{"/bin/bramble", BrambleFunctionBuildHiddenCommand},
 			mountBrambleBinary: true,
 		})

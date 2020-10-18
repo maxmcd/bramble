@@ -14,6 +14,11 @@ def simple():
     )
 
 
+def run_simple():
+    s = simple()
+    exec(os.session(), s.out + "/simple")
+
+
 def simple2():
     s = seed()
     return derivation(
