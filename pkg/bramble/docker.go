@@ -10,14 +10,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/davecgh/go-spew/spew"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/pkg/errors"
 )
 
 var (
-	DockerBramblePath      = "/bramble"
-	DockerBrambleStorePath = "/bramble/bramble_store_padding/bramble_store_padd"
 	DockerScratchImageName = "bramble-scratch"
 )
 
@@ -31,16 +28,6 @@ var (
 // If there isn't a bramble hash or version available we should lookPath at the current environment
 // and copy that bramble version into the build. For darwin/windows we might need to reference a
 // know location outside of the container or trigger a cross-build or, hmm... something.
-
-func genDockerBrambleStorePath() string {
-	// Uncomment to recalculate:
-	// dirName, err := calculatePaddedDirectoryName(DockerBramblePath, PathPaddingLength)
-	// if err != nil {
-	// 	return errors.Wrap(err, "error computing bramble store path for a docker build")
-	// }
-	// brambleStorePath := filepath.Join(DockerBramblePath, dirName)
-	return DockerBrambleStorePath
-}
 
 type runDockerContainerOptions struct {
 	buildDir    string
@@ -103,15 +90,13 @@ func (b *Bramble) runDockerContainer(ctx context.Context, name string, options r
 	if len(options.outputPaths) == 0 {
 		return errors.New("must include output paths")
 	}
-	spew.Dump(options)
 
-	brambleStorePath := genDockerBrambleStorePath()
 	binds := []string{
 		// mount the entire store path as a ready-only volume
-		fmt.Sprintf("%s:%s:ro", b.store.storePath, brambleStorePath),
+		fmt.Sprintf("%s:%s:ro", b.store.storePath, b.store.storePath),
 		fmt.Sprintf("%s:%s", // volume mount the build directory
-			filepath.Join(b.store.storePath, options.buildDir),
-			filepath.Join(brambleStorePath, options.buildDir),
+			options.buildDir,
+			options.buildDir,
 		),
 	}
 
@@ -126,11 +111,10 @@ func (b *Bramble) runDockerContainer(ctx context.Context, name string, options r
 
 	for _, outputPath := range options.outputPaths {
 		binds = append(binds, fmt.Sprintf("%s:%s", // volume mount all output directories
-			filepath.Join(b.store.storePath, outputPath),
-			filepath.Join(brambleStorePath, outputPath),
+			outputPath,
+			outputPath,
 		))
 	}
-	spew.Dump(binds)
 
 	if err = ensureBrambleScratchImage(client); err != nil {
 		return err
