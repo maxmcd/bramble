@@ -3,6 +3,7 @@ export PATH="$seed/bin"
 echo $PATH
 env
 mkdir -p $out
+pwd
 gcc \
   -L "$seed/x86_64-linux-musl/lib" \
   -I "$seed/x86_64-linux-musl/include" \
