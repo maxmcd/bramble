@@ -15,10 +15,10 @@ def autoconf():
     )
 
 
-def _build_autoconf(ctx):
-    os.setenv("PATH", os.getenv("seed") + "/bin")
-    os.mkdir(ctx.outputs["out"] + "/bin")
-    exec("cp -r $autoconf_src/autoconf/ $out/bin")
+def _build_autoconf(s, outputs):
+    s.setenv("PATH", s.getenv("seed") + "/bin")
+    os.mkdir(outputs["out"] + "/bin")
+    exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
 
 
 def test_autoconf():
