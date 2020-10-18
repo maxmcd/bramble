@@ -2,13 +2,13 @@ package bramble
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,8 +23,10 @@ import (
 	"github.com/hashicorp/terraform/tfdiags"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/pkg/bramblepb"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -36,11 +38,20 @@ import (
 func init() {
 	// It's easier to start giving away free coffee than it is to take away
 	// free coffee
-	resolve.AllowFloat = false
+
+	// I think this would allow storing arbitrary state in function closures
+	// and make the codebase much harder to reason about. Maybe we want this
+	// level of complexity at some point, but nice to avoid for now
 	resolve.AllowLambda = false
-	resolve.AllowNestedDef = true
+	resolve.AllowNestedDef = false
+
+	// recursion is probably ok, open to allowing it
 	resolve.AllowRecursion = false
-	resolve.AllowSet = true // sets seem harmless tho?
+
+	// sets seem harmless tho?
+	resolve.AllowSet = true
+	// see little need for this (currently), but open to allowing it
+	resolve.AllowFloat = false
 }
 
 type Bramble struct {
@@ -59,7 +70,7 @@ type Bramble struct {
 	store Store
 
 	moduleCache   map[string]string
-	filenameCache map[string]string
+	filenameCache *BiStringMap
 	importGraph   *AcyclicGraph
 
 	afterDerivation bool
@@ -68,31 +79,6 @@ type Bramble struct {
 	calledFunction   string
 
 	derivations *DerivationsMap
-}
-
-type DerivationsMap struct {
-	sync.Map
-}
-
-func (dm *DerivationsMap) Get(id string) *Derivation {
-	d, ok := dm.Load(id)
-	if !ok {
-		return nil
-	}
-	return d.(*Derivation)
-}
-
-func (dm *DerivationsMap) Has(id string) bool {
-	return dm.Get(id) != nil
-}
-func (dm *DerivationsMap) Set(id string, drv *Derivation) {
-	dm.Store(id, drv)
-}
-
-func (dm *DerivationsMap) Range(f func(filename string, drv *Derivation) bool) {
-	dm.Map.Range(func(key, value interface{}) bool {
-		return f(key.(string), value.(*Derivation))
-	})
 }
 
 // AfterDerivation is called when a builtin function is called that can't be
@@ -140,15 +126,15 @@ func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
 		b.derivations.Set(filename, drv)
 		return
 	}
-	fmt.Println("Building derivation", filename)
+	fmt.Println("Building derivation", filename, drv.prettyJSON())
 	if err = b.buildDerivation(drv); err != nil {
-		return
+		return errors.Wrap(err, "error building "+filename)
 	}
 	return b.writeDerivation(drv)
 }
 
 func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
-	buildDir, err := b.createTmpDir()
+	buildDir, err := b.createStoreTmpDir()
 	if err != nil {
 		return
 	}
@@ -160,8 +146,8 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	}
 	outputPaths := map[string]string{}
 	for _, name := range drv.OutputNames {
-		// TODO: use diretory within store instead so that we can rewrite self-referential paths
-		if outputPaths[name], err = b.createTmpDir(); err != nil {
+		// TODO: use directory within store instead so that we can rewrite self-referential paths
+		if outputPaths[name], err = b.createStoreTmpDir(); err != nil {
 			return
 		}
 	}
@@ -173,7 +159,7 @@ func (b *Bramble) buildDerivation(drv *Derivation) (err error) {
 	case "fetch_url":
 		err = b.fetchURLBuilder(drvCopy, outputPaths)
 	case "function":
-		err = b.functionBuilder(drvCopy, buildDir, outputPaths)
+		err = b.dockerFunctionBuilder(drvCopy, buildDir, outputPaths)
 	default:
 		err = b.regularBuilder(drvCopy, buildDir, outputPaths)
 	}
@@ -403,9 +389,19 @@ func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) 
 		if !match {
 			return errors.Errorf("function %q must be a global function to be used in a function builder", v)
 		}
-		meta.Module = b.filenameCache[v.Position().Filename()]
+		filename := v.Position().Filename()
+		var fileExists bool
+		meta.Module, fileExists = b.filenameCache.Load(filename)
+		if !fileExists {
+			return errors.Errorf("filename %q not found in filenameCache", filename)
+		}
 
-		meta.ModuleCache[meta.Module] = b.moduleCache[meta.Module]
+		var moduleExists bool
+		meta.ModuleCache[meta.Module], moduleExists = b.moduleCache[meta.Module]
+		if !moduleExists {
+			return errors.Errorf("module %q not found in moduleCache", meta.Module)
+		}
+
 		set, err := b.importGraph.Descendents(meta.Module)
 		if err != nil {
 			return err
@@ -430,7 +426,7 @@ func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) 
 	return
 }
 
-func (b *Bramble) createTmpDir() (tempDir string, err error) {
+func (b *Bramble) createStoreTmpDir() (tempDir string, err error) {
 	return ioutil.TempDir(b.store.storePath, BuildDirPattern)
 }
 
@@ -485,9 +481,133 @@ func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths m
 	return cmd.Run()
 }
 
+func (b *Bramble) constructBrambleProto() *bramblepb.Bramble {
+	derivations := map[string]*bramblepb.Derivation{}
+	b.derivations.Range(func(filename string, drv *Derivation) bool {
+		derivations[filename] = drv.constructDerivationProto()
+		return true
+	})
+
+	store := &bramblepb.Store{
+		BramblePath: b.store.bramblePath,
+		StorePath:   b.store.storePath,
+	}
+	return &bramblepb.Bramble{
+		Derivations: derivations,
+		Store:       store,
+		// TODO: issue that this is a pointer?
+		FilenameCache: b.filenameCache.forward,
+	}
+}
+
+func brambleFunctionBuildSingleton() (err error) {
+	stdinBytes, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		return err
+	}
+	var functionBuild bramblepb.FunctionBuild
+	if err := proto.Unmarshal(stdinBytes, &functionBuild); err != nil {
+		return errors.Wrap(err, "error unmarshalling FunctionBuild proto")
+	}
+	session, err := newSession(
+		filepath.Join(functionBuild.BuildDirectory, functionBuild.Derivation.BuildContextRelativePath),
+		functionBuild.Derivation.Env,
+	)
+
+	if err != nil {
+		return err
+	}
+	b := &Bramble{
+		store: Store{
+			storePath:   functionBuild.Bramble.Store.StorePath,
+			bramblePath: functionBuild.Bramble.Store.BramblePath,
+		},
+
+		moduleEntrypoint: functionBuild.FunctionBuilderMeta.Module,
+		calledFunction:   functionBuild.FunctionBuilderMeta.Function,
+		moduleCache:      functionBuild.FunctionBuilderMeta.ModuleCache,
+		filenameCache:    NewBiStringMap(),
+		importGraph:      NewAcyclicGraph(),
+		session:          session,
+		derivations:      &DerivationsMap{},
+	}
+
+	for k, v := range functionBuild.Bramble.FilenameCache {
+		b.filenameCache.Store(k, v)
+	}
+
+	for name, drvProto := range functionBuild.Bramble.Derivations {
+		drv := constructDerivationFromProto(drvProto)
+
+		fmt.Println(name, drv.prettyJSON())
+		b.derivations.Set(name, constructDerivationFromProto(drvProto))
+	}
+
+	b.thread = &starlark.Thread{Load: b.load}
+	if err = b.initPredeclared(); err != nil {
+		return
+	}
+	globals, err := b.resolveModule(functionBuild.FunctionBuilderMeta.Module)
+	if err != nil {
+		return
+	}
+	d := starlark.NewDict(len(functionBuild.OutputPaths))
+	for name, path := range functionBuild.OutputPaths {
+		_ = d.SetKey(starlark.String(name), starlark.String(path))
+		session.setEnv(name, path)
+	}
+	_, err = starlark.Call(
+		b.thread,
+		globals[functionBuild.FunctionBuilderMeta.Function].(*starlark.Function),
+		starlark.Tuple{session, d}, nil,
+	)
+	return err
+}
+
+func (b *Bramble) dockerFunctionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	var meta functionBuilderMeta
+	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
+		return errors.Wrap(err, "error parsing function_builder_meta")
+	}
+
+	brambleProto := b.constructBrambleProto()
+	brambleProto.Store.StorePath = DockerBrambleStorePath
+	brambleProto.Store.BramblePath = DockerBramblePath
+	functionBuild := &bramblepb.FunctionBuild{
+		Bramble:             brambleProto,
+		FunctionBuilderMeta: meta.constructFunctionBuilderMetaProto(),
+		OutputPaths:         outputPaths,
+		BuildDirectory:      buildDir,
+		Derivation:          drv.constructDerivationProto(),
+	}
+	buf, err := proto.Marshal(functionBuild)
+	if err != nil {
+		return err
+	}
+	builderReader := bytes.NewReader(buf)
+	bufOut := bytes.NewBuffer(nil)
+
+	// this shouldn't be necessary. somewhere upstream we expand the env values into a store path
+	// we should only expand the drv here with the docker store path...
+	//
+	// hmm, we also replace the output paths and buildDir here, would need more there as well
+	//
+	// oh man, any expanded metadata on any derivation is replaced by this as well, hmm...
+	if _, err = textreplace.ReplaceBytes(builderReader, bufOut, []byte(b.store.storePath), []byte(DockerBrambleStorePath)); err != nil {
+		return err
+	}
+
+	buildDir = strings.TrimPrefix(buildDir, b.store.storePath)
+	for k, v := range outputPaths {
+		outputPaths[k] = strings.TrimPrefix(v, b.store.storePath)
+	}
+
+	return b.DockerContainer(context.Background(),
+		drv.filename(), buildDir, outputPaths, bufOut)
+}
+
 func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
 	var meta functionBuilderMeta
-
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")
 	}
@@ -501,7 +621,7 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 	for outputName, outputPath := range outputPaths {
 		session.setEnv(outputName, outputPath)
 	}
-	return b.CallInlineDerivationFunction(
+	return b.callInlineDerivationFunction(
 		outputPaths,
 		meta,
 		session,
@@ -562,7 +682,7 @@ func (b *Bramble) calculateDerivationInputSources(drv *Derivation) (err error) {
 	if len(drv.sources) == 0 {
 		return
 	}
-	tmpDir, err := b.createTmpDir()
+	tmpDir, err := b.createStoreTmpDir()
 	if err != nil {
 		return
 	}
@@ -733,7 +853,11 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	return <-errChan
 }
 
-func (b *Bramble) CallInlineDerivationFunction(
+func (b *Bramble) constructFunctionBuildProto() {
+
+}
+
+func (b *Bramble) callInlineDerivationFunction(
 	outputPaths map[string]string, meta functionBuilderMeta, session *Session) (err error) {
 	// TODO: investigate if you actually need to create a new bramble
 	newBramble := &Bramble{
@@ -746,7 +870,7 @@ func (b *Bramble) CallInlineDerivationFunction(
 		moduleEntrypoint: meta.Module,
 		calledFunction:   meta.Function,
 		moduleCache:      meta.ModuleCache,
-		filenameCache:    map[string]string{},
+		filenameCache:    NewBiStringMap(),
 		importGraph:      NewAcyclicGraph(),
 		session:          session,
 	}
@@ -777,18 +901,16 @@ func (b *Bramble) CallInlineDerivationFunction(
 func (b *Bramble) reset() {
 	b.afterDerivation = false
 	b.moduleCache = map[string]string{}
-	b.filenameCache = map[string]string{}
+	b.filenameCache = NewBiStringMap()
 }
 
 func (b *Bramble) init() (err error) {
-	log.SetOutput(ioutil.Discard)
-
 	if b.configLocation != "" {
 		return errors.New("can't initialize Bramble twice")
 	}
 
 	b.moduleCache = map[string]string{}
-	b.filenameCache = map[string]string{}
+	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
 	b.importGraph = NewAcyclicGraph()
 
@@ -845,7 +967,7 @@ func (b *Bramble) initPredeclared() (err error) {
 }
 
 func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	thisFilesModuleName := b.filenameCache[thread.CallFrame(0).Pos.Filename()]
+	thisFilesModuleName, _ := b.filenameCache.Load(thread.CallFrame(0).Pos.Filename())
 	b.importGraph.Add(thisFilesModuleName)
 	b.importGraph.Add(module)
 	b.importGraph.Connect(dag.BasicEdge(module, thisFilesModuleName))
@@ -907,7 +1029,7 @@ func (b *Bramble) compilePath(path string) (prog *starlark.Program, err error) {
 }
 
 func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Program, err error) {
-	b.filenameCache[filename] = moduleName
+	b.filenameCache.Store(filename, moduleName)
 	storeLocation, ok := b.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
@@ -931,8 +1053,12 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 	if ok {
 		// if we have the hashed input on the filesystem cache and it points to a valid path
 		// in the store, use that store path and add the cached location to the map
-		b.moduleCache[moduleName] = storeLocation
-		return b.compilePath(storeLocation)
+		relStoreLocation, err := filepath.Rel(b.store.storePath, storeLocation)
+		if err != nil {
+			return nil, err
+		}
+		b.moduleCache[moduleName] = relStoreLocation
+		return b.compilePath(relStoreLocation)
 	}
 
 	// if we're this far we don't have a cache of the program, process it directly
@@ -1267,6 +1393,14 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 		debug.PrintStack()
 		err = errors.Errorf("can't find module %s", module)
 		return
+	}
+
+	if _, ok := b.moduleCache[module]; ok {
+		filename, exists := b.filenameCache.LoadInverse(module)
+		if !exists {
+			return nil, errors.Errorf("module %q returns no matching filename", module)
+		}
+		return b.ExecFile(module, filename)
 	}
 
 	path := module[len(b.config.Module.Name):]

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/maxmcd/bramble/pkg/bramblepb"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -101,6 +102,14 @@ type functionBuilderMeta struct {
 	Module      string
 	Function    string
 	ModuleCache map[string]string
+}
+
+func (fbm functionBuilderMeta) constructFunctionBuilderMetaProto() *bramblepb.FunctionBuilderMeta {
+	return &bramblepb.FunctionBuilderMeta{
+		Module:      fbm.Module,
+		Function:    fbm.Function,
+		ModuleCache: fbm.ModuleCache,
+	}
 }
 
 func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
@@ -367,6 +376,65 @@ func (drv *Derivation) prettyJSON() string {
 	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
+}
+
+func constructDerivationFromProto(in *bramblepb.Derivation) *Derivation {
+	drv := &Derivation{
+		Args:                     in.Args,
+		BuildContextSource:       in.BuildContextSource,
+		BuildContextRelativePath: in.BuildContextRelativePath,
+		Builder:                  in.Builder,
+		Env:                      in.Env,
+		Name:                     in.Name,
+		OutputNames:              in.OutputNames,
+		Platform:                 in.Platform,
+		SourcePaths:              in.SourcePaths,
+	}
+	for _, id := range in.InputDerivations {
+		drv.InputDerivations = append(drv.InputDerivations, DerivationOutput{
+			Filename:   id.Filename,
+			OutputName: id.OutputName,
+		})
+	}
+
+	for _, o := range in.Outputs {
+		drv.Outputs = append(drv.Outputs, Output{
+			Path:         o.Path,
+			Dependencies: o.Dependencies,
+		})
+	}
+	return drv
+}
+
+func (drv *Derivation) constructDerivationProto() *bramblepb.Derivation {
+	var inputDerivations []*bramblepb.DerivationOutput
+	for _, id := range drv.InputDerivations {
+		inputDerivations = append(inputDerivations, &bramblepb.DerivationOutput{
+			Filename:   id.Filename,
+			OutputName: id.OutputName,
+		})
+	}
+
+	var outputs []*bramblepb.Output
+	for _, o := range drv.Outputs {
+		outputs = append(outputs, &bramblepb.Output{
+			Path:         o.Path,
+			Dependencies: o.Dependencies,
+		})
+	}
+	return &bramblepb.Derivation{
+		Args:                     drv.Args,
+		BuildContextSource:       drv.BuildContextSource,
+		BuildContextRelativePath: drv.BuildContextRelativePath,
+		Builder:                  drv.Builder,
+		Env:                      drv.Env,
+		InputDerivations:         inputDerivations,
+		Name:                     drv.Name,
+		OutputNames:              drv.OutputNames,
+		Outputs:                  outputs,
+		Platform:                 drv.Platform,
+		SourcePaths:              drv.SourcePaths,
+	}
 }
 
 // TemplateStringRegexp is the regular expression that matches template strings

@@ -10,8 +10,12 @@ go_test:
 	go test -run="(TestIntegration|TestRunAlmostAllPublicFunctions)"unique -v ./...
 
 
-install:
+generate_proto: ./pkg/bramblepb/bramble_pb.proto
+	cd pkg/bramblepb && go generate
+
+install: generate_proto
 	go install
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' . && mv bramble ~/bramble/var/linux-binary
 
 bramble_tests: install
 	bramble test
@@ -27,10 +31,13 @@ drv_test: install
 	bramble test tests/derivation_test.bramble
 
 starlark_builder: install
-	bramble run tests/starlark-builder:run_busybox
+	bramble run lib/busybox:run_busybox
 
 simple: install
 	bramble run tests/simple/simple:simple
+
+simple2: install
+	bramble run tests/simple/simple:simple2
 
 nested: install
 	bramble run tests/nested-sources/another-folder/nested:nested

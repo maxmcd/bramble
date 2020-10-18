@@ -1,26 +1,22 @@
-load("github.com/maxmcd/bramble/lib/seed", "seed")
+load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
+load("github.com/maxmcd/bramble/lib/nix-seed", "stdenv")
 
 
-def _go():
-    go1_4 = derivation(
-        name="go_1_4_download",
-        builder="fetch_url",
-        env={
-            "url": "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz",
-            "hash": "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52",
-        },
-    )
+def go():
+    go1_4 = fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
 
     return derivation(
-        name="go 1.4", builder=_build_go, env=dict(go1_4=go1_4, seed=seed())
+        name="go 1.4", builder=_build_go, env=dict(go1_4=go1_4, stdenv=stdenv()),
     )
 
 
-def _build_go():
-    os.setenv("PATH", os.getenv("$seed") + "/bin")
-    os.cmd("cp -r $go_1_4_download/go .").wait()
-    print(os.cmd("ls -lah").output())
-    os.cd("./go/src")
-    os.setenv("CGO_ENABLED", "0")
-    print(os.cmd("ls -lah").output())
-    os.cmd("$seed/bash").wait()
+def _build_go(s, outputs):
+    s.setenv("PATH", s.getenv("stdenv") + "/bin")
+    exec(s, "cp -r $go1_4/go .")
+    s.cd("./go/src")
+    exec(s, "ls -lah ./cmd/dist/")
+    s.setenv("LD_LIBRARY_PATH", s.getenv("stdenv") + "/libf")
+    s.setenv("GOROOT_BOOTSTRAP", s.wd)
+    s.setenv("CGO_ENABLED", "0")
+    exec(s, "cat ./make.bash")
+    exec(s, "bash ./make.bash")
