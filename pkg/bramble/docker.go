@@ -131,8 +131,6 @@ func (b *Bramble) DockerContainer(ctx context.Context,
 		))
 	}
 
-	fmt.Println(binds)
-
 	buf := bytes.NewBuffer(nil)
 	dockerfileContents := "FROM scratch\nCMD foo"
 	tarWriter := tar.NewWriter(buf)

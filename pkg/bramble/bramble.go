@@ -126,7 +126,7 @@ func (b *Bramble) buildDerivationIfNew(drv *Derivation) (err error) {
 		b.derivations.Set(filename, drv)
 		return
 	}
-	fmt.Println("Building derivation", filename, drv.prettyJSON())
+	fmt.Println("Building derivation", filename)
 	if err = b.buildDerivation(drv); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
@@ -537,9 +537,6 @@ func brambleFunctionBuildSingleton() (err error) {
 	}
 
 	for name, drvProto := range functionBuild.Bramble.Derivations {
-		drv := constructDerivationFromProto(drvProto)
-
-		fmt.Println(name, drv.prettyJSON())
 		b.derivations.Set(name, constructDerivationFromProto(drvProto))
 	}
 
