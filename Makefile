@@ -37,7 +37,7 @@ starlark_builder: install
 	bramble run lib/busybox:run_busybox
 
 simple: install
-	bramble run tests/simple/simple:simple
+	bramble run tests/simple/simple:run_simple
 
 simple2: install
 	bramble run tests/simple/simple:simple2
