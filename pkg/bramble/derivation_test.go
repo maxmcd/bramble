@@ -108,7 +108,6 @@ func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 	}
 
 	if drv, ok := b.(*Derivation); ok {
-		fmt.Println(drv.prettyJSON())
 		assert.Contains(t, drv.prettyJSON(), tt.respContains)
 		return
 	}
