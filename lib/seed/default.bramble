@@ -36,16 +36,16 @@ def ldd():
     return derivation(name="ld", builder=_build_ldd, env={"seed": s})
 
 
-def _build_ldd(ctx):
-    os.mkdir(ctx.outputs["out"] + "/bin")
-    f = os.create(os.expand("$out/bin/ldd"))
+def _build_ldd(s, outputs):
+    os.mkdir(outputs["out"] + "/bin")
+    f = os.create(s.expand("$out/bin/ldd"))
     f.write(
         """#!{seed}/bin/sh
 exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
 #hihihihi
 """.format(
-            seed=os.getenv("seed")
+            seed=s.getenv("seed")
         )
     )
     f.close()
-    exec("$seed/bin/chmod", "+x", "$out/bin/ldd")
+    exec(s, "$seed/bin/chmod", "+x", "$out/bin/ldd")
