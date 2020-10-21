@@ -1,33 +1,31 @@
 """ the stdenv wooooo"""
 
-load("github.com/maxmcd/bramble/lib/static-patchelf", "patchelf")
-load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
-load("github.com/maxmcd/bramble/lib/busybox", "busybox")
-load("github.com/maxmcd/bramble/lib/nix-seed", "stdenv")
+load("github.com/maxmcd/bramble/lib/std")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
 
 def build_inputs():
-    return [stdenv()]
+    return [nix_seed.stdenv()]
 
 
 def make(*args):
-    return exec(stdenv().out + "/bin/make", *args)
+    return std.exec(nix_seed.stdenv().out + "/bin/make", *args)
 
 
 def cp(s, *args):
-    output = stdenv().out
+    output = nix_seed.stdenv().out
     s.setenv("PATH", "{}/bin".format(output))
 
-    return exec(s, "cp", *args,)
+    return std.exec(s, "cp", *args,)
 
 
 def gcc(*args):
     """hi"""
-    output = stdenv().out
+    output = nix_seed.stdenv().out
     s = os.session()
     s.setenv("PATH", "{}/bin".format(output))
 
-    return exec(
+    return std.exec(
         s,
         output + "/bin/gcc",
         "-L",
