@@ -20,5 +20,6 @@ If bramble is going to have this level of flexibility it should be sandboxed by 
 - https://github.com/google/minijail - google's jail binary
 - https://github.com/andrewchambers/hermes/blob/master/doc/man/hermes-package-store.7.md - hermes using multiple build users (why?)
 - https://nixos.org/manual/nix/stable/#ssec-multi-user - same with nix
+- https://github.com/NixOS/nix/issues/1429 - nix disallows setuid
 - https://bazel.build/designs/2016/06/02/sandboxing.html
 Support docker as an option, would work only for linux or just for running things in docker.

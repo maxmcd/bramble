@@ -117,7 +117,7 @@ func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 			return nil, err
 		}
 		if !filepath.IsAbs(str) {
-			return nil, errors.New("cp doesn't support relative paths... yet!")
+			return nil, errors.New("cp doesn't support relative paths yet")
 		}
 		paths[i] = str
 	}
