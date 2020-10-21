@@ -1,4 +1,4 @@
-load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
+load("github.com/maxmcd/bramble/lib/std")
 
 """busybox"""
 
@@ -6,7 +6,7 @@ load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
 def busybox():
     # download the executable, this is the only way you are allowed
     # to use the network during builds
-    download = fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
+    download = std.fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
 
     # we pass the build_busybox callback here which is used to build this derivation
     return derivation(
@@ -19,7 +19,7 @@ def _build_busybox(s, outputs):
 
     # move the busybox executable into the output for this build
 
-    exec(
+    std.exec(
         s,
         "$download/busybox-x86_64",
         "cp",
@@ -30,7 +30,7 @@ def _build_busybox(s, outputs):
     # extract the available commands from the busybox help text
     commands = []
     commands_started = False
-    for line in exec(s, "$out/bin/busybox").output:
+    for line in std.exec(s, "$out/bin/busybox").output:
         if commands_started:
             for name in line.strip().split(","):
                 name = name.strip()
@@ -41,12 +41,12 @@ def _build_busybox(s, outputs):
 
     # cd into the output directory so that symlinks are relative
     s.cd(s.expand("$out/bin"))
-    exec(s, "./busybox ln -s busybox ln")
+    std.exec(s, "./busybox ln -s busybox ln")
 
     # link each command so that we can use all the available busybox commands
     for c in commands:
         if c != "ln":
-            exec(s, "./ln -s busybox %s" % c)
+            std.exec(s, "./ln -s busybox %s" % c)
 
 
 def run_busybox():

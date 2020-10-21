@@ -12,13 +12,19 @@ go_test: install
 	go test -run="(TestIntegration|TestRunAlmostAllPublicFunctions)"unique -v ./...
 
 
-generate_proto: ./pkg/bramblepb/bramble_pb.proto
+generate_proto: ./pkg/bramblepb/bramble_pb.pb.go
+
+./pkg/bramblepb/bramble_pb.pb.go: ./pkg/bramblepb/bramble_pb.proto
 	cd pkg/bramblepb && go generate
 
-install: generate_proto
+# just use LICENSE as a file we can harmlessly "touch" and use as a cache marker
+LICENSE: main.go pkg/*/*.go
 	go install
 	mkdir -p ~/bramble/var
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' . && mv bramble ~/bramble/var/linux-binary
+	touch LICENSE
+
+install: ./pkg/bramblepb/bramble_pb.pb.go LICENSE
 
 bramble_tests: install
 	bramble test
@@ -62,6 +68,9 @@ delete_store:
 
 test_integration:
 	go test -v -run=TestIntegration ./pkg/bramble/
+
+nix_seed: install
+	bramble run lib/nix-seed:stdenv
 
 seed: install
 	bramble run lib/seed:seed
