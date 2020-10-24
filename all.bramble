@@ -2,12 +2,19 @@
 Run a handful of functions
 """
 
-load("github.com/maxmcd/bramble/lib/seed", "ldd", "seed")
-load("github.com/maxmcd/bramble/tests/simple/simple", "simple")
-load("github.com/maxmcd/bramble/tests/busybox", "busybox")
-load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested", "nested")
-load("github.com/maxmcd/bramble/lib/busybox", bb="busybox")
+load("github.com/maxmcd/bramble/lib/seed")
+load("github.com/maxmcd/bramble/tests/simple/simple")
+load("github.com/maxmcd/bramble/tests/busybox")
+load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested")
+load(bb="github.com/maxmcd/bramble/lib/busybox")
 
 
 def all():
-    return [seed(), busybox(), nested(), ldd(), simple(), bb()]
+    return [
+        seed.seed(),
+        busybox.busybox(),
+        nested.nested(),
+        seed.ldd(),
+        simple.simple(),
+        bb.busybox(),
+    ]

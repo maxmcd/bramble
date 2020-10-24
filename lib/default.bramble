@@ -1,5 +1,5 @@
-load("github.com/maxmcd/bramble/lib/seed", "seed")
-load("github.com/maxmcd/bramble/lib/std", "exec", "fetch_url")
+load("github.com/maxmcd/bramble/lib/seed")
+load("github.com/maxmcd/bramble/lib/std")
 
 
 def nix_stdenv():
@@ -7,18 +7,18 @@ def nix_stdenv():
 
 
 def autoconf():
-    autoconf = fetch_url("https://brmbl.s3.amazonaws.com/autoconf.tar.gz")
+    autoconf = std.fetch_url("https://brmbl.s3.amazonaws.com/autoconf.tar.gz")
     return derivation(
         name="autoconf",
         builder=_build_autoconf,
-        env=dict(autoconf_src=autoconf, seed=seed()),
+        env=dict(autoconf_src=autoconf, seed=seed.seed()),
     )
 
 
 def _build_autoconf(s, outputs):
     s.setenv("PATH", s.getenv("seed") + "/bin")
     os.mkdir(outputs["out"] + "/bin")
-    exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
+    std.exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
 
 
 def test_autoconf():
@@ -38,7 +38,7 @@ def _make():
     return derivation(
         name="bash",
         builder=_build_make,
-        env=dict(make_srv=make_src, seed=seed(), autoconf=autoconf()),
+        env=dict(make_srv=make_src, seed=seed.seed(), autoconf=autoconf()),
     )
 
 
@@ -48,14 +48,14 @@ def _build_make():
     os.setenv("CFLAGS", "-O2 -fstack-protector")
     os.setenv("LDFLAGS", "-s")
 
-    exec("cp -r $make_src/make-4.2/ .")
+    std.exec("cp -r $make_src/make-4.2/ .")
     os.cd("./make-4.2")
 
-    exec("ls -lah")
-    exec("$seed/bin/sh", "./configure", "--prefix=$out")
-    exec("$seed/bin/sh", "./build.sh")
-    exec("ls -lah $out")
-    exec("./make", "install")
+    std.exec("ls -lah")
+    std.exec("$seed/bin/sh", "./configure", "--prefix=$out")
+    std.exec("$seed/bin/sh", "./build.sh")
+    std.exec("ls -lah $out")
+    std.exec("./make", "install")
 
 
 def _bash():
@@ -68,15 +68,15 @@ def _bash():
         },
     )
     return derivation(
-        name="bash", builder=_build_bash, env=dict(bash_src=bash_src, seed=seed()),
+        name="bash", builder=_build_bash, env=dict(bash_src=bash_src, seed=seed.seed()),
     )
 
 
 def _build_bash():
     os.setenv("PATH", os.getenv("seed") + "/bin")
-    exec("cp -r $bash_src/bash-4.4/ .")
+    std.exec("cp -r $bash_src/bash-4.4/ .")
     os.cd("./bash-4.4")
     os.setenv("LD_LIBRARY_PATH", "$seed/x86_64-linux-musl/lib")
-    exec("env")
-    guess = exec("$seed/bin/sh ./support/config.guess").output()
-    exec("$seed/bin/sh", "--prefix=$out", "./configure", "--without-bash-malloc")
+    std.exec("env")
+    guess = std.exec("$seed/bin/sh ./support/config.guess").output()
+    std.exec("$seed/bin/sh", "--prefix=$out", "./configure", "--without-bash-malloc")
