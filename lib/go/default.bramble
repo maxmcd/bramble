@@ -1,6 +1,8 @@
 load("github.com/maxmcd/bramble/lib/std")
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
+# https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/compilers/go/1.4.nix
+
 
 def _go():
     go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
@@ -17,8 +19,18 @@ def _build_go(s, outputs):
     std.exec(s, "cp -r $go1_4/go .")
     s.cd("./go/src")
     std.exec(s, "ls -lah ./cmd/dist/")
-    s.setenv("LD_LIBRARY_PATH", s.getenv("stdenv") + "/libf")
+    s.setenv("LD_LIBRARY_PATH", s.getenv("stdenv") + "/lib")
+
+    s.setenv("GO_CCFLAGS", "-I" + s.getenv("stdenv") + "/include-glibc")
+    s.setenv("CC", "gcc -I" + s.getenv("stdenv") + "/include-glibc ")
     s.setenv("GOROOT_BOOTSTRAP", s.wd)
     s.setenv("CGO_ENABLED", "0")
+    std.exec(s, "sed -i 's/set -e/set -ex/g' ./make.bash")
     std.exec(s, "cat ./make.bash")
+
+    # find src/cmd -name asm.c -exec sed -i "s,/lib/ld-linux.*\.so\.[0-9],$LOADER," {} \;
+    # LOADER="$(find ${lib.getLib libc}/lib -name ld-linux\* | head -n 1)"
+    # std.exec(s, "ls -lah " + s.getenv("stdenv") + "/include-glibc")
+    # std.exec(s, "ls -lah " + s.getenv("stdenv") + "/lib")
+
     std.exec(s, "bash ./make.bash")

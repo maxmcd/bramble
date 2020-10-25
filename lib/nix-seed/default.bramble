@@ -11,7 +11,10 @@ def stdenv():
         "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
     )
     return derivation(
-        builder=_build_stdenv, env=dict(src=src, patchelf=static_patchelf.patchelf(), busybox=busybox.busybox())
+        builder=_build_stdenv,
+        env=dict(
+            src=src, patchelf=static_patchelf.patchelf(), busybox=busybox.busybox()
+        ),
     )
 
 
@@ -46,10 +49,10 @@ def _build_stdenv(s, outputs):
             if "liblto" in line:
                 continue
             ldd_output = _ldd(s, "./" + folder + "/" + line)
-            # if glibc is in the dynamic library links lets patch it
-            # TODO: could use more logic here
-
             binary = "{}/{}/{}".format(s.getenv("out"), folder, line)
+
+            # if glibc is in the dynamic library links lets patch it
+            # TODO: could use more specific logic here
             if "glibc" in ldd_output:
                 std.exec(s, "patchelf --shrink-rpath " + binary)
                 std.exec(
