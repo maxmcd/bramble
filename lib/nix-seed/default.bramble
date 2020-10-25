@@ -28,6 +28,13 @@ def _ldd(s, path):
     ).output()
 
 
+def ldd(s, path):
+    outpath = stdenv().out
+    return std.exec(
+        s, outpath + "/lib/ld-linux-x86-64.so.2", "--list", path, print_output=True,
+    ).output()
+
+
 def _build_stdenv(s, outputs):
     # put busybox and patchelf in the path
     s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")

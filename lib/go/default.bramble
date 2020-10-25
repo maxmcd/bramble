@@ -1,10 +1,11 @@
 load("github.com/maxmcd/bramble/lib/std")
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load(patchelf="github.com/maxmcd/bramble/lib/static-patchelf")
 
 # https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/compilers/go/1.4.nix
 
 
-def _go():
+def _bootstrap():
     go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
 
     return derivation(
@@ -34,3 +35,31 @@ def _build_go(s, outputs):
     # std.exec(s, "ls -lah " + s.getenv("stdenv") + "/lib")
 
     std.exec(s, "bash ./make.bash")
+
+
+def _install_go(s, outputs):
+    print(s.environ)
+    s.setenv("LD_LIBRARY_PATH", s.getenv("stdenv") + "/lib")
+    s.setenv("PATH", s.getenv("stdenv") + "/bin:" + s.getenv("patchelf") + "/bin")
+    std.exec(s, "ls -lah " + s.getenv("go_1_15_3") + "/go")
+    nix_seed.ldd(s, s.getenv("go_1_15_3") + "/go/bin/go")
+    binary = s.getenv("go_1_15_3") + "/go/bin/go"
+    std.exec(s, "patchelf --shrink-rpath " + binary)
+    std.exec(
+        s,
+        "patchelf --set-interpreter $stdenv/lib/ld-linux-x86-64.so.2 --debug " + binary,
+    )
+    # std.exec(s, binary + " version")
+    std.exec(s, "$stdenv/lib/ld-linux-x86-64.so.2 " + binary + " version")
+
+
+def _go():
+    go_1_15_3 = std.fetch_url("https://golang.org/dl/go1.15.3.linux-amd64.tar.gz")
+
+    return derivation(
+        name="go-1.15.3",
+        builder=_install_go,
+        env=dict(
+            go_1_15_3=go_1_15_3, stdenv=nix_seed.stdenv(), patchelf=patchelf.patchelf()
+        ),
+    )
