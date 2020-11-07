@@ -468,7 +468,7 @@ func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, bui
 		return errors.Wrap(err, "error checking if builder location exists")
 	}
 
-	options := runDockerContainerOptions{
+	options := runDockerBuildOptions{
 		buildDir:    buildDir,
 		outputPaths: map[string]string{},
 		env:         drv.env(),
@@ -481,7 +481,7 @@ func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, bui
 		options.outputPaths[outputName] = outputPath
 	}
 
-	return b.runDockerContainer(ctx, drv.filename(), options)
+	return b.runDockerBuild(ctx, drv.filename(), options)
 }
 
 func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
@@ -602,8 +602,8 @@ func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, bu
 	}
 	builderReader := bytes.NewReader(buf)
 
-	return b.runDockerContainer(ctx,
-		drv.filename(), runDockerContainerOptions{
+	return b.runDockerBuild(ctx,
+		drv.filename(), runDockerBuildOptions{
 			buildDir:           buildDir,
 			outputPaths:        outputPaths,
 			stdin:              builderReader,

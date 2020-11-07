@@ -2,6 +2,8 @@
 
 Bramble is a functional build system inspired by [nix](https://nixos.org/).
 
+Goals:
+ - 
 **This codebase is in active development and is not stable, complete or secure, proceed with caution.**
 
 ### Overview
