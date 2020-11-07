@@ -1,6 +1,7 @@
 package bramble
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -161,6 +162,16 @@ func (ci *CLI) run(args []string) {
 	ci.Version = "0.0.1"
 	ci.Args = args
 
+	b := Bramble{}
+	if err := b.init(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	if err := b.runDockerRun(context.Background(), args[1:]); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	return
 	if len(ci.Args) >= 1 && !ci.containsHelp() {
 		if ci.Args[0] == "run" {
 			// we must run this one manually so that cli doesn't parse [args] and
