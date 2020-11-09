@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/pkg/errors"
@@ -211,6 +212,7 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 }
 
 func dockerRunName() string {
+	rand.Seed(time.Now().UnixNano())
 	return fmt.Sprintf("bramble-run-%d", rand.Int())
 }
 
@@ -240,6 +242,11 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 			filepath.Join(b.store.bramblePath, "var/linux-binary"),
 			"/bin/bramble"),
 
+		// Mount the project that we're in
+		fmt.Sprintf("%s:%s",
+			b.configLocation,
+			b.configLocation),
+
 		// pass in the docker sock. this wouldn't support connecting to docker
 		// machines, might want to think about supporting that... (TODO)
 		"/var/run/docker.sock:/var/run/docker.sock",
@@ -249,16 +256,31 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	env := []string{}
 	// make sure we use the bramble path that we've mounted
 	env = append(env, "BRAMBLE_PATH="+b.store.bramblePath)
+	// env = append(env, fmt.Sprintf("BRAMBLE_SET_UID=%d", os.Geteuid()))
+	// env = append(env, fmt.Sprintf("BRAMBLE_SET_GID=%d", os.Getegid()))
+	fmt.Println("creating container with name", name)
 
+	cmd := append([]string{"/bin/bramble"}, args...)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return errors.Wrap(err, "getting working directory for docker container")
+	}
+	fmt.Println("Running createContainer with", cmd, env)
 	cont, err := client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
-			User:            fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 			NetworkDisabled: false,
 
+			// We don't set the user. We start as root and the process
+			// calls setuid/setguid
+			// User: fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+
 			Image: "bramble-scratch",
-			Cmd:   append([]string{"/bin/bramble"}, args...),
+			Cmd:   cmd,
 			Env:   env,
+
+			WorkingDir: wd,
 
 			AttachStderr: true,
 			AttachStdout: true,

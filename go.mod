@@ -1,6 +1,6 @@
 module github.com/maxmcd/bramble
 
-go 1.14
+go 1.15
 
 require (
 	github.com/BurntSushi/toml v0.3.1
@@ -20,6 +20,7 @@ require (
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/protobuf v1.23.0
+	gopkg.in/hlandau/svcutils.v1 v1.0.10
 )
 
 replace (
