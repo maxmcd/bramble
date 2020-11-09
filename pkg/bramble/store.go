@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
@@ -29,6 +31,7 @@ type Store struct {
 }
 
 func (s *Store) ensureBramblePath() (err error) {
+
 	var exists bool
 	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
 	// the user's home directory.
@@ -121,6 +124,50 @@ func (s *Store) ensureBramblePath() (err error) {
 	// otherwise, check if the exact store path we need exists
 	if _, err = os.Stat(s.storePath); err != nil {
 		return ErrStoreDoesNotExist
+	}
+
+	// We are root. TODO: windows
+	if os.Getuid() == 0 {
+		setUIDString, uidExists := os.LookupEnv("BRAMBLE_SET_UID")
+		setGIDString, gidExists := os.LookupEnv("BRAMBLE_SET_GID")
+		if !uidExists || !gidExists {
+			// if we don't have both, continue
+			return
+		}
+		fmt.Printf("Found gid %s and uid %s. Proceeding to chown bramblePath\n", setGIDString, setUIDString)
+
+		uid, err := strconv.Atoi(setUIDString)
+		if err != nil {
+			return errors.Wrap(err, "converting BRAMBLE_SET_UID to int")
+		}
+		gid, err := strconv.Atoi(setGIDString)
+		if err != nil {
+			return errors.Wrap(err, "converting BRAMBLE_SET_GID to int")
+		}
+		err = filepath.Walk(s.bramblePath, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if err = os.Chown(path, uid, gid); err != nil {
+				return errors.Wrap(err, "error changing ownership of "+path)
+			}
+			if path == s.storePath {
+				// don't recursively crawl all store paths if this isn't
+				// the initial setup
+				return filepath.SkipDir
+			}
+			return nil
+		})
+		if err != nil {
+			return errors.Wrap(err, "error with chown -R")
+		}
+
+		if err = syscall.Setuid(uid); err != nil {
+			return errors.Wrap(err, "error setting uid")
+		}
+		if err = syscall.Setgid(gid); err != nil {
+			return errors.Wrap(err, "error setting gid")
+		}
 	}
 
 	return
