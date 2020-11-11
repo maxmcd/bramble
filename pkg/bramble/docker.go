@@ -118,7 +118,9 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 			options.buildDir,
 		),
 	}
+	user := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	if _, ok := os.LookupEnv("BRAMBLE_WITHIN_DOCKER"); ok {
+		user = fmt.Sprintf("%s:%s", os.Getenv("BRAMBLE_SET_UID"), os.Getenv("BRAMBLE_SET_GID"))
 		binds = []string{
 			fmt.Sprintf("%s:%s", DockerBramblePathVolumeName, b.store.bramblePath),
 			// Mount the project that we're in
@@ -157,7 +159,7 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	cont, err := client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
-			User:            fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+			User:            user,
 			NetworkDisabled: true,
 
 			Image:      "bramble-scratch",

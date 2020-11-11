@@ -42,6 +42,9 @@ drv_test: install
 starlark_builder: install
 	bramble run lib/busybox:run_busybox
 
+touch_file: install
+	bramble run lib/busybox:touch_file
+
 simple: install
 	bramble run tests/simple/simple:run_simple
 
