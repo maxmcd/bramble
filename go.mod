@@ -4,7 +4,9 @@ go 1.15
 
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/golang/protobuf v1.4.2
 	github.com/hashicorp/terraform v0.13.2
