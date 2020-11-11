@@ -167,6 +167,7 @@ func copyDirectory(scrDir, dest string) error {
 		}
 
 		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		_ = stat
 		if !ok {
 			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
 		}
@@ -189,9 +190,9 @@ func copyDirectory(scrDir, dest string) error {
 			}
 		}
 
-		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return errors.WithStack(err)
-		}
+		// if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+		// 	return errors.WithStack(err)
+		// }
 
 		isSymlink := entry.Mode()&os.ModeSymlink != 0
 		if !isSymlink {
