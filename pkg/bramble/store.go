@@ -194,9 +194,16 @@ func (s Store) writeReader(src io.Reader, name string, validateHash string) (con
 		fileName += ("-" + name)
 	}
 	path = s.joinStorePath(fileName)
+	if err = file.Close(); err != nil {
+		return "", "", err
+	}
 	if er := os.Rename(file.Name(), path); er != nil {
 		return "", "", errors.Wrap(er, "error moving file into store")
 	}
+	if err = os.Chmod(path, 0444); err != nil {
+		return
+	}
+
 	return hasher.Sha256Hex(), path, nil
 }
 

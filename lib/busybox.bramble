@@ -14,6 +14,13 @@ def busybox():
     )
 
 
+def touch_file():
+    bb = busybox()
+    s = os.session()
+    s.setenv("PATH", bb.out + "/bin")
+    std.exec(s, "touch goo")
+
+
 def _build_busybox(s, outputs):
     os.mkdir(outputs["out"] + "/bin")  # using the builtin os module
 

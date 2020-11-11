@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -100,7 +101,13 @@ func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
 func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
-	cmd := Cmd{fn: fn}
+	cmd := Cmd{fn: fn,
+		Cmd: exec.Cmd{
+			SysProcAttr: &syscall.SysProcAttr{
+				Credential: fn.bramble.credentials,
+			},
+		},
+	}
 	cmd.Dir = fn.session.currentDirectory
 
 	var stdinKwarg starlark.Value
