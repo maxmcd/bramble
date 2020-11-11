@@ -3,22 +3,28 @@ package bramble
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/certifi/gocertifi"
 	"github.com/hashicorp/terraform/dag"
 	"github.com/hashicorp/terraform/tfdiags"
 	"github.com/mholt/archiver/v3"
@@ -79,6 +85,8 @@ type Bramble struct {
 	calledFunction   string
 
 	derivations *DerivationsMap
+
+	credentials *syscall.Credential
 }
 
 // AfterDerivation is called when a builtin function is called that can't be
@@ -126,7 +134,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 		b.derivations.Set(filename, drv)
 		return
 	}
-	fmt.Println("Building derivation", filename)
+	fmt.Println("Building derivation", filename, drv.prettyJSON())
 	if err = b.buildDerivation(ctx, drv); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
@@ -427,7 +435,19 @@ func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) 
 }
 
 func (b *Bramble) createStoreTmpDir() (tempDir string, err error) {
-	return ioutil.TempDir(b.store.storePath, BuildDirPattern)
+	tempDir, err = ioutil.TempDir(b.store.storePath, BuildDirPattern)
+	if err != nil {
+		return "", err
+	}
+	return tempDir, b.chownIfCreds(tempDir)
+}
+
+func (b *Bramble) chownIfCreds(path string) (err error) {
+	if b.credentials == nil {
+		return
+	}
+	err = os.Chown(path, int(b.credentials.Uid), int(b.credentials.Gid))
+	return errors.Wrap(err, "error chowning path "+path)
 }
 
 func (b *Bramble) createTmpFile() (f *os.File, err error) {
@@ -671,8 +691,24 @@ func (b *Bramble) DownloadFile(ctx context.Context, url string, hash string) (pa
 	if err != nil {
 		return "", err
 	}
+
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	certPool, err := gocertifi.CACerts()
+	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
+
 	client := http.Client{
-		// TODO: timeout?
+		Transport: transport,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -933,18 +969,22 @@ func (b *Bramble) init() (err error) {
 		return errors.New("can't initialize Bramble twice")
 	}
 
+	if err = b.parseCredentials(); err != nil {
+		return err
+	}
+
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
 	b.importGraph = NewAcyclicGraph()
 
 	if b.store, err = NewStore(); err != nil {
-		return
+		return err
 	}
 
 	// ensures we have a bramble.toml in the current or parent dir
 	if b.config, b.lockFile, b.configLocation, err = findConfig(); err != nil {
-		return
+		return err
 	}
 
 	b.thread = &starlark.Thread{
@@ -952,10 +992,31 @@ func (b *Bramble) init() (err error) {
 		Load: b.load,
 	}
 	if b.session, err = newSession("", nil); err != nil {
-		return
+		return err
 	}
 
 	return b.initPredeclared()
+}
+
+func (b *Bramble) parseCredentials() (err error) {
+	setUIDString, uidExists := os.LookupEnv("BRAMBLE_SET_UID")
+	setGIDString, gidExists := os.LookupEnv("BRAMBLE_SET_GID")
+	if !uidExists || !gidExists {
+		return nil
+	}
+	uid, err := strconv.Atoi(setUIDString)
+	if err != nil {
+		return errors.Wrap(err, "converting BRAMBLE_SET_UID to int")
+	}
+	gid, err := strconv.Atoi(setGIDString)
+	if err != nil {
+		return errors.Wrap(err, "converting BRAMBLE_SET_GID to int")
+	}
+	b.credentials = &syscall.Credential{
+		Gid: uint32(gid),
+		Uid: uint32(uid),
+	}
+	return nil
 }
 
 func (b *Bramble) initPredeclared() (err error) {

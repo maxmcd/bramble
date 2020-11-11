@@ -118,6 +118,23 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 			options.buildDir,
 		),
 	}
+	if _, ok := os.LookupEnv("BRAMBLE_WITHIN_DOCKER"); ok {
+		binds = []string{
+			fmt.Sprintf("%s:%s", DockerBramblePathVolumeName, b.store.bramblePath),
+			// Mount the project that we're in
+			fmt.Sprintf("%s:%s",
+				b.configLocation,
+				b.configLocation),
+		}
+		options.env = append(options.env, "BRAMBLE_WITHIN_DOCKER=1")
+	} else {
+		for _, outputPath := range options.outputPaths {
+			binds = append(binds, fmt.Sprintf("%s:%s", // volume mount all output directories
+				outputPath,
+				outputPath,
+			))
+		}
+	}
 
 	if options.mountBrambleBinary {
 		// TODO: replace with symlink to store path of the specific bramble
@@ -125,13 +142,6 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 		binds = append(binds, fmt.Sprintf("%s:%s", // bring in a version of bramble
 			filepath.Join(b.store.bramblePath, "var/linux-binary"),
 			"/bin/bramble",
-		))
-	}
-
-	for _, outputPath := range options.outputPaths {
-		binds = append(binds, fmt.Sprintf("%s:%s", // volume mount all output directories
-			outputPath,
-			outputPath,
 		))
 	}
 
@@ -256,8 +266,9 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	env := []string{}
 	// make sure we use the bramble path that we've mounted
 	env = append(env, "BRAMBLE_PATH="+b.store.bramblePath)
-	// env = append(env, fmt.Sprintf("BRAMBLE_SET_UID=%d", os.Geteuid()))
-	// env = append(env, fmt.Sprintf("BRAMBLE_SET_GID=%d", os.Getegid()))
+	env = append(env, fmt.Sprintf("BRAMBLE_SET_UID=%d", os.Geteuid()))
+	env = append(env, fmt.Sprintf("BRAMBLE_SET_GID=%d", os.Getegid()))
+	env = append(env, "BRAMBLE_WITHIN_DOCKER=1")
 	fmt.Println("creating container with name", name)
 
 	cmd := append([]string{"/bin/bramble"}, args...)

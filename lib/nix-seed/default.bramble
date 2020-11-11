@@ -39,6 +39,7 @@ def _build_stdenv(s, outputs):
     # put busybox and patchelf in the path
     s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")
 
+    print(s.getenv("PATH"))
     # move the lib bin and include dirs from the download into our output
     os.cp(s.getenv("src") + "/lib", s.getenv("out"))
     os.cp(s.getenv("src") + "/include", s.getenv("out"))
