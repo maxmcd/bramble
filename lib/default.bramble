@@ -19,8 +19,6 @@ def _build_autoconf(s, outputs):
     s.setenv("PATH", s.getenv("seed") + "/bin")
     os.mkdir(outputs["out"] + "/bin")
     std.exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
-    std.exec(s, "ls -lah $out/bin/autoconf")
-    std.exec(s, "$out/bin/autoconf/autoconf -h")
 
 
 # there's a "no such file or directory" error with autoconf, it
