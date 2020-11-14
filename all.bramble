@@ -14,7 +14,6 @@ def all():
         seed.seed(),
         busybox.busybox(),
         nested.nested(),
-        seed.ldd(),
         simple.simple(),
         bb.busybox(),
     ]

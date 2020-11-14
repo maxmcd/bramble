@@ -32,7 +32,7 @@ def main():
     # or wait for the command to end
     cmd("echo").wait()
     # and get the exit code, if there is one
-    cmd("ls ").exit_code
+    cmd("ls").exit_code
 
     # Pass stdin to another command
     cmd("grep", stdin=sleep.output)

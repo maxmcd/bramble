@@ -61,4 +61,4 @@ def run_busybox():
 
     # whoami is now available to run
     print(bb.out)
-    print(os.cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
+    print(os.cmd("ls", clear_env=True, env={"PATH": bb.out + "/bin"}).output())

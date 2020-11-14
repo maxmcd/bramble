@@ -134,7 +134,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 		b.derivations.Set(filename, drv)
 		return
 	}
-	fmt.Println("Building derivation", filename, drv.prettyJSON())
+	fmt.Println("Building derivation", filename)
 	if err = b.buildDerivation(ctx, drv); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
@@ -511,6 +511,9 @@ func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths m
 		return errors.Wrap(err, "error checking if builder location exists")
 	}
 	cmd := exec.Command(builderLocation, drv.Args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: b.credentials,
+	}
 	cmd.Dir = filepath.Join(buildDir, drv.BuildContextRelativePath)
 	cmd.Env = drv.env()
 	for outputName, outputPath := range outputPaths {

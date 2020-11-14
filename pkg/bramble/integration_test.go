@@ -4,8 +4,11 @@ package bramble
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,9 +17,11 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/pkg/errors"
 )
 
 func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
+	log.SetOutput(ioutil.Discard)
 	var err error
 	hasher := NewHasher()
 	dir := tmpDir()
@@ -101,31 +106,43 @@ func assembleModules(t *testing.T) []string {
 	return modules
 }
 
+func runBrambleRun(args []string) error {
+	b := Bramble{}
+	if err := b.init(); err != nil {
+		return errors.Wrap(err, "b.init")
+	}
+	return b.runDockerRun(context.Background(), append([]string{"run"}, args...))
+}
+
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 	modules := assembleModules(t)
-
-	fmt.Println(modules)
+	toSkip := []string{
+		"nix-seed/default.bramble:ldd",
+		"lib/std",
+		"cmd-examples",
+	}
 	runTwiceAndCheck(t, func(t *testing.T) {
 		for _, module := range modules {
-			b := Bramble{}
-			if strings.Contains(module, "lib/std") {
-				continue
+			for _, skip := range toSkip {
+				if strings.Contains(module, skip) {
+					goto SKIP
+				}
 			}
 			if !t.Run(module, func(t *testing.T) {
-				if err := b.run([]string{module}); err != nil {
+				if err := runBrambleRun([]string{module}); err != nil {
 					t.Fatal(starutil.AnnotateError(err))
 				}
 			}) {
 				t.Fatal(module, "failed")
 			}
+		SKIP:
 		}
 	})
 }
 
 func TestIntegrationStarlarkBuilder(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
-		b := Bramble{}
-		if err := b.run([]string{"github.com/maxmcd/bramble/lib/busybox:run_busybox"}); err != nil {
+		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/lib/busybox:run_busybox"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
 		}
 	})
@@ -133,8 +150,7 @@ func TestIntegrationStarlarkBuilder(t *testing.T) {
 
 func TestIntegrationSimple(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
-		b := Bramble{}
-		if err := b.run([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
+		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
 		}
 	})
@@ -142,22 +158,19 @@ func TestIntegrationSimple(t *testing.T) {
 
 func TestIntegrationNixSeed(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
-		b := Bramble{}
-		if err := b.run([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
+		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
 		}
 	})
 }
 func TestIntegrationBenchmarkFullCacheHit(t *testing.T) {
 	t.Skip("don't run benchmarks")
-	bramble := Bramble{}
-	if err := bramble.run([]string{"../../all:all"}); err != nil {
+	if err := runBrambleRun([]string{"../../all:all"}); err != nil {
 		t.Fatal(err)
 	}
 	res := testing.Benchmark(func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			bramble := Bramble{}
-			if err := bramble.run([]string{"../../all:all"}); err != nil {
+			if err := runBrambleRun([]string{"../../all:all"}); err != nil {
 				b.Fatal(err)
 			}
 		}
