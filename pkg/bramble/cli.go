@@ -110,6 +110,7 @@ func (c *command) Run(args []string) int {
 			return cli.RunResultHelp
 		}
 		fmt.Fprint(c.cli.stderr, starutil.AnnotateError(err))
+		return 1
 	}
 	return 0
 }
@@ -157,17 +158,12 @@ func (ci *CLI) containsHelp() bool {
 }
 
 func (ci *CLI) run(args []string) {
-	fmt.Println("----------------------------------")
-	fmt.Println("running cli with args", args, os.Getuid(), os.Getegid())
-	fmt.Println("----------------------------------")
 	ci.Name = "bramble"
 	ci.HelpFunc = cli.BasicHelpFunc(ci.Name)
 	ci.Version = "0.0.1"
 	ci.Args = args
-
 	_, withinDocker := os.LookupEnv("BRAMBLE_WITHIN_DOCKER")
 	if !withinDocker {
-		fmt.Println("runDockerRun")
 		b := Bramble{}
 		if err := b.init(); err != nil {
 			fmt.Println(err)
@@ -189,7 +185,6 @@ func (ci *CLI) run(args []string) {
 			ci.exit(c.Run(args[1:]))
 			return
 		} else if ci.Args[0] == BrambleFunctionBuildHiddenCommand {
-			fmt.Println("brambleFunctionBuildSingleton")
 			if err := brambleFunctionBuildSingleton(); err != nil {
 				fmt.Fprintln(ci.stderr, err)
 				ci.exit(1)

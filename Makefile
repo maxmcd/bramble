@@ -69,7 +69,7 @@ go: install
 delete_store:
 	rm -rf ~/bramble
 
-test_integration:
+test_integration: install
 	go test -v -run=TestIntegration ./pkg/bramble/
 
 nix_seed: install

@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	DockerScratchImageName      = "bramble-scratch"
-	DockerBramblePathVolumeName = "bramble-path"
+	DockerScratchImageName        = "bramble-scratch"
+	DockerBramblePathVolumePrefix = "bramble-path-"
 )
 
 // TODO: Should be able to download a version of the bramble executable for a specific
@@ -44,9 +44,10 @@ type runDockerBuildOptions struct {
 	env                []string
 }
 
-func ensureBrambleVolume(client *docker.Client) (err error) {
+func ensureBrambleVolume(volumeName string, client *docker.Client) (err error) {
+
 	volumes, err := client.ListVolumes(docker.ListVolumesOptions{
-		Filters: map[string][]string{"name": {DockerBramblePathVolumeName}},
+		Filters: map[string][]string{"name": {volumeName}},
 	})
 	if err != nil {
 		return err
@@ -56,7 +57,7 @@ func ensureBrambleVolume(client *docker.Client) (err error) {
 		return nil
 	}
 
-	_, err = client.CreateVolume(docker.CreateVolumeOptions{Name: DockerBramblePathVolumeName})
+	_, err = client.CreateVolume(docker.CreateVolumeOptions{Name: volumeName})
 	return err
 }
 
@@ -110,6 +111,11 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 		return errors.New("must include output paths")
 	}
 
+	volumeName := DockerBramblePathVolumePrefix + hashString(b.store.bramblePath)
+	if err = ensureBrambleVolume(volumeName, client); err != nil {
+		return
+	}
+
 	binds := []string{
 		// mount the entire store path as a ready-only volume
 		fmt.Sprintf("%s:%s:ro", b.store.storePath, b.store.storePath),
@@ -121,8 +127,9 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	user := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	if _, ok := os.LookupEnv("BRAMBLE_WITHIN_DOCKER"); ok {
 		user = fmt.Sprintf("%s:%s", os.Getenv("BRAMBLE_SET_UID"), os.Getenv("BRAMBLE_SET_GID"))
+		fmt.Println(user)
 		binds = []string{
-			fmt.Sprintf("%s:%s", DockerBramblePathVolumeName, b.store.bramblePath),
+			fmt.Sprintf("%s:%s", volumeName, b.store.bramblePath),
 			// Mount the project that we're in
 			fmt.Sprintf("%s:%s",
 				b.configLocation,
@@ -229,25 +236,26 @@ func dockerRunName() string {
 }
 
 func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
+	fmt.Println(args)
 	name := dockerRunName()
 
 	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		return err
 	}
-
-	if err = ensureBrambleVolume(client); err != nil {
+	volumeName := DockerBramblePathVolumePrefix + hashString(b.store.bramblePath)
+	if err = ensureBrambleVolume(volumeName, client); err != nil {
 		return
 	}
 	if err = ensureBrambleScratchImage(client); err != nil {
 		return
 	}
-
+	fmt.Println(filepath.Join(b.store.bramblePath, "var/linux-binary"))
 	binds := []string{
 		// mount the bramble path
 		// we use the hosts bramble path here as a convenience so that we don't have
 		// to rewrite paths
-		fmt.Sprintf("%s:%s", DockerBramblePathVolumeName, b.store.bramblePath),
+		fmt.Sprintf("%s:%s", volumeName, b.store.bramblePath),
 
 		// bring in a version of bramble
 		fmt.Sprintf("%s:%s",
@@ -297,7 +305,9 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 
 			AttachStderr: true,
 			AttachStdout: true,
-			Tty:          true,
+
+			// TODO: yes when we have one, no when we don't
+			Tty: false,
 
 			AttachStdin: true,
 			OpenStdin:   true,
@@ -311,12 +321,13 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "error creating container")
 	}
+
 	_, err = client.AttachToContainerNonBlocking(docker.AttachToContainerOptions{
 		Container:    cont.ID,
 		Stdout:       true,
 		Stderr:       true,
 		Stdin:        true,
-		RawTerminal:  true,
+		RawTerminal:  false,
 		Stream:       true,
 		OutputStream: os.Stdout,
 		ErrorStream:  os.Stderr,
@@ -345,8 +356,14 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if cont.State.ExitCode != 0 {
 		return errors.Errorf("got container exit code %d", cont.State.ExitCode)
 	}
-
 	return client.RemoveContainer(docker.RemoveContainerOptions{
 		ID: cont.ID,
 	})
+}
+
+type myWriter struct{}
+
+func (mw *myWriter) Write(b []byte) (ln int, err error) {
+	fmt.Println("ok", string(b))
+	return len(b), nil
 }

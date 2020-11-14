@@ -76,6 +76,12 @@ func (h *Hasher) Sha256Hex() string {
 	return fmt.Sprintf("%x", h.hash.Sum(nil))
 }
 
+func hashString(input string) string {
+	h := NewHasher()
+	_, _ = h.Write([]byte(input))
+	return h.String()
+}
+
 // bytesToBase32Hash copies nix here
 // https://nixos.org/nixos/nix-pills/nix-store-paths.html
 // Finally the comments tell us to compute the base32 representation of the
