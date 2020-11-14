@@ -45,7 +45,6 @@ type runDockerBuildOptions struct {
 }
 
 func ensureBrambleVolume(volumeName string, client *docker.Client) (err error) {
-
 	volumes, err := client.ListVolumes(docker.ListVolumesOptions{
 		Filters: map[string][]string{"name": {volumeName}},
 	})
