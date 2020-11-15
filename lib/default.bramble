@@ -16,7 +16,7 @@ def autoconf():
 
 
 def _build_autoconf(s, outputs):
-    s.setenv("PATH", s.getenv("seed") + "/bin")
+    s = s.setenv("PATH", s.getenv("seed") + "/bin")
     os.mkdir(outputs["out"] + "/bin")
     std.exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
 

@@ -39,7 +39,7 @@ def ldd():
 
 
 def _build_ldd(s, outputs):
-    s.setenv("PATH", s.expand("$seed/bin/"))
+    s = s.setenv("PATH", s.expand("$seed/bin/"))
     os.mkdir(s.expand("$out/bin"))
     script = """#!{seed}/bin/sh
 exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
