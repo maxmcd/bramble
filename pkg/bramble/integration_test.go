@@ -27,6 +27,10 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	dir := tmpDir()
 	hasher2 := NewHasher()
 	dir2 := tmpDir()
+
+	// TODO: this is all somewhat irellevant now because the store
+	// is in a docker volume. Update this test to support that.
+
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
 	hd, _ := os.UserHomeDir()
@@ -53,9 +57,8 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 		t.Error("content doesn't match, non deterministic", dir, dir2)
 		return
 	}
-	fmt.Println(dir, dir2)
-	// _ = os.RemoveAll(dir)
-	// _ = os.RemoveAll(dir2)
+	_ = os.RemoveAll(dir)
+	_ = os.RemoveAll(dir2)
 }
 
 func TestIntegration(t *testing.T) {

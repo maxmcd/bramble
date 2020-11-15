@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -141,7 +142,31 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 	return b.writeDerivation(drv)
 }
 
+func (b *Bramble) hashAndMoveFetchUrl(ctx context.Context, drv *Derivation, outputPath string) (err error) {
+	region := trace.StartRegion(ctx, "hashAndMoveFetchUrl")
+	defer region.End()
+
+	hasher := NewHasher()
+	_, err = b.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hasher, drv, filepath.Base(outputPath))
+	if err != nil {
+		return err
+	}
+	outputFolderName := hasher.String()
+	drv.SetOutput("out", Output{Path: outputFolderName})
+	outputStorePath := b.store.joinStorePath(outputFolderName)
+	if pathExists(outputStorePath) {
+		err = os.RemoveAll(outputPath)
+	} else {
+		err = os.Rename(outputPath, outputStorePath)
+	}
+	return
+}
+
 func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err error) {
+	var task *trace.Task
+	ctx, task = trace.NewTask(context.Background(), "buildDerivation")
+	defer task.End()
+
 	buildDir, err := b.createStoreTmpDir()
 	if err != nil {
 		return
@@ -175,70 +200,65 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 		return
 	}
 
-	// fetch url just hashes the directory and moves it into the output location, no archiving and byte replacing
 	if drv.Builder == "fetch_url" {
-		hasher := NewHasher()
-		_, err := b.archiveAndScanOutputDirectory(ioutil.Discard, hasher, drv, filepath.Base(outputPaths["out"]))
-		if err != nil {
-			return err
-		}
-		outputFolderName := hasher.String()
-		drv.SetOutput("out", Output{Path: outputFolderName})
-		outputStorePath := b.store.joinStorePath(outputFolderName)
-		if pathExists(outputStorePath) {
-			err = os.RemoveAll(outputPaths["out"])
-		} else {
-			err = os.Rename(outputPaths["out"], outputStorePath)
-		}
-		if err != nil {
-			return err
-		}
-	} else {
-		for outputName, outputPath := range outputPaths {
-			hasher := NewHasher()
-			var reptarFile *os.File
-			reptarFile, err = b.createTmpFile()
-			if err != nil {
-				return
-			}
-			outputFolder := filepath.Base(outputPath)
-			matches, err := b.archiveAndScanOutputDirectory(reptarFile, hasher, drv, outputFolder)
-			if err != nil {
-				return errors.Wrap(err, "error scanning output")
-			}
-			// remove build output, we have it in an archive
-			if err = os.RemoveAll(outputPath); err != nil {
-				return err
-			}
-
-			hashedFolderName := hasher.String()
-
-			// Nix adds the name to the output path but we are a
-			// content-addressable-store so we remove so that derivations with
-			// different names can share outputs
-			newPath := b.store.joinStorePath(hashedFolderName)
-
-			if !pathExists(newPath) {
-				if err := b.unarchiveAndReplaceOutputFolderName(
-					reptarFile.Name(),
-					newPath,
-					outputFolder,
-					hashedFolderName); err != nil {
-					return err
-				}
-			}
-			if err := os.RemoveAll(reptarFile.Name()); err != nil {
-				return err
-			}
-
-			drv.SetOutput(outputName, Output{Path: hashedFolderName, Dependencies: matches})
-			fmt.Println("Output at ", newPath)
-		}
+		// fetch url just hashes the directory and moves it into the output
+		// location, no archiving and byte replacing
+		return b.hashAndMoveFetchUrl(ctx, drv, outputPaths["out"])
 	}
-	return
+	return b.hashAndMoveBuildOutputs(ctx, drv, outputPaths)
 }
 
-func (b *Bramble) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
+func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
+	defer region.End()
+
+	for outputName, outputPath := range outputPaths {
+		hasher := NewHasher()
+		var reptarFile *os.File
+		reptarFile, err = b.createTmpFile()
+		if err != nil {
+			return
+		}
+		outputFolder := filepath.Base(outputPath)
+		matches, err := b.archiveAndScanOutputDirectory(ctx, reptarFile, hasher, drv, outputFolder)
+		if err != nil {
+			return errors.Wrap(err, "error scanning output")
+		}
+		// remove build output, we have it in an archive
+		if err = os.RemoveAll(outputPath); err != nil {
+			return err
+		}
+
+		hashedFolderName := hasher.String()
+
+		// Nix adds the name to the output path but we are a
+		// content-addressable-store so we remove so that derivations with
+		// different names can share outputs
+		newPath := b.store.joinStorePath(hashedFolderName)
+
+		if !pathExists(newPath) {
+			if err := b.unarchiveAndReplaceOutputFolderName(
+				ctx,
+				reptarFile.Name(),
+				newPath,
+				outputFolder,
+				hashedFolderName); err != nil {
+				return err
+			}
+		}
+		if err := os.RemoveAll(reptarFile.Name()); err != nil {
+			return err
+		}
+
+		drv.SetOutput(outputName, Output{Path: hashedFolderName, Dependencies: matches})
+		fmt.Println("Output at ", newPath)
+	}
+	return nil
+}
+
+func (b *Bramble) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
+	region := trace.StartRegion(ctx, "unarchiveAndReplaceOutputFolderName")
+	defer region.End()
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {
@@ -274,8 +294,10 @@ func (b *Bramble) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder
 	return
 }
 
-func (b *Bramble) archiveAndScanOutputDirectory(tarOutput, hashOutput io.Writer, drv *Derivation, storeFolder string) (
+func (b *Bramble) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv *Derivation, storeFolder string) (
 	matches []string, err error) {
+	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
+	defer region.End()
 	var storeValues []string
 	oldStorePath := b.store.storePath
 
@@ -462,6 +484,9 @@ func (b *Bramble) writeDerivation(drv *Derivation) error {
 }
 
 func (b *Bramble) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+	region := trace.StartRegion(ctx, "fetchURLBuilder")
+	defer region.End()
+
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
 	}
@@ -483,6 +508,9 @@ func (b *Bramble) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPa
 }
 
 func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	region := trace.StartRegion(ctx, "dockerRegularBuilder")
+	defer region.End()
+
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "error checking if builder location exists")
@@ -606,6 +634,8 @@ func brambleFunctionBuildSingleton() (err error) {
 }
 
 func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+	region := trace.StartRegion(ctx, "dockerFunctionBuilder")
+	defer region.End()
 	var meta functionBuilderMeta
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")
@@ -730,7 +760,10 @@ func (b *Bramble) DownloadFile(ctx context.Context, url string, hash string) (pa
 	return path, b.addURLHashToLockfile(url, contentHash)
 }
 
-func (b *Bramble) calculateDerivationInputSources(drv *Derivation) (err error) {
+func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Derivation) (err error) {
+	region := trace.StartRegion(ctx, "calculateDerivationInputSources")
+	defer region.End()
+
 	if len(drv.sources) == 0 {
 		return
 	}
@@ -1260,6 +1293,18 @@ func (b *Bramble) run(args []string) (err error) {
 	if err = b.init(); err != nil {
 		return
 	}
+
+	{
+		f, err := os.Create(filepath.Join(b.configLocation, "trace.out"))
+		if err != nil {
+			return err
+		}
+		if err = trace.Start(f); err != nil {
+			return err
+		}
+		defer trace.Stop()
+	}
+
 	assert.SetReporter(b.thread, runErrorReporter{})
 
 	module, fn, err := b.argsToImport(args)

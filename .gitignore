@@ -3,3 +3,4 @@ brambles
 .vscode
 .idea
 *.prof
+trace.out

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime/trace"
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -187,6 +188,7 @@ func (ci *CLI) run(args []string) {
 		} else if ci.Args[0] == BrambleFunctionBuildHiddenCommand {
 			if err := brambleFunctionBuildSingleton(); err != nil {
 				fmt.Fprintln(ci.stderr, err)
+				trace.Stop()
 				ci.exit(1)
 			}
 			ci.exit(0)
