@@ -55,9 +55,6 @@ func makeArgs() (starlark.Value, error) {
 }
 
 func (os OS) Attr(name string) (val starlark.Value, err error) {
-	// calling os before a derivation is disallowed
-	os.bramble.AfterDerivation()
-
 	callables := map[string]starutil.CallableFunc{
 		"cp":      os.cp,
 		"error":   os.error,
@@ -83,12 +80,17 @@ func (os OS) error(thread *starlark.Thread, args starlark.Tuple, kwargs []starla
 }
 
 func (os OS) input(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	// calling input before a derivation is disallowed
+	os.bramble.AfterDerivation()
+
 	reader := bufio.NewReader(goos.Stdin)
 	text, err := reader.ReadString('\n')
 	return starlark.String(text), err
 }
 
 func (os OS) mkdir(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	// calling mkdir before a derivation is disallowed
+	os.bramble.AfterDerivation()
 	var path starlark.String
 	if err = starlark.UnpackArgs("mkdir", args, kwargs, "path", &path); err != nil {
 		return
@@ -104,6 +106,8 @@ func (os OS) session(thread *starlark.Thread, args starlark.Tuple, kwargs []star
 }
 
 func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	// calling cp before a derivation is disallowed
+	os.bramble.AfterDerivation()
 	if err = starlark.UnpackArgs("cp", nil, kwargs); err != nil {
 		return
 	}

@@ -851,6 +851,7 @@ func (b *Bramble) replaceOutputValuesInCmd(cmd *Cmd) (err error) {
 	for i, env := range cmd.Env {
 		cmd.Env[i] = replacer.Replace(env)
 	}
+	fmt.Println(cmd.Env)
 	return nil
 }
 

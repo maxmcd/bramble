@@ -19,6 +19,26 @@ def cp(s, *args):
     return std.exec(s, "cp", *args,)
 
 
+def ls(path=None, human=False, all=False, long_list=False):
+    s = os.session()
+    output = nix_seed.stdenv().out
+    s.setenv("PATH", "{}/bin".format(output))
+    command = ["ls"]
+    if path:
+        command.append(path)
+    if human:
+        command.append("-h")
+    if all:
+        command.append("-a")
+    if long_list:
+        command.append("-l")
+    return os.cmd(*command, env=s.environ)
+
+
+def foo():
+    print(ls(human=True, all=True, long_list=True).output())
+
+
 def gcc(*args):
     """hi"""
     output = nix_seed.stdenv().out

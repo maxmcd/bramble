@@ -113,25 +113,19 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	var stdinKwarg starlark.Value
 	var dirKwarg starlark.String
 	var envKwarg *starlark.Dict
-	var clearEnvKwarg starlark.Bool
 	var ignoreFailureKwarg starlark.Bool
 	var printOutputKwarg starlark.Bool
 	if err = starlark.UnpackArgs("f", nil, kwargs,
 		"stdin?", &stdinKwarg,
 		"dir?", &dirKwarg,
 		"env?", &envKwarg,
-		"clear_env?", &clearEnvKwarg,
 		"ignore_failure?", &ignoreFailureKwarg,
 		"print_output?", &printOutputKwarg,
 	); err != nil {
 		return
 	}
 	cmd.ignoreErr = bool(ignoreFailureKwarg)
-	if clearEnvKwarg == starlark.True {
-		cmd.Env = []string{}
-	} else {
-		cmd.Env = fn.session.envArray()
-	}
+	cmd.Env = []string{}
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)
 		if err != nil {
