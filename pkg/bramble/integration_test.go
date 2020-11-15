@@ -29,7 +29,8 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	dir2 := tmpDir()
 
 	// TODO: this is all somewhat irellevant now because the store
-	// is in a docker volume. Update this test to support that.
+	// is in a docker volume. Update this test to support hashing
+	// those contents.
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
