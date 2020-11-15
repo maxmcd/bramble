@@ -307,6 +307,9 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "getting working directory for docker container")
 	}
+	fmt.Println("--------------------")
+	fmt.Println(wd)
+	fmt.Println("--------------------")
 
 	region := trace.StartRegion(ctx, "createContainer")
 	defer func() { region.End() }()

@@ -95,7 +95,7 @@ func (os OS) session(thread *starlark.Thread, args starlark.Tuple, kwargs []star
 	if err = starlark.UnpackArgs("session", args, kwargs); err != nil {
 		return
 	}
-	return os.bramble.newSession("/", map[string]string{})
+	return os.bramble.newSession("", nil)
 }
 
 func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

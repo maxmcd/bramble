@@ -16,8 +16,7 @@ def busybox():
 
 def touch_file():
     bb = busybox()
-    s = os.session()
-    s.setenv("PATH", bb.out + "/bin")
+    s = os.session().setenv("PATH", bb.out + "/bin")
     std.exec(s, "touch goo")
 
 
