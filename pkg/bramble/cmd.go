@@ -108,7 +108,14 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			},
 		},
 	}
-	cmd.Dir = fn.session.currentDirectory
+	cmd.Dir = ""
+	cmd.Env = []string{}
+
+	// for testing
+	if fn.session != nil {
+		cmd.Env = fn.session.envArray()
+		cmd.Dir = fn.session.currentDirectory
+	}
 
 	var stdinKwarg starlark.Value
 	var dirKwarg starlark.String
@@ -125,12 +132,6 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		return
 	}
 	cmd.ignoreErr = bool(ignoreFailureKwarg)
-	cmd.Env = []string{}
-
-	// for testing
-	if fn.session != nil {
-		cmd.Env = fn.session.envArray()
-	}
 
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)

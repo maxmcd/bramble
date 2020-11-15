@@ -21,7 +21,9 @@ generate_proto: ./pkg/bramblepb/bramble_pb.pb.go
 LICENSE: main.go pkg/*/*.go
 	go install
 	mkdir -p ~/bramble/var
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' . && mv bramble ~/bramble/var/linux-binary
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+		go build -tags netgo -ldflags '-w' . \
+		&& mv bramble ~/bramble/var/linux-binary
 	touch LICENSE
 
 install: ./pkg/bramblepb/bramble_pb.pb.go LICENSE
