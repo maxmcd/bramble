@@ -71,7 +71,8 @@ type Bramble struct {
 	lockFileLock   sync.Mutex
 
 	derivationFn *DerivationFunction
-	cmd          *CmdFunction
+	// derivations that are touched by running commands
+	inputDerivations DerivationOutputs
 
 	store Store
 
@@ -578,14 +579,7 @@ func brambleFunctionBuildSingleton() (err error) {
 	if err := proto.Unmarshal(stdinBytes, &functionBuild); err != nil {
 		return errors.Wrap(err, "error unmarshalling FunctionBuild proto")
 	}
-	session, err := newSession(
-		filepath.Join(functionBuild.BuildDirectory, functionBuild.Derivation.BuildContextRelativePath),
-		functionBuild.Derivation.Env,
-	)
 
-	if err != nil {
-		return err
-	}
 	b := &Bramble{
 		store: Store{
 			storePath:   functionBuild.Bramble.Store.StorePath,
@@ -598,6 +592,14 @@ func brambleFunctionBuildSingleton() (err error) {
 		filenameCache:    NewBiStringMap(),
 		importGraph:      NewAcyclicGraph(),
 		derivations:      &DerivationsMap{},
+	}
+	session, err := b.newSession(
+		filepath.Join(functionBuild.BuildDirectory, functionBuild.Derivation.BuildContextRelativePath),
+		functionBuild.Derivation.Env,
+	)
+
+	if err != nil {
+		return err
 	}
 
 	for k, v := range functionBuild.Bramble.FilenameCache {
@@ -616,10 +618,11 @@ func brambleFunctionBuildSingleton() (err error) {
 	if err != nil {
 		return
 	}
+
 	d := starlark.NewDict(len(functionBuild.OutputPaths))
 	for name, path := range functionBuild.OutputPaths {
 		_ = d.SetKey(starlark.String(name), starlark.String(path))
-		session.setEnv(name, path)
+		session.env[name] = path
 	}
 	_, err = starlark.Call(
 		b.thread,
@@ -666,11 +669,11 @@ func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths 
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")
 	}
-	session, err := newSession(buildDir, drv.Env)
+	session, err := b.newSession(buildDir, drv.Env)
 	if err != nil {
 		return
 	}
-	if err = session.cd(filepath.Join(buildDir, drv.BuildContextRelativePath)); err != nil {
+	if session.currentDirectory, err = session.cd(filepath.Join(buildDir, drv.BuildContextRelativePath)); err != nil {
 		return
 	}
 	for outputName, outputPath := range outputPaths {
@@ -950,7 +953,7 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 }
 
 func (b *Bramble) callInlineDerivationFunction(
-	outputPaths map[string]string, meta functionBuilderMeta, session *Session) (err error) {
+	outputPaths map[string]string, meta functionBuilderMeta, session Session) (err error) {
 	// TODO: investigate if you actually need to create a new bramble
 	newBramble := &Bramble{
 		// retain from parent
@@ -1061,9 +1064,6 @@ func (b *Bramble) initPredeclared() (err error) {
 	if err != nil {
 		return
 	}
-
-	b.cmd = NewCmdFunction(nil, b)
-
 	debugger := starlark.NewBuiltin("debugger", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		// TODO: https://github.com/google/starlark-go/issues/304
 		repl.REPL(thread, b.predeclared)
@@ -1072,7 +1072,7 @@ func (b *Bramble) initPredeclared() (err error) {
 
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
-		"os":         NewOS(b, b.cmd),
+		"os":         NewOS(b),
 		"assert":     assertGlobals["assert"],
 		"debugger":   debugger,
 	}

@@ -4,7 +4,7 @@ Bramble cmd examples
 
 
 def _grep(*args, **kwargs):
-    return os.cmd("grep", *args, **kwargs)
+    return os.session().cmd("grep", *args, **kwargs)
 
 
 def main():
@@ -52,7 +52,6 @@ def main():
         stdin=cmd("echo"),
         dir="../",
         env={"FOO": "BAR", "X": "Y"},
-        clear_env=False,
         ignore_failure=True,
         print_output=True,
     )

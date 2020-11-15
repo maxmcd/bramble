@@ -18,26 +18,10 @@ def stdenv():
     )
 
 
-def _ldd(s, path):
-    return std.exec(
-        s,
-        s.getenv("out") + "/lib/ld-linux-x86-64.so.2",
-        "--list",
-        path,
-        print_output=False,
-    ).output()
-
-
-def ldd(s, path):
-    outpath = stdenv().out
-    return std.exec(
-        s, outpath + "/lib/ld-linux-x86-64.so.2", "--list", path, print_output=True,
-    ).output()
-
-
 def _build_stdenv(s, outputs):
     # put busybox and patchelf in the path
-    s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")
+    print(s.environ)
+    s = s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")
 
     print(s.getenv("PATH"))
     # move the lib bin and include dirs from the download into our output
@@ -48,9 +32,9 @@ def _build_stdenv(s, outputs):
     os.cp(s.getenv("src") + "/bin", s.getenv("out"))
 
     # set LD_LIBRARY_PATH to the output lib path
-    s.setenv("LD_LIBRARY_PATH", s.getenv("out") + "/lib")
+    s = s.setenv("LD_LIBRARY_PATH", s.getenv("out") + "/lib")
 
-    s.cd(s.getenv("out"))
+    s = s.cd(s.getenv("out"))
 
     for folder in ["bin", "libexec/gcc/x86_64-unknown-linux-gnu/8.3.0"]:
         for line in std.exec(s, "ls ./" + folder).output:
@@ -69,3 +53,20 @@ def _build_stdenv(s, outputs):
                     + binary,
                 )
                 std.exec(s, "patchelf --set-rpath $out/lib " + binary)
+
+
+def _ldd(s, path):
+    return std.exec(
+        s,
+        s.getenv("out") + "/lib/ld-linux-x86-64.so.2",
+        "--list",
+        path,
+        print_output=False,
+    ).output()
+
+
+def ldd(s, path):
+    outpath = stdenv().out
+    return std.exec(
+        s, outpath + "/lib/ld-linux-x86-64.so.2", "--list", path, print_output=True,
+    ).output()

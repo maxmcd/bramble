@@ -1,6 +1,7 @@
 package bramble
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -28,18 +29,21 @@ func fixUpScript(script string) string {
 }
 
 func runCmdTest(t *testing.T, tests []scriptTest) {
-	session, err := newSession("", nil)
+	b := Bramble{}
+	if err := b.init(); err != nil {
+		t.Fatal(err)
+	}
+	session, err := b.newSession("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := Bramble{}
-	if err = b.init(); err != nil {
-		t.Fatal(err)
-	}
+	// For convenience, pull in PATH from environment so that
+	// we can test with simple commands
+	session = session.setEnv("PATH", os.Getenv("PATH"))
 	for _, tt := range tests {
 		t.Run(tt.script, func(t *testing.T) {
 			thread := &starlark.Thread{Name: "main"}
-			cmd := NewCmdFunction(session, &b)
+			cmd := session.newCmdFunction()
 			globals, err := starlark.ExecFile(
 				thread, tt.name+".bramble",
 				fixUpScript(tt.script), starlark.StringDict{"cmd": cmd},

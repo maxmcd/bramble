@@ -3,7 +3,7 @@
 Bramble is a functional build system inspired by [nix](https://nixos.org/).
 
 Goals:
- - 
+ -
 **This codebase is in active development and is not stable, complete or secure, proceed with caution.**
 
 ### Overview
@@ -19,7 +19,7 @@ def run_busybox():
     # this call triggers the derivation to calculate and build
     bb = busybox()
     # whoami is now available to run
-    print(cmd("whoami", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
+    print(cmd("whoami", env={"PATH": bb.out + "/bin"}).output())
 
 
 def busybox():

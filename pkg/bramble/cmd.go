@@ -26,32 +26,24 @@ var ErrInvalidRead = errors.New("can't read from command output more than once")
 // CmdFunction is the value for the builtin "cmd", calling it as a function
 // creates a new cmd instance, it also has various other attributes and methods
 type CmdFunction struct {
-	session *Session
-
 	bramble *Bramble
-
-	// derivations that are touched by running commands
-	inputDerivations DerivationOutputs
+	session Session
 }
 
 var (
-	_ starlark.Value    = new(CmdFunction)
-	_ starlark.Callable = new(CmdFunction)
+	_ starlark.Value    = CmdFunction{}
+	_ starlark.Callable = CmdFunction{}
 )
 
-func NewCmdFunction(session *Session, bramble *Bramble) *CmdFunction {
-	return &CmdFunction{session: session, bramble: bramble}
-}
-
-func (fn *CmdFunction) Freeze()               {}
-func (fn *CmdFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable(fn.Type()) }
-func (fn *CmdFunction) Name() string          { return fn.Type() }
-func (fn *CmdFunction) String() string        { return "<built-in function cmd>" }
-func (fn *CmdFunction) Type() string          { return "builtin_function_cmd" }
-func (fn *CmdFunction) Truth() starlark.Bool  { return true }
+func (fn CmdFunction) Freeze()               {}
+func (fn CmdFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable(fn.Type()) }
+func (fn CmdFunction) Name() string          { return fn.Type() }
+func (fn CmdFunction) String() string        { return "<built-in function cmd>" }
+func (fn CmdFunction) Type() string          { return "builtin_function_cmd" }
+func (fn CmdFunction) Truth() starlark.Bool  { return true }
 
 // CallInternal defines the cmd() starlark function.
-func (fn *CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (fn CmdFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	if isTopLevel(thread) {
 		return nil, errors.New("cmd call not within a function")
 	}
@@ -100,7 +92,7 @@ func cmdArgumentsFromArgs(args starlark.Tuple) (out []string, err error) {
 
 // NewCmd creates a new cmd instance given args and kwargs. NewCmd will error
 // immediately if it can't find the cmd
-func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
+func (fn CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple, stdin *Cmd) (val starlark.Value, err error) {
 	cmd := Cmd{fn: fn,
 		Cmd: exec.Cmd{
 			SysProcAttr: &syscall.SysProcAttr{
@@ -108,14 +100,8 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 			},
 		},
 	}
-	cmd.Dir = ""
-	cmd.Env = []string{}
-
-	// for testing
-	if fn.session != nil {
-		cmd.Env = fn.session.envArray()
-		cmd.Dir = fn.session.currentDirectory
-	}
+	cmd.Dir = fn.session.currentDirectory
+	cmd.Env = fn.session.envArray()
 
 	var stdinKwarg starlark.Value
 	var dirKwarg starlark.String
@@ -132,6 +118,10 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 		return
 	}
 	cmd.ignoreErr = bool(ignoreFailureKwarg)
+
+	if dirKwarg.GoString() != "" {
+		cmd.Dir = dirKwarg.GoString()
+	}
 
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)
@@ -167,7 +157,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	// Search for input derivations
 
 	dos := cmd.searchForDerivationOutputs()
-	fn.inputDerivations = append(fn.inputDerivations, dos...)
+	fn.bramble.inputDerivations = append(fn.bramble.inputDerivations, dos...)
 	if err = fn.bramble.buildDerivationOutputs(dos); err != nil {
 		return
 	}
@@ -228,7 +218,7 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 type Cmd struct {
 	exec.Cmd
 
-	fn        *CmdFunction
+	fn        CmdFunction
 	frozen    bool
 	finished  bool
 	err       error
