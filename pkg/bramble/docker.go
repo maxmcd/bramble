@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime/trace"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -99,6 +100,10 @@ func ensureBrambleScratchImage(client *docker.Client) (err error) {
 }
 
 func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDockerBuildOptions) (err error) {
+	var task *trace.Task
+	ctx, task = trace.NewTask(ctx, "runDockerBuild")
+	defer task.End()
+
 	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		return err
@@ -162,6 +167,8 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	// TODO: remove when done developing this feature
 	_ = client.RemoveContainer(docker.RemoveContainerOptions{ID: name, Force: true})
 
+	region := trace.StartRegion(ctx, "createContainer")
+	defer func() { region.End() }()
 	cont, err := client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
@@ -189,6 +196,16 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	if err != nil {
 		return errors.Wrap(err, "error creating container")
 	}
+	defer func() {
+		er := client.RemoveContainer(docker.RemoveContainerOptions{
+			ID: cont.ID,
+		})
+		if err == nil && er != nil {
+			err = er
+		}
+	}()
+	region.End()
+	region = trace.StartRegion(ctx, "attachToContainer")
 	_, err = client.AttachToContainerNonBlocking(docker.AttachToContainerOptions{
 		Container:    cont.ID,
 		Stderr:       true,
@@ -202,31 +219,35 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 		InputStream: options.stdin,
 	})
 	if err != nil {
-		return errors.Wrap(err, "error attaching to container")
+		err = errors.Wrap(err, "error attaching to container")
+		return
 	}
 
+	region.End()
+	region = trace.StartRegion(ctx, "containerStarted")
 	if err = client.StartContainer(cont.ID, nil); err != nil {
-		return errors.Wrap(err, "error starting container")
+		err = errors.Wrap(err, "error starting container")
+		return
 	}
 
-	if _, err := client.WaitContainerWithContext(cont.ID, ctx); err != nil {
-		return err
+	if _, err = client.WaitContainerWithContext(cont.ID, ctx); err != nil {
+		return
 	}
 
 	if cont, err = client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		ID: cont.ID,
 	}); err != nil {
-		return err
+		return
 	}
 	if cont.State.Running {
-		return errors.New("build container is still running")
+		err = errors.New("build container is still running")
+		return
 	}
 	if cont.State.ExitCode != 0 {
-		return errors.Errorf("got container exit code %d", cont.State.ExitCode)
+		err = errors.Errorf("got container exit code %d", cont.State.ExitCode)
+		return
 	}
-	return client.RemoveContainer(docker.RemoveContainerOptions{
-		ID: cont.ID,
-	})
+	return
 }
 
 func dockerRunName() string {
@@ -235,6 +256,9 @@ func dockerRunName() string {
 }
 
 func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
+	var task *trace.Task
+	ctx, task = trace.NewTask(ctx, "runDockerRun")
+	defer task.End()
 	fmt.Println(args)
 	name := dockerRunName()
 
@@ -287,6 +311,9 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 		return errors.Wrap(err, "getting working directory for docker container")
 	}
 	fmt.Println("Running createContainer with", cmd, env)
+
+	region := trace.StartRegion(ctx, "createContainer")
+	defer func() { region.End() }()
 	cont, err := client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
@@ -321,6 +348,17 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 		return errors.Wrap(err, "error creating container")
 	}
 
+	defer func() {
+		er := client.RemoveContainer(docker.RemoveContainerOptions{
+			ID: cont.ID,
+		})
+		if err == nil && er != nil {
+			err = er
+		}
+	}()
+
+	region.End()
+	region = trace.StartRegion(ctx, "attachToContainer")
 	_, err = client.AttachToContainerNonBlocking(docker.AttachToContainerOptions{
 		Container:    cont.ID,
 		Stdout:       true,
@@ -335,7 +373,8 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "error attaching to container")
 	}
-
+	region.End()
+	region = trace.StartRegion(ctx, "containerStarted")
 	if err = client.StartContainer(cont.ID, nil); err != nil {
 		return errors.Wrap(err, "error starting container")
 	}
@@ -355,9 +394,7 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if cont.State.ExitCode != 0 {
 		return errors.Errorf("got container exit code %d", cont.State.ExitCode)
 	}
-	return client.RemoveContainer(docker.RemoveContainerOptions{
-		ID: cont.ID,
-	})
+	return nil
 }
 
 type myWriter struct{}

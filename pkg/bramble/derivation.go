@@ -2,11 +2,13 @@ package bramble
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
+	"runtime/trace"
 	"sort"
 	"time"
 
@@ -67,16 +69,14 @@ func isTopLevel(thread *starlark.Thread) bool {
 }
 
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	ctx, task := trace.NewTask(context.Background(), "derivation()")
+	defer task.End()
 	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
 	}
 	// Parse function arguments and assemble the basic derivation
 	var drv *Derivation
-	start := time.Now()
-	defer func() {
-		drv.metrics.parseTime = time.Since(start)
-	}()
-	drv, err = f.newDerivationFromArgs(args, kwargs)
+	drv, err = f.newDerivationFromArgs(ctx, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 
 	// find all source files that are used for this derivation
-	if err = f.bramble.calculateDerivationInputSources(drv); err != nil {
+	if err = f.bramble.calculateDerivationInputSources(ctx, drv); err != nil {
 		return
 	}
 
@@ -112,7 +112,10 @@ func (fbm functionBuilderMeta) constructFunctionBuilderMetaProto() *bramblepb.Fu
 	}
 }
 
-func (f *DerivationFunction) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
+func (f *DerivationFunction) newDerivationFromArgs(ctx context.Context, args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
+	region := trace.StartRegion(ctx, "newDerivationFromArgs")
+	defer region.End()
+
 	drv = &Derivation{
 		OutputNames: []string{"out"},
 		Env:         map[string]string{},
