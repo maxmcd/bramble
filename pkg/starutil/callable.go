@@ -7,10 +7,12 @@ import (
 	"go.starlark.net/starlark"
 )
 
+type CallableFunc func(*starlark.Thread, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)
+
 type Callable struct {
 	ParentName string
 	ThisName   string
-	Callable   func(*starlark.Thread, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)
+	Callable   CallableFunc
 }
 
 var (

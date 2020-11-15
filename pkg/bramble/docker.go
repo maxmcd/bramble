@@ -131,7 +131,6 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	user := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	if _, ok := os.LookupEnv("BRAMBLE_WITHIN_DOCKER"); ok {
 		user = fmt.Sprintf("%s:%s", os.Getenv("BRAMBLE_SET_UID"), os.Getenv("BRAMBLE_SET_GID"))
-		fmt.Println(user)
 		binds = []string{
 			fmt.Sprintf("%s:%s", volumeName, b.store.bramblePath),
 			// Mount the project that we're in
@@ -259,7 +258,6 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	var task *trace.Task
 	ctx, task = trace.NewTask(ctx, "runDockerRun")
 	defer task.End()
-	fmt.Println(args)
 	name := dockerRunName()
 
 	client, err := docker.NewClientFromEnv()
@@ -273,7 +271,6 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err = ensureBrambleScratchImage(client); err != nil {
 		return
 	}
-	fmt.Println(filepath.Join(b.store.bramblePath, "var/linux-binary"))
 	binds := []string{
 		// mount the bramble path
 		// we use the hosts bramble path here as a convenience so that we don't have
@@ -310,7 +307,6 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "getting working directory for docker container")
 	}
-	fmt.Println("Running createContainer with", cmd, env)
 
 	region := trace.StartRegion(ctx, "createContainer")
 	defer func() { region.End() }()

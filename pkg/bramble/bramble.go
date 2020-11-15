@@ -382,7 +382,6 @@ func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, er
 	if !fileExists(filename) {
 		return "", errors.Errorf("bramble file %q doesn't exist", filename)
 	}
-	fmt.Println(filename)
 	if !strings.HasPrefix(filename, b.configLocation) {
 		return "", errors.New("we don't support external modules yet")
 	}
@@ -390,7 +389,6 @@ func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, er
 	if err != nil {
 		return "", err
 	}
-	fmt.Println(relativeWorkspacePath)
 	moduleName = filepath.Join("github.com/maxmcd/bramble", relativeWorkspacePath)
 	moduleName = strings.TrimSuffix(moduleName, "/default"+BrambleExtension)
 	moduleName = strings.TrimSuffix(moduleName, BrambleExtension)

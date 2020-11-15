@@ -35,16 +35,12 @@ func (os OS) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("os") }
 func (os OS) AttrNames() []string {
 	return []string{
 		"args",
-		"cd",
-		"cmd",
 		"cp",
-		"create",
+		"cmd",
 		"error",
-		"expand",
-		"getenv",
 		"input",
 		"mkdir",
-		"setenv",
+		"session",
 	}
 }
 
@@ -59,24 +55,25 @@ func makeArgs() (starlark.Value, error) {
 }
 
 func (os OS) Attr(name string) (val starlark.Value, err error) {
+	// calling os before a derivation is disallowed
 	os.bramble.AfterDerivation()
+
+	callables := map[string]starutil.CallableFunc{
+		"cp":      os.cp,
+		"error":   os.error,
+		"input":   os.input,
+		"mkdir":   os.mkdir,
+		"session": os.session,
+	}
+	if fn, ok := callables[name]; ok {
+		return starutil.Callable{ThisName: name, ParentName: "os", Callable: fn}, nil
+	}
+
 	switch name {
 	case "args":
 		return makeArgs()
-	case "cp":
-		return starutil.Callable{ThisName: "cp", ParentName: "os", Callable: os.cp}, nil
 	case "cmd":
 		return os.cmdFunction, nil
-	case "create":
-		return starutil.Callable{ThisName: "create", ParentName: "os", Callable: os.create}, nil
-	case "error":
-		return starutil.Callable{ThisName: "error", ParentName: "os", Callable: os.error}, nil
-	case "input":
-		return starutil.Callable{ThisName: "input", ParentName: "os", Callable: os.input}, nil
-	case "mkdir":
-		return starutil.Callable{ThisName: "mkdir", ParentName: "os", Callable: os.mkdir}, nil
-	case "session":
-		return starutil.Callable{ThisName: "session", ParentName: "os", Callable: os.session}, nil
 	}
 	return nil, nil
 }
@@ -123,66 +120,5 @@ func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 	}
 	err = cp("", paths...)
 	fmt.Printf("%+v", err)
-	return starlark.None, err
-}
-
-func (os OS) create(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var path starlark.String
-	if err = starlark.UnpackArgs("create", args, kwargs, "path", &path); err != nil {
-		return
-	}
-	f, err := goos.Create(path.GoString())
-	return File{file: f}, err
-}
-
-type File struct {
-	name string
-	file *goos.File
-}
-
-var (
-	_ starlark.Value    = File{}
-	_ starlark.HasAttrs = File{}
-)
-
-func (f File) String() string        { return fmt.Sprintf("<file '%s'>", f.name) }
-func (f File) Freeze()               {}
-func (f File) Type() string          { return "file" }
-func (f File) Truth() starlark.Bool  { return starlark.True }
-func (f File) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("os") }
-func (f File) AttrNames() []string {
-	return []string{
-		"write",
-		"close",
-	}
-}
-
-func (f File) Attr(name string) (val starlark.Value, err error) {
-	switch name {
-	case "write":
-		return starutil.Callable{ThisName: "write", ParentName: "file", Callable: f.write}, nil
-	case "close":
-		return starutil.Callable{ThisName: "close", ParentName: "file", Callable: f.close}, nil
-	}
-	return nil, nil
-}
-
-func (f File) close(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	if err = starlark.UnpackArgs("close", args, kwargs); err != nil {
-		return
-	}
-	return starlark.None, f.file.Close()
-}
-
-func (f File) write(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
-	var content starlark.Value
-	if err = starlark.UnpackArgs("write", args, kwargs, "content", &content); err != nil {
-		return
-	}
-	s, err := starutil.ValueToString(content)
-	if err != nil {
-		return
-	}
-	_, err = f.file.Write([]byte(s))
 	return starlark.None, err
 }
