@@ -72,7 +72,6 @@ type Bramble struct {
 
 	derivationFn *DerivationFunction
 	cmd          *CmdFunction
-	session      *Session
 
 	store Store
 
@@ -142,7 +141,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 	return b.writeDerivation(drv)
 }
 
-func (b *Bramble) hashAndMoveFetchUrl(ctx context.Context, drv *Derivation, outputPath string) (err error) {
+func (b *Bramble) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outputPath string) (err error) {
 	region := trace.StartRegion(ctx, "hashAndMoveFetchUrl")
 	defer region.End()
 
@@ -164,7 +163,7 @@ func (b *Bramble) hashAndMoveFetchUrl(ctx context.Context, drv *Derivation, outp
 
 func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err error) {
 	var task *trace.Task
-	ctx, task = trace.NewTask(context.Background(), "buildDerivation")
+	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
 
 	buildDir, err := b.createStoreTmpDir()
@@ -203,7 +202,7 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	if drv.Builder == "fetch_url" {
 		// fetch url just hashes the directory and moves it into the output
 		// location, no archiving and byte replacing
-		return b.hashAndMoveFetchUrl(ctx, drv, outputPaths["out"])
+		return b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
 	}
 	return b.hashAndMoveBuildOutputs(ctx, drv, outputPaths)
 }
@@ -598,7 +597,6 @@ func brambleFunctionBuildSingleton() (err error) {
 		moduleCache:      functionBuild.FunctionBuilderMeta.ModuleCache,
 		filenameCache:    NewBiStringMap(),
 		importGraph:      NewAcyclicGraph(),
-		session:          session,
 		derivations:      &DerivationsMap{},
 	}
 
@@ -851,7 +849,6 @@ func (b *Bramble) replaceOutputValuesInCmd(cmd *Cmd) (err error) {
 	for i, env := range cmd.Env {
 		cmd.Env[i] = replacer.Replace(env)
 	}
-	fmt.Println(cmd.Env)
 	return nil
 }
 
@@ -967,7 +964,6 @@ func (b *Bramble) callInlineDerivationFunction(
 		moduleCache:      meta.ModuleCache,
 		filenameCache:    NewBiStringMap(),
 		importGraph:      NewAcyclicGraph(),
-		session:          session,
 	}
 	newBramble.thread = &starlark.Thread{Load: newBramble.load}
 	// this will pass the session to cmd and os
@@ -1026,9 +1022,6 @@ func (b *Bramble) init() (err error) {
 		Name: "main",
 		Load: b.load,
 	}
-	if b.session, err = newSession("", nil); err != nil {
-		return err
-	}
 
 	return b.initPredeclared()
 }
@@ -1069,7 +1062,7 @@ func (b *Bramble) initPredeclared() (err error) {
 		return
 	}
 
-	b.cmd = NewCmdFunction(b.session, b)
+	b.cmd = NewCmdFunction(nil, b)
 
 	debugger := starlark.NewBuiltin("debugger", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		// TODO: https://github.com/google/starlark-go/issues/304

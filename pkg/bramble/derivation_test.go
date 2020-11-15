@@ -145,5 +145,5 @@ func TestDerivationCaching(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(v.(*Derivation).metrics.parseTime)
+	_ = v
 }

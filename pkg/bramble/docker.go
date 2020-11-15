@@ -392,10 +392,3 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	}
 	return nil
 }
-
-type myWriter struct{}
-
-func (mw *myWriter) Write(b []byte) (ln int, err error) {
-	fmt.Println("ok", string(b))
-	return len(b), nil
-}
