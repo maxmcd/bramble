@@ -12,17 +12,24 @@ def make(*args):
     return std.exec(nix_seed.stdenv().out + "/bin/make", *args)
 
 
-def cp(s, *args):
+def new_session_with_stdenv_path(s):
+    new_s = os.session()
+    for k, v in s.environ.items():
+        new_s.setenv(k, v)
     output = nix_seed.stdenv().out
-    s.setenv("PATH", "{}/bin".format(output))
+    if output in new_s.getenv("PATH"):
+        return new_s
+    new_s.setenv("PATH", "{}:{}/bin".format(s.getenv("PATH"), output))
+    return new_s
 
-    return std.exec(s, "cp", *args,)
+
+def cp(session, *args):
+    s = new_session_with_stdenv_path(session)
+    return std.exec(s, "cp", *args)
 
 
-def ls(path=None, human=False, all=False, long_list=False):
-    s = os.session()
-    output = nix_seed.stdenv().out
-    s.setenv("PATH", "{}/bin".format(output))
+def ls(session, path=None, human=False, all=False, long_list=False):
+    s = new_session_with_stdenv_path(session)
     command = ["ls"]
     if path:
         command.append(path)
@@ -36,7 +43,10 @@ def ls(path=None, human=False, all=False, long_list=False):
 
 
 def foo():
-    print(ls(human=True, all=True, long_list=True).output())
+    s = new_session_with_stdenv_path(os.session())
+    output = nix_seed.stdenv().out
+    print(ls(s, output + "/bin", long_list=True).output())
+    print(ls(s, "lib", human=True, all=True, long_list=True).output())
 
 
 def gcc(*args):

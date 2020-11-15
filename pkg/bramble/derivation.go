@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"runtime/trace"
 	"sort"
-	"time"
 
 	"github.com/maxmcd/bramble/pkg/bramblepb"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -213,14 +212,6 @@ type Derivation struct {
 	// internal fields
 	sources  []string
 	location string
-
-	metrics derivationMetrics
-}
-
-type derivationMetrics struct {
-	parseTime time.Duration
-	buildTime time.Duration
-	cached    bool
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

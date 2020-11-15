@@ -126,6 +126,12 @@ func (fn *CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwar
 	}
 	cmd.ignoreErr = bool(ignoreFailureKwarg)
 	cmd.Env = []string{}
+
+	// for testing
+	if fn.session != nil {
+		cmd.Env = fn.session.envArray()
+	}
+
 	if envKwarg != nil {
 		kvs, err := starutil.DictToGoStringMap(envKwarg)
 		if err != nil {
