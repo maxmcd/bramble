@@ -9,7 +9,9 @@ def _zig():
         "https://github.com/ziglang/zig/releases/download/0.6.0/zig-linux-x86_64-0.6.0.tar.xz"
     )
     return derivation(
-        name="zig", builder=_build_zig, env=dict(zig=archive, PATH="%s/bin" % busybox.busybox())
+        name="zig",
+        builder=_build_zig,
+        env=dict(zig=archive, PATH="%s/bin" % busybox.busybox()),
     )
 
 
@@ -37,15 +39,18 @@ def ldd():
 
 
 def _build_ldd(s, outputs):
-    os.mkdir(outputs["out"] + "/bin")
-    f = os.create(s.expand("$out/bin/ldd"))
-    f.write(
-        """#!{seed}/bin/sh
+    s.setenv("PATH", s.expand("$seed/bin/"))
+    os.mkdir(s.expand("$out/bin"))
+    script = """#!{seed}/bin/sh
 exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
-#hihihihi
-""".format(
-            seed=s.getenv("seed")
-        )
+#hihihihi""".format(
+        seed=s.getenv("seed")
     )
-    f.close()
+    os.cmd("echo", script, env=s.environ).output.to_file(s.expand("$out/bin/ldd"))
     std.exec(s, "$seed/bin/chmod", "+x", "$out/bin/ldd")
+    if (
+        "Version 1.1.24\nDynamic Program Loader"
+        not in std.exec(s, "$out/bin/ldd", "--help", ignore_failure=True).output()
+    ):
+        # todo, use the assert module
+        std.exec(s, "error")

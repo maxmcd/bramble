@@ -302,23 +302,24 @@ func (cmd *Cmd) path() string {
 }
 
 func (cmd *Cmd) Attr(name string) (val starlark.Value, err error) {
+	callables := map[string]starutil.CallableFunc{
+		"if_err": cmd.ifErr,
+		"kill":   cmd.kill,
+		"pipe":   cmd.pipe,
+		"wait":   cmd.starlarkWait,
+	}
+	if fn, ok := callables[name]; ok {
+		return starutil.Callable{ThisName: name, ParentName: "cmd", Callable: fn}, nil
+	}
 	switch name {
-	case "output":
-		return ByteStream{stdout: true, stderr: true, cmd: cmd}, nil
 	case "exit_code":
 		return cmd.ExitCode(), nil
-	case "if_err":
-		return starutil.Callable{ThisName: "if_err", ParentName: "cmd", Callable: cmd.IfErr}, nil
-	case "kill":
-		return starutil.Callable{ThisName: "kill", ParentName: "cmd", Callable: cmd.Kill}, nil
-	case "pipe":
-		return starutil.Callable{ThisName: "pipe", ParentName: "cmd", Callable: cmd.Pipe}, nil
+	case "output":
+		return ByteStream{stdout: true, stderr: true, cmd: cmd}, nil
 	case "stderr":
 		return ByteStream{stderr: true, cmd: cmd}, nil
 	case "stdout":
 		return ByteStream{stdout: true, cmd: cmd}, nil
-	case "wait":
-		return starutil.Callable{ThisName: "wait", ParentName: "cmd", Callable: cmd.starlarkWait}, nil
 	}
 	return nil, nil
 }
@@ -353,7 +354,7 @@ func (cmd *Cmd) Wait() error {
 	return cmd.err
 }
 
-func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+func (cmd *Cmd) ifErr(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	// If there's no error we ignore the 'or' call
 	if err := cmd.Wait(); err == nil {
 		return cmd, nil
@@ -363,7 +364,7 @@ func (cmd *Cmd) IfErr(thread *starlark.Thread, args starlark.Tuple, kwargs []sta
 	return cmd.fn.newCmd(thread, args, kwargs, nil)
 }
 
-func (cmd *Cmd) Pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+func (cmd *Cmd) pipe(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	_ = cmd.setOutput(true, false)
 	return cmd.fn.newCmd(thread, args, kwargs, cmd)
 }
@@ -372,7 +373,7 @@ func (cmd *Cmd) starlarkWait(thread *starlark.Thread, args starlark.Tuple, kwarg
 	return cmd, cmd.Wait()
 }
 
-func (cmd *Cmd) Kill(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+func (cmd *Cmd) kill(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
 	if err = starlark.UnpackArgs("kill", args, kwargs); err != nil {
 		return
 	}
@@ -455,18 +456,24 @@ func (bs ByteStream) Name() string {
 	}
 	return "stdout"
 }
-func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+
+func (bs ByteStream) readAllBytes() (b []byte, err error) {
 	if err = bs.cmd.setOutput(bs.stdout, bs.stderr); err != nil {
 		return
 	}
-	b, err := ioutil.ReadAll(bs.cmd)
+	b, err = ioutil.ReadAll(bs.cmd)
 	if err == io.ErrClosedPipe {
 		err = nil
 	}
 	if err != nil {
 		// TODO: need a better solution for this
-		fmt.Println(string(b))
+		fmt.Print(string(b))
 	}
+	return b, err
+}
+
+func (bs ByteStream) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {
+	b, err := bs.readAllBytes()
 	return starlark.String(string(b)), err
 }
 
@@ -488,6 +495,43 @@ func (bs ByteStream) Iterate() starlark.Iterator {
 		bsi.buf = bufio.NewReader(bs.cmd)
 	}
 	return bsi
+}
+
+func (bs ByteStream) Attr(name string) (val starlark.Value, err error) {
+	if name == "to_file" {
+		return starutil.Callable{
+			ParentName: bs.Name(),
+			ThisName:   name,
+			Callable: func(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+				b, err := bs.readAllBytes()
+				if err != nil {
+					return nil, err
+				}
+
+				var path starlark.String
+				if err = starlark.UnpackArgs(name, args, kwargs, "path", &path); err != nil {
+					return nil, err
+				}
+				pathString := path.GoString()
+				if !filepath.IsAbs(pathString) {
+					pathString = filepath.Join(bs.cmd.fn.session.currentDirectory, pathString)
+				}
+				f, err := os.Create(pathString)
+				if err != nil {
+					return nil, err
+				}
+				if _, err = f.Write(b); err != nil {
+					return nil, err
+				}
+				return starlark.None, f.Close()
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (bs ByteStream) AttrNames() (out []string) {
+	return []string{"to_file"}
 }
 
 type byteStreamIterator struct {

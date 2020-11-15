@@ -95,9 +95,16 @@ func (s *Session) AttrNames() []string {
 }
 
 func (s *Session) Attr(name string) (val starlark.Value, err error) {
+	callables := map[string]starutil.CallableFunc{
+		"cd":     s.cdFn,
+		"expand": s.expandFn,
+		"setenv": s.setenvFn,
+		"getenv": s.getenvFn,
+	}
+	if fn, ok := callables[name]; ok {
+		return starutil.Callable{ThisName: name, ParentName: "session", Callable: fn}, nil
+	}
 	switch name {
-	case "cd":
-		return starutil.Callable{ThisName: "cd", ParentName: "session", Callable: s.cdFn}, nil
 	case "environ":
 		out := starlark.NewDict(len(s.env))
 		// TODO: cache this?
@@ -107,12 +114,6 @@ func (s *Session) Attr(name string) (val starlark.Value, err error) {
 			_ = out.SetKey(starlark.String(k), starlark.String(v))
 		}
 		return out, nil
-	case "expand":
-		return starutil.Callable{ThisName: "expand", ParentName: "session", Callable: s.expandFn}, nil
-	case "setenv":
-		return starutil.Callable{ThisName: "setenv", ParentName: "session", Callable: s.setenvFn}, nil
-	case "getenv":
-		return starutil.Callable{ThisName: "getenv", ParentName: "session", Callable: s.getenvFn}, nil
 	case "wd":
 		return starlark.String(s.currentDirectory), nil
 	}
