@@ -119,10 +119,6 @@ func TestCmdArgs(t *testing.T) {
 			respContains: `"hi\n"`},
 		{script: `cmd("grep hi", stdin="hi").output()`,
 			respContains: `"hi\n"`},
-		{script: `cmd("env", clear_env=True).output()`,
-			errContains: `not found`},
-		{script: `cmd("env", clear_env=True, env={"foo":"bar", "baz": 1}).output()`,
-			errContains: `not found`},
 	}
 	runCmdTest(t, tests)
 }
