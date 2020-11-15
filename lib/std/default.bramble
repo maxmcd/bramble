@@ -5,14 +5,11 @@ def exec(session, *args, **kwargs):
     expanded_args = []
     for arg in args:
         expanded_args.append(session.expand(str(arg)))
-
-    defaults = dict(
-        print_output=True, dir=session.wd, env=session.environ, clear_env=True,
-    )
+    defaults = dict(print_output=True)
     for k, v in defaults.items():
         if kwargs.get(k) == None:
             kwargs[k] = v
-    c = os.cmd(*expanded_args, **kwargs)
+    c = session.cmd(*expanded_args, **kwargs)
     return c.wait()
 
 

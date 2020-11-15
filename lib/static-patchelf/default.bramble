@@ -1,7 +1,8 @@
 def _upload():
-    os.setenv("AWS_PROFILE", "max")
+    s = os.session()
+    s = s.setenv("AWS_PROFILE", "max")
     print(
-        os.cmd(
+        s.cmd(
             "aws s3 cp ./patchelf.tar.gz s3://brmbl/patchelf.tar.gz --acl public-read",
         ).output()
     )

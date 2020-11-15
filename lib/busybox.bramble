@@ -47,7 +47,7 @@ def _build_busybox(s, outputs):
             commands_started = True
 
     # cd into the output directory so that symlinks are relative
-    s.cd(s.expand("$out/bin"))
+    s = s.cd(s.expand("$out/bin"))
     std.exec(s, "./busybox ln -s busybox ln")
 
     # link each command so that we can use all the available busybox commands
@@ -61,4 +61,4 @@ def run_busybox():
 
     # whoami is now available to run
     print(bb.out)
-    print(os.cmd("ls", clear_env=True, env={"PATH": bb.out + "/bin"}).output())
+    print(os.session().cmd("ls", env={"PATH": bb.out + "/bin"}).output())

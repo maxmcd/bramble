@@ -187,7 +187,7 @@ func (ci *CLI) run(args []string) {
 			return
 		} else if ci.Args[0] == BrambleFunctionBuildHiddenCommand {
 			if err := brambleFunctionBuildSingleton(); err != nil {
-				fmt.Fprintln(ci.stderr, err)
+				fmt.Fprint(ci.stderr, starutil.AnnotateError(err))
 				trace.Stop()
 				ci.exit(1)
 			}

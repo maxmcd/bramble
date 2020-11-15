@@ -49,11 +49,10 @@ def foo():
     print(ls(s, "lib", human=True, all=True, long_list=True).output())
 
 
-def gcc(*args):
+def gcc(s, *args):
     """hi"""
     output = nix_seed.stdenv().out
-    s = os.session()
-    s.setenv("PATH", "{}/bin".format(output))
+    s = s.setenv("PATH", "{}/bin".format(output))
 
     return std.exec(
         s,

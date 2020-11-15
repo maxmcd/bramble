@@ -14,8 +14,6 @@ import (
 
 type OS struct {
 	bramble *Bramble
-
-	cmdFunction *CmdFunction
 }
 
 var (
@@ -23,8 +21,8 @@ var (
 	_ starlark.HasAttrs = OS{}
 )
 
-func NewOS(bramble *Bramble, cmdFunction *CmdFunction) OS {
-	return OS{bramble: bramble, cmdFunction: cmdFunction}
+func NewOS(bramble *Bramble) OS {
+	return OS{bramble: bramble}
 }
 
 func (os OS) String() string        { return "<module 'os'>" }
@@ -36,7 +34,6 @@ func (os OS) AttrNames() []string {
 	return []string{
 		"args",
 		"cp",
-		"cmd",
 		"error",
 		"input",
 		"mkdir",
@@ -65,12 +62,8 @@ func (os OS) Attr(name string) (val starlark.Value, err error) {
 	if fn, ok := callables[name]; ok {
 		return starutil.Callable{ThisName: name, ParentName: "os", Callable: fn}, nil
 	}
-
-	switch name {
-	case "args":
+	if name == "args" {
 		return makeArgs()
-	case "cmd":
-		return os.cmdFunction, nil
 	}
 	return nil, nil
 }
@@ -102,7 +95,7 @@ func (os OS) session(thread *starlark.Thread, args starlark.Tuple, kwargs []star
 	if err = starlark.UnpackArgs("session", args, kwargs); err != nil {
 		return
 	}
-	return newSession("/", map[string]string{})
+	return os.bramble.newSession("/", map[string]string{})
 }
 
 func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (val starlark.Value, err error) {

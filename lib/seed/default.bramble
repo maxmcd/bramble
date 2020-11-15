@@ -46,7 +46,7 @@ exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
 #hihihihi""".format(
         seed=s.getenv("seed")
     )
-    os.cmd("echo", script, env=s.environ).output.to_file(s.expand("$out/bin/ldd"))
+    s.cmd("echo", script).output.to_file(s.expand("$out/bin/ldd"))
     std.exec(s, "$seed/bin/chmod", "+x", "$out/bin/ldd")
     if (
         "Version 1.1.24\nDynamic Program Loader"

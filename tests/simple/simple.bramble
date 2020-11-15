@@ -29,5 +29,5 @@ def simple2():
 
 
 def _simple2(s, outputs):
-    stdenv.gcc("-o", outputs["out"] + "/simple", "./simple.c")
+    stdenv.gcc(s, "-o", outputs["out"] + "/simple", "./simple.c")
     std.exec(s, outputs["out"] + "/simple")
