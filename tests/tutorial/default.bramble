@@ -1,15 +1,30 @@
 load("github.com/maxmcd/bramble/lib/stdenv")
-load("github.com/maxmcd/bramble/lib/std")
-load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
 
-def step_1():
-    nix = nix_seed.stdenv()
-    return derivation(
-        builder=nix.out + "/bin/bash", args=["./step1.sh"], sources=["./step1.sh"]
+# WIP
+def __step_1():
+    std = stdenv.stdenv()
+    return stdenv.std_derivation(
+        builder=std.out + "/bin/bash", sources=["./step1.sh"], args=["./step1.sh"]
     )
 
 
-def _simple2(s, outputs):
-    stdenv.gcc(s, "-o", outputs["out"] + "/simple", "./simple.c")
-    std.exec(s, outputs["out"] + "/simple")
+# WIP
+def __step_2():
+    return stdenv.std_derivation(sources=["./step1.sh"], builder=_step_2,)
+
+
+def _step_2(session, outputs):
+    s = session
+    s.cmd("mkdir", s.expand("$out/bin"))
+    file_contents = "#!{}\n".format(s.getenv("bash"))
+
+    expected_output = "hello there!"
+    file_contents += "echo '{}'".format(expected_output)
+
+    output = s.expand("$out/bin/say_hi")
+
+    s.cmd("echo", file_contents).stdout.to_file(output)
+    s.cmd("chmod", "+x", output).wait()
+
+    assert.eq(s.cmd(output).output(), expected_output+"\n")

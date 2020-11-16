@@ -28,7 +28,7 @@ def simple2():
     return derivation(
         builder=_simple2,
         sources=["./simple.c", "simple_builder.sh"],
-        env={"stdenv": stdenv.build_inputs()[0]},
+        env={"stdenv": stdenv.stdenv().out},
     )
 
 

@@ -80,6 +80,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return nil, err
 	}
 
+	// TODO: this doesn't work with a wrapped derivation function
 	// Make sure the location of the derivation is set using the call stack
 	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
 
