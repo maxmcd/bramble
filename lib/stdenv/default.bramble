@@ -2,6 +2,7 @@
 
 load("github.com/maxmcd/bramble/lib/std")
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load("github.com/maxmcd/bramble/lib/busybox")
 
 
 def make(*args):
@@ -57,4 +58,17 @@ def gcc(s, *args):
         "-Wl,--rpath={}/lib".format(output),
         "-Wl,--dynamic-linker={}/lib/ld-linux-x86-64.so.2".format(output),
         *args,
+    )
+
+
+stdenv = nix_seed.stdenv
+
+
+def std_derivation(**kwargs):
+    nix = nix_seed.stdenv()
+    bb = busybox.busybox()
+
+    PATH = "{}/bin:{}/bin".format(nix.out, bb.out)
+    return derivation(
+        env=dict(PATH=PATH, bash=nix.out, stdenv=nix.out, busybox=bb.out), **kwargs,
     )

@@ -23,4 +23,4 @@ So maybe we just have it use the module root? That would provided a consistent v
 
 It is unintuitive though. Maybe more intuitive that the current working directory is the directory where code is being run. For external packages you just use the current directory. Ah, you do need that to take arbitrary action on the current directory with an external lib. That is still inconsistent. We run into the makefile problem yet again.
 
-I say we just leave it at "the working directory where the file is run" and provide access to the module root on the os module so that people can build their own resilient build commands.
+I say we just leave it at "the working directory where the file is run" and provide access to the module root on the os module so that people can build their own resilient build commands. (which is basically how python works)
