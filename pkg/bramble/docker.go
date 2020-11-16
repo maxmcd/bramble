@@ -299,7 +299,6 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	env = append(env, fmt.Sprintf("BRAMBLE_SET_UID=%d", os.Geteuid()))
 	env = append(env, fmt.Sprintf("BRAMBLE_SET_GID=%d", os.Getegid()))
 	env = append(env, "BRAMBLE_WITHIN_DOCKER=1")
-	fmt.Println("creating container with name", name)
 
 	cmd := append([]string{"/bin/bramble"}, args...)
 
@@ -307,9 +306,6 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "getting working directory for docker container")
 	}
-	fmt.Println("--------------------")
-	fmt.Println(wd)
-	fmt.Println("--------------------")
 
 	region := trace.StartRegion(ctx, "createContainer")
 	defer func() { region.End() }()

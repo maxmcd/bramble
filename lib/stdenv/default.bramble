@@ -4,23 +4,15 @@ load("github.com/maxmcd/bramble/lib/std")
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
 
-def build_inputs():
-    return [nix_seed.stdenv()]
-
-
 def make(*args):
     return std.exec(nix_seed.stdenv().out + "/bin/make", *args)
 
 
 def new_session_with_stdenv_path(s):
-    new_s = os.session()
-    for k, v in s.environ.items():
-        new_s.setenv(k, v)
     output = nix_seed.stdenv().out
-    if output in new_s.getenv("PATH"):
-        return new_s
-    new_s.setenv("PATH", "{}:{}/bin".format(s.getenv("PATH"), output))
-    return new_s
+    if output in s.getenv("PATH"):
+        return s
+    return s.setenv("PATH", "{}:{}/bin".format(s.getenv("PATH"), output))
 
 
 def cp(session, *args):
@@ -39,10 +31,10 @@ def ls(session, path=None, human=False, all=False, long_list=False):
         command.append("-a")
     if long_list:
         command.append("-l")
-    return os.cmd(*command, env=s.environ)
+    return s.cmd(*command, env=s.environ)
 
 
-def foo():
+def test_stdenv():
     s = new_session_with_stdenv_path(os.session())
     output = nix_seed.stdenv().out
     print(ls(s, output + "/bin", long_list=True).output())

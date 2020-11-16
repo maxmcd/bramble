@@ -18,6 +18,10 @@ def run_simple():
     s = simple()
     std.exec(os.session(), s.out + "/simple")
 
+def test_simple():
+    s = simple()
+    s = os.session().setenv("PATH", s.out)
+    assert.eq(s.cmd("simple").output(), "Simple!\n")
 
 def simple2():
     s = seed.seed()
@@ -26,6 +30,12 @@ def simple2():
         sources=["./simple.c", "simple_builder.sh"],
         env={"stdenv": stdenv.build_inputs()[0]},
     )
+
+
+def test_simple2():
+    s = simple2()
+    s = os.session().setenv("PATH", s.out)
+    assert.eq(s.cmd("simple").output(), "Simple!\n")
 
 
 def _simple2(s, outputs):

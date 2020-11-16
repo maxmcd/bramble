@@ -26,10 +26,16 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/certifi/gocertifi"
+	git "github.com/go-git/go-git/v5"
+	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/hashicorp/terraform/dag"
 	"github.com/hashicorp/terraform/tfdiags"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
+	"go.starlark.net/repl"
+	"go.starlark.net/resolve"
+	"go.starlark.net/starlark"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -37,9 +43,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"go.starlark.net/repl"
-	"go.starlark.net/resolve"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -191,6 +194,8 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	switch drv.Builder {
 	case "fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
+	case "fetch_git":
+		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	case "function":
 		err = b.dockerFunctionBuilder(ctx, drvCopy, buildDir, outputPaths)
 	default:
@@ -479,6 +484,41 @@ func (b *Bramble) writeDerivation(drv *Derivation) error {
 	fileLocation := b.store.joinStorePath(filename)
 
 	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
+}
+
+func (b *Bramble) fetchGitBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+	region := trace.StartRegion(ctx, "fetchGitBuilder")
+	defer region.End()
+
+	certPool, err := gocertifi.CACerts()
+	customClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: certPool},
+		},
+	}
+
+	// Override http(s) default protocol to use our custom client
+	gitclient.InstallProtocol("https", githttp.NewClient(customClient))
+	git.PlainClone("", false, &git.CloneOptions{})
+
+	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
+		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
+	}
+	url, ok := drv.Env["url"]
+	if !ok {
+		return errors.New("fetch_url requires the environment variable 'url' to be set")
+	}
+	// derivation can provide a hash, but usually this is just in the lockfile
+	hash := drv.Env["hash"]
+	path, err := b.DownloadFile(ctx, url, hash)
+	if err != nil {
+		return err
+	}
+	// TODO: what if this package changes?
+	if err = archiver.Unarchive(path, outputPaths["out"]); err != nil {
+		return errors.Wrap(err, "error unpacking url archive")
+	}
+	return nil
 }
 
 func (b *Bramble) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
