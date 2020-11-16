@@ -7,6 +7,7 @@ require (
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
 	github.com/fsouza/go-dockerclient v1.6.5
+	github.com/go-git/go-git/v5 v5.2.0
 	github.com/hashicorp/terraform v0.13.2
 	github.com/jaguilar/vt100 v0.0.0-20150826170717-2703a27b14ea
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
@@ -20,6 +21,7 @@ require (
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/protobuf v1.23.0
+	gopkg.in/src-d/go-git.v4 v4.13.1
 )
 
 replace (

@@ -55,7 +55,7 @@ def _build_busybox(s, outputs):
             std.exec(s, "./ln -s busybox %s" % c)
 
 
-def run_busybox():
+def test_busybox():
     bb = busybox()
 
     # whoami is now available to run

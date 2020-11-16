@@ -39,9 +39,6 @@ docker_reptar: ## Used to compare reptar output to gnutar
 drv_test: install
 	bramble test tests/derivation_test.bramble
 
-starlark_builder: install
-	bramble run lib/busybox:run_busybox
-
 touch_file: install
 	bramble run lib/busybox:touch_file
 

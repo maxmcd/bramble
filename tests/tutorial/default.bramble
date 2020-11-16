@@ -1,0 +1,15 @@
+load("github.com/maxmcd/bramble/lib/stdenv")
+load("github.com/maxmcd/bramble/lib/std")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+
+
+def step_1():
+    nix = nix_seed.stdenv()
+    return derivation(
+        builder=nix.out + "/bin/bash", args=["./step1.sh"], sources=["./step1.sh"]
+    )
+
+
+def _simple2(s, outputs):
+    stdenv.gcc(s, "-o", outputs["out"] + "/simple", "./simple.c")
+    std.exec(s, outputs["out"] + "/simple")
