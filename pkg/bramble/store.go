@@ -33,7 +33,6 @@ func (s *Store) ensureBramblePath() (err error) {
 	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
 	// the user's home directory.
 	s.bramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
-	fmt.Println("STOOOOOOOOOOOOOOOOOORE", s.bramblePath)
 	if !exists {
 		var home string
 		home, err = os.UserHomeDir()
