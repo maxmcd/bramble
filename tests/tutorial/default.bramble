@@ -2,7 +2,7 @@ load("github.com/maxmcd/bramble/lib/stdenv")
 
 
 # WIP
-def __step_1():
+def step_1():
     std = stdenv.stdenv()
     return stdenv.std_derivation(
         builder=std.out + "/bin/bash", sources=["./step1.sh"], args=["./step1.sh"]
@@ -10,7 +10,7 @@ def __step_1():
 
 
 # WIP
-def __step_2():
+def step_2():
     return stdenv.std_derivation(sources=["./step1.sh"], builder=_step_2,)
 
 

@@ -54,6 +54,9 @@ nested: install
 ldd: install
 	bramble run lib/seed:ldd
 
+bramble: install
+	bramble
+
 repl: install
 	bramble repl
 

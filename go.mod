@@ -15,6 +15,8 @@ require (
 	github.com/mitchellh/cli v1.1.1
 	github.com/moby/moby v1.13.1
 	github.com/morikuni/aec v1.0.0
+	github.com/peterbourgon/ff v1.7.0
+	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.6.1
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
