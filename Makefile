@@ -86,3 +86,14 @@ bb2: install
 
 install_reptar:
 	cd pkg/reptar/reptar && go install
+
+build_thorn:
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+		go build -tags netgo -ldflags '-w' ./pkg/cmd/bramble-setuid
+	sudo chown root:root ./bramble-setuid
+	sudo chmod u+s,g+s ./bramble-setuid
+	rm -f $$(go env GOPATH)/bin/bramble-setuid || true
+	mv ./bramble-setuid $$(go env GOPATH)/bin
+
+run_thorn: build_thorn
+	go run ./pkg/cmd/thorn

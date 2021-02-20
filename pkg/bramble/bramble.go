@@ -40,8 +40,11 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/bramblepb"
+	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/maxmcd/bramble/pkg/textreplace"
 )
 
@@ -77,7 +80,7 @@ type Bramble struct {
 	// derivations that are touched by running commands
 	inputDerivations DerivationOutputs
 
-	store Store
+	store store.Store
 
 	moduleCache   map[string]string
 	filenameCache *BiStringMap
@@ -104,7 +107,7 @@ func (b *Bramble) CalledDerivation(filename string) error {
 }
 
 func (b *Bramble) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := b.store.joinStorePath(filename)
+	fileLocation := b.store.JoinStorePath(filename)
 	_, err = os.Stat(fileLocation)
 	if err != nil {
 		return nil, false, nil
@@ -149,15 +152,15 @@ func (b *Bramble) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outp
 	region := trace.StartRegion(ctx, "hashAndMoveFetchUrl")
 	defer region.End()
 
-	hasher := NewHasher()
-	_, err = b.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hasher, drv, filepath.Base(outputPath))
+	hshr := hasher.NewHasher()
+	_, err = b.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hshr, drv, filepath.Base(outputPath))
 	if err != nil {
 		return err
 	}
-	outputFolderName := hasher.String()
+	outputFolderName := hshr.String()
 	drv.SetOutput("out", Output{Path: outputFolderName})
-	outputStorePath := b.store.joinStorePath(outputFolderName)
-	if pathExists(outputStorePath) {
+	outputStorePath := b.store.JoinStorePath(outputFolderName)
+	if fileutil.PathExists(outputStorePath) {
 		err = os.RemoveAll(outputPath)
 	} else {
 		err = os.Rename(outputPath, outputStorePath)
@@ -170,12 +173,12 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
 
-	buildDir, err := b.createStoreTmpDir()
+	buildDir, err := b.store.TempDir()
 	if err != nil {
 		return
 	}
 	if drv.BuildContextSource != "" {
-		if err = copyDirectory(b.store.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
+		if err = fileutil.CopyDirectory(b.store.JoinStorePath(drv.BuildContextSource), buildDir); err != nil {
 			err = errors.Wrap(err, "error copying sources into build dir")
 			return
 		}
@@ -183,7 +186,7 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	outputPaths := map[string]string{}
 	for _, name := range drv.OutputNames {
 		// TODO: use directory within store instead so that we can rewrite self-referential paths
-		if outputPaths[name], err = b.createStoreTmpDir(); err != nil {
+		if outputPaths[name], err = b.store.TempDir(); err != nil {
 			return
 		}
 	}
@@ -218,14 +221,14 @@ func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, 
 	defer region.End()
 
 	for outputName, outputPath := range outputPaths {
-		hasher := NewHasher()
+		hshr := hasher.NewHasher()
 		var reptarFile *os.File
 		reptarFile, err = b.createTmpFile()
 		if err != nil {
 			return
 		}
 		outputFolder := filepath.Base(outputPath)
-		matches, err := b.archiveAndScanOutputDirectory(ctx, reptarFile, hasher, drv, outputFolder)
+		matches, err := b.archiveAndScanOutputDirectory(ctx, reptarFile, hshr, drv, outputFolder)
 		if err != nil {
 			return errors.Wrap(err, "error scanning output")
 		}
@@ -234,14 +237,14 @@ func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, 
 			return err
 		}
 
-		hashedFolderName := hasher.String()
+		hashedFolderName := hshr.String()
 
 		// Nix adds the name to the output path but we are a
 		// content-addressable-store so we remove so that derivations with
 		// different names can share outputs
-		newPath := b.store.joinStorePath(hashedFolderName)
+		newPath := b.store.JoinStorePath(hashedFolderName)
 
-		if !pathExists(newPath) {
+		if !fileutil.PathExists(newPath) {
 			if err := b.unarchiveAndReplaceOutputFolderName(
 				ctx,
 				reptarFile.Name(),
@@ -304,11 +307,11 @@ func (b *Bramble) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, 
 	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
 	defer region.End()
 	var storeValues []string
-	oldStorePath := b.store.storePath
+	oldStorePath := b.store.StorePath
 
 	for _, do := range drv.InputDerivations {
 		storeValues = append(storeValues,
-			b.store.joinStorePath(
+			b.store.JoinStorePath(
 				b.derivations.Get(do.Filename).Output(do.OutputName).Path,
 			),
 		)
@@ -324,7 +327,7 @@ func (b *Bramble) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, 
 
 	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(b.store.joinStorePath(storeFolder), io.MultiWriter(tarOutput, pipeWriter)); err != nil {
+		if err := reptar.Reptar(b.store.JoinStorePath(storeFolder), io.MultiWriter(tarOutput, pipeWriter)); err != nil {
 			errChan <- err
 			return
 		}
@@ -384,7 +387,7 @@ func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, er
 	if err != nil {
 		return "", err
 	}
-	if !fileExists(filename) {
+	if !fileutil.FileExists(filename) {
 		return "", errors.Errorf("bramble file %q doesn't exist", filename)
 	}
 	if !strings.HasPrefix(filename, b.configLocation) {
@@ -459,29 +462,13 @@ func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) 
 	return
 }
 
-func (b *Bramble) createStoreTmpDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir(b.store.storePath, BuildDirPattern)
-	if err != nil {
-		return "", err
-	}
-	return tempDir, b.chownIfCreds(tempDir)
-}
-
-func (b *Bramble) chownIfCreds(path string) (err error) {
-	if b.credentials == nil {
-		return
-	}
-	err = os.Chown(path, int(b.credentials.Uid), int(b.credentials.Gid))
-	return errors.Wrap(err, "error chowning path "+path)
-}
-
 func (b *Bramble) createTmpFile() (f *os.File, err error) {
-	return ioutil.TempFile(b.store.storePath, BuildDirPattern)
+	return ioutil.TempFile(b.store.StorePath, BuildDirPattern)
 }
 
 func (b *Bramble) writeDerivation(drv *Derivation) error {
 	filename := drv.filename()
-	fileLocation := b.store.joinStorePath(filename)
+	fileLocation := b.store.JoinStorePath(filename)
 
 	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
@@ -599,8 +586,8 @@ func (b *Bramble) constructBrambleProto() *bramblepb.Bramble {
 	})
 
 	store := &bramblepb.Store{
-		BramblePath: b.store.bramblePath,
-		StorePath:   b.store.storePath,
+		BramblePath: b.store.BramblePath,
+		StorePath:   b.store.StorePath,
 	}
 	return &bramblepb.Bramble{
 		Derivations: derivations,
@@ -621,9 +608,9 @@ func brambleFunctionBuildSingleton() (err error) {
 	}
 
 	b := &Bramble{
-		store: Store{
-			storePath:   functionBuild.Bramble.Store.StorePath,
-			bramblePath: functionBuild.Bramble.Store.BramblePath,
+		store: store.Store{
+			StorePath:   functionBuild.Bramble.Store.StorePath,
+			BramblePath: functionBuild.Bramble.Store.BramblePath,
 		},
 
 		moduleEntrypoint: functionBuild.FunctionBuilderMeta.Module,
@@ -737,8 +724,8 @@ func (b *Bramble) DownloadFile(ctx context.Context, url string, hash string) (pa
 			err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
 			return "", err
 		}
-		storePrefixHash := bytesToBase32Hash(byt)
-		matches, err := filepath.Glob(b.store.joinStorePath(storePrefixHash) + "*")
+		storePrefixHash := hasher.BytesToBase32Hash(byt)
+		matches, err := filepath.Glob(b.store.JoinStorePath(storePrefixHash) + "*")
 		if err != nil {
 			err = errors.Wrap(err, "error searching for existing hashed content")
 			return "", err
@@ -788,8 +775,8 @@ func (b *Bramble) DownloadFile(ctx context.Context, url string, hash string) (pa
 		return
 	}
 	defer resp.Body.Close()
-	contentHash, path, err := b.store.writeReader(resp.Body, filepath.Base(url), hash)
-	if err == errHashMismatch {
+	contentHash, path, err := b.store.WriteReader(resp.Body, filepath.Base(url), hash)
+	if err == hasher.ErrHashMismatch {
 		err = errors.Errorf(
 			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
 			url, hash, contentHash)
@@ -806,7 +793,7 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 	if len(drv.sources) == 0 {
 		return
 	}
-	tmpDir, err := b.createStoreTmpDir()
+	tmpDir, err := b.store.TempDir()
 	if err != nil {
 		return
 	}
@@ -821,13 +808,13 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 	for i, src := range sources {
 		sources[i] = filepath.Join(absDir, src)
 	}
-	prefix := commonFilepathPrefix(append(sources, absDir))
+	prefix := fileutil.CommonFilepathPrefix(append(sources, absDir))
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
 		return
 	}
 
-	if err = copyFilesByPath(prefix, sources, tmpDir); err != nil {
+	if err = fileutil.CopyFilesByPath(prefix, sources, tmpDir); err != nil {
 		return
 	}
 	// sometimes the location the derivation runs from is not present
@@ -837,12 +824,12 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 		return
 	}
 
-	hasher := NewHasher()
-	if err = reptar.Reptar(tmpDir, hasher); err != nil {
+	hshr := hasher.NewHasher()
+	if err = reptar.Reptar(tmpDir, hshr); err != nil {
 		return
 	}
-	storeLocation := b.store.joinStorePath(hasher.String())
-	if pathExists(storeLocation) {
+	storeLocation := b.store.JoinStorePath(hshr.String())
+	if fileutil.PathExists(storeLocation) {
 		if err = os.RemoveAll(tmpDir); err != nil {
 			return
 		}
@@ -851,9 +838,9 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 			return
 		}
 	}
-	drv.BuildContextSource = hasher.String()
+	drv.BuildContextSource = hshr.String()
 	drv.BuildContextRelativePath = relBramblefileLocation
-	drv.SourcePaths = append(drv.SourcePaths, hasher.String())
+	drv.SourcePaths = append(drv.SourcePaths, hshr.String())
 	sort.Strings(drv.SourcePaths)
 	return
 }
@@ -869,7 +856,7 @@ func (b *Bramble) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer
 				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
 		}
 		path := filepath.Join(
-			b.store.storePath,
+			b.store.StorePath,
 			d.Output(do.OutputName).Path,
 		)
 		replacements = append(replacements, do.templateString(), path)
@@ -1052,7 +1039,7 @@ func (b *Bramble) init() (err error) {
 	b.derivations = &DerivationsMap{}
 	b.importGraph = NewAcyclicGraph()
 
-	if b.store, err = NewStore(); err != nil {
+	if b.store, err = store.NewStore(); err != nil {
 		return err
 	}
 
@@ -1139,10 +1126,10 @@ func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err err
 var BrambleExtension string = ".bramble"
 
 func findBrambleFiles(path string) (brambleFiles []string, err error) {
-	if fileExists(path) {
+	if fileutil.FileExists(path) {
 		return []string{path}, nil
 	}
-	if fileExists(path + BrambleExtension) {
+	if fileutil.FileExists(path + BrambleExtension) {
 		return []string{path + BrambleExtension}, nil
 	}
 	return brambleFiles, filepath.Walk(path, func(path string, fi os.FileInfo, err error) error {
@@ -1186,7 +1173,7 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 	storeLocation, ok := b.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
-		return b.compilePath(b.store.joinStorePath(storeLocation))
+		return b.compilePath(b.store.JoinStorePath(storeLocation))
 	}
 
 	// hash the file input
@@ -1195,18 +1182,18 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 		return
 	}
 	defer func() { _ = f.Close() }()
-	hasher := NewHasher()
-	if _, err = io.Copy(hasher, f); err != nil {
+	hshr := hasher.NewHasher()
+	if _, err = io.Copy(hshr, f); err != nil {
 		return nil, err
 	}
-	inputHash := hasher.String()
+	inputHash := hshr.String()
 
-	inputHashStoreLocation := b.store.joinBramblePath("var", "star-cache", inputHash)
-	storeLocation, ok = validSymlinkExists(inputHashStoreLocation)
+	inputHashStoreLocation := b.store.JoinBramblePath("var", "star-cache", inputHash)
+	storeLocation, ok = fileutil.ValidSymlinkExists(inputHashStoreLocation)
 	if ok {
 		// if we have the hashed input on the filesystem cache and it points to a valid path
 		// in the store, use that store path and add the cached location to the map
-		relStoreLocation, err := filepath.Rel(b.store.storePath, storeLocation)
+		relStoreLocation, err := filepath.Rel(b.store.StorePath, storeLocation)
 		if err != nil {
 			return nil, err
 		}
@@ -1227,7 +1214,7 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 	if err = prog.Write(&buf); err != nil {
 		return nil, err
 	}
-	_, path, err := b.store.writeReader(&buf, filepath.Base(filename), "")
+	_, path, err := b.store.WriteReader(&buf, filepath.Base(filename), "")
 	if err != nil {
 		return
 	}
@@ -1426,14 +1413,14 @@ func (b *Bramble) gc(args []string) (err error) {
 	}
 
 	// delete everything in the store that's not in the map
-	files, err := ioutil.ReadDir(b.store.storePath)
+	files, err := ioutil.ReadDir(b.store.StorePath)
 	if err != nil {
 		return
 	}
 	for _, file := range files {
 		if _, ok := pathsToKeep[file.Name()]; !ok {
 			fmt.Println("deleting", file.Name())
-			if err = os.RemoveAll(b.store.joinStorePath(file.Name())); err != nil {
+			if err = os.RemoveAll(b.store.JoinStorePath(file.Name())); err != nil {
 				return err
 			}
 		}
@@ -1441,8 +1428,13 @@ func (b *Bramble) gc(args []string) (err error) {
 	return nil
 }
 
+type derivationMap struct {
+	Location    string
+	Derivations map[string][]string
+}
+
 func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]bool, err error) {
-	registryFolder := b.store.joinBramblePath("var", "config-registry")
+	registryFolder := b.store.JoinBramblePath("var", "config-registry")
 	files, err := ioutil.ReadDir(registryFolder)
 	if err != nil {
 		return
@@ -1463,7 +1455,7 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 		fmt.Println("assembling derivations for", drvMap.Location)
 		// delete the config if we can't find the project any more
 		tomlLoc := filepath.Join(drvMap.Location, "bramble.toml")
-		if !pathExists(tomlLoc) {
+		if !fileutil.PathExists(tomlLoc) {
 			fmt.Printf("deleting cache for %q, it no longer exists\n", tomlLoc)
 			if err := os.Remove(registryLoc); err != nil {
 				return nil, err
@@ -1539,7 +1531,7 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 }
 
 func (b *Bramble) loadDerivation(filename string) (drv *Derivation, err error) {
-	f, err := os.Open(b.store.joinStorePath(filename))
+	f, err := os.Open(b.store.JoinStorePath(filename))
 	if err != nil {
 		return
 	}
@@ -1571,14 +1563,14 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	path := module[len(b.config.Module.Name):]
 	path = filepath.Join(b.configLocation, path)
 
-	directoryWithNameExists := pathExists(path)
+	directoryWithNameExists := fileutil.PathExists(path)
 
 	var directoryHasDefaultDotBramble bool
 	if directoryWithNameExists {
-		directoryHasDefaultDotBramble = fileExists(path + "/default.bramble")
+		directoryHasDefaultDotBramble = fileutil.FileExists(path + "/default.bramble")
 	}
 
-	fileWithNameExists := fileExists(path + BrambleExtension)
+	fileWithNameExists := fileutil.FileExists(path + BrambleExtension)
 
 	switch {
 	case directoryWithNameExists && directoryHasDefaultDotBramble:
@@ -1628,13 +1620,13 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 	}
 
 	// support things like bar/main.bramble:foo
-	if strings.HasSuffix(path, BrambleExtension) && fileExists(path) {
+	if strings.HasSuffix(path, BrambleExtension) && fileutil.FileExists(path) {
 		return module + path[:len(path)-len(BrambleExtension)], nil
 	}
 
 	fullName := path + BrambleExtension
-	if !fileExists(fullName) {
-		if !fileExists(path + "/default.bramble") {
+	if !fileutil.FileExists(fullName) {
+		if !fileutil.FileExists(path + "/default.bramble") {
 			return "", errors.Errorf("can't find module at %q", path)
 		}
 	}

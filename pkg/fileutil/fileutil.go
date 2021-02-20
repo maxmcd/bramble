@@ -1,11 +1,7 @@
-package bramble
+package fileutil
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/base32"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"log"
@@ -20,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func commonFilepathPrefix(paths []string) string {
+func CommonFilepathPrefix(paths []string) string {
 	sep := byte(os.PathSeparator)
 	if len(paths) == 0 {
 		return string(sep)
@@ -52,60 +48,7 @@ func commonFilepathPrefix(paths []string) string {
 	return string(c)
 }
 
-// Hasher is used to compute path hash values. Hasher implements io.Writer and
-// takes a sha256 hash of the input bytes. The output string is a lowercase
-// base32 representation of the first 160 bits of the hash
-type Hasher struct {
-	hash hash.Hash
-}
-
-func NewHasher() *Hasher {
-	return &Hasher{
-		hash: sha256.New(),
-	}
-}
-
-func (h *Hasher) Write(b []byte) (n int, err error) {
-	return h.hash.Write(b)
-}
-
-func (h *Hasher) String() string {
-	return bytesToBase32Hash(h.hash.Sum(nil))
-}
-func (h *Hasher) Sha256Hex() string {
-	return fmt.Sprintf("%x", h.hash.Sum(nil))
-}
-
-func hashString(input string) string {
-	h := NewHasher()
-	_, _ = h.Write([]byte(input))
-	return h.String()
-}
-
-// bytesToBase32Hash copies nix here
-// https://nixos.org/nixos/nix-pills/nix-store-paths.html
-// Finally the comments tell us to compute the base32 representation of the
-// first 160 bits (truncation) of a sha256 of the above string:
-func bytesToBase32Hash(b []byte) string {
-	var buf bytes.Buffer
-	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(b[:20])
-	return strings.ToLower(buf.String())
-}
-
-func hashFile(name string, file io.ReadCloser) (fileHash, filename string, err error) {
-	defer file.Close()
-	hasher := NewHasher()
-	if _, err = hasher.Write([]byte(name)); err != nil {
-		return
-	}
-	if _, err = io.Copy(hasher, file); err != nil {
-		return
-	}
-	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
-	return
-}
-
-func cp(wd string, paths ...string) (err error) {
+func CP(wd string, paths ...string) (err error) {
 	if len(paths) == 1 {
 		return errors.New("copy takes at least two arguments")
 	}
@@ -119,7 +62,7 @@ func cp(wd string, paths ...string) (err error) {
 	}
 	dest := absPaths[len(paths)-1]
 	// if dest exists and it's not a directory
-	if fileExists(dest) {
+	if FileExists(dest) {
 		return errors.New("copy destination can't be a file that exists")
 	}
 
@@ -127,12 +70,12 @@ func cp(wd string, paths ...string) (err error) {
 
 	// "cp foo.txt bar.txt" or "cp ./foo ./bar" is a special case if it's just two
 	// paths and they don't exist yet
-	if len(toCopy) == 1 && !pathExists(dest) {
+	if len(toCopy) == 1 && !PathExists(dest) {
 		f := toCopy[0]
-		if isDir(f) {
-			return errors.WithStack(copyDirectory(f, dest))
+		if IsDir(f) {
+			return errors.WithStack(CopyDirectory(f, dest))
 		}
-		return errors.WithStack(copyFile(f, dest))
+		return errors.WithStack(CopyFile(f, dest))
 	}
 
 	// otherwise copy each listed file into a directory with the given name
@@ -143,12 +86,12 @@ func cp(wd string, paths ...string) (err error) {
 		}
 		if fi.IsDir() {
 			destFolder := filepath.Join(dest, fi.Name())
-			if err = createDirIfNotExists(destFolder, 0755); err != nil {
+			if err = CreateDirIfNotExists(destFolder, 0755); err != nil {
 				return err
 			}
-			err = copyDirectory(path, filepath.Join(dest, fi.Name()))
+			err = CopyDirectory(path, filepath.Join(dest, fi.Name()))
 		} else {
-			err = copyFile(path, filepath.Join(dest, fi.Name()))
+			err = CopyFile(path, filepath.Join(dest, fi.Name()))
 		}
 		if err != nil {
 			return errors.WithStack(err)
@@ -158,7 +101,7 @@ func cp(wd string, paths ...string) (err error) {
 }
 
 // copy directory will copy all of the contents of one directory into another directory
-func copyDirectory(scrDir, dest string) error {
+func CopyDirectory(scrDir, dest string) error {
 	entries, err := ioutil.ReadDir(scrDir)
 	if err != nil {
 		return err
@@ -180,18 +123,18 @@ func copyDirectory(scrDir, dest string) error {
 
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
-			if err := createDirIfNotExists(destPath, 0755); err != nil {
+			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
-			if err := copyDirectory(sourcePath, destPath); err != nil {
+			if err := CopyDirectory(sourcePath, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		case os.ModeSymlink:
-			if err := copySymLink(sourcePath, destPath); err != nil {
+			if err := CopySymLink(sourcePath, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		default:
-			if err := copyFile(sourcePath, destPath); err != nil {
+			if err := CopyFile(sourcePath, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -215,8 +158,8 @@ func copyDirectory(scrDir, dest string) error {
 // CopyFiles takes a list of absolute paths to files and copies them into
 // another directory, maintaining structure. Importantly it doesn't copy
 // all the files in these directories, just the specific named paths.
-func copyFilesByPath(prefix string, files []string, dest string) (err error) {
-	files, err = expandPathDirectories(files)
+func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
+	files, err = ExpandPathDirectories(files)
 	if err != nil {
 		return err
 	}
@@ -236,15 +179,15 @@ func copyFilesByPath(prefix string, files []string, dest string) (err error) {
 
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
-			if err := createDirIfNotExists(destPath, 0755); err != nil {
+			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
 		case os.ModeSymlink:
-			if err := copySymLink(file, destPath); err != nil {
+			if err := CopySymLink(file, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		default:
-			if err := copyFile(file, destPath); err != nil {
+			if err := CopyFile(file, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -265,7 +208,7 @@ func copyFilesByPath(prefix string, files []string, dest string) (err error) {
 }
 
 // takes a list of paths and adds all files in all subdirectories
-func expandPathDirectories(files []string) (out []string, err error) {
+func ExpandPathDirectories(files []string) (out []string, err error) {
 	for _, file := range files {
 		if err = filepath.Walk(file,
 			func(path string, info os.FileInfo, err error) error {
@@ -281,7 +224,7 @@ func expandPathDirectories(files []string) (out []string, err error) {
 	return
 }
 
-func copyFile(srcFile, dstFile string) error {
+func CopyFile(srcFile, dstFile string) error {
 	in, err := os.Open(srcFile)
 	if err != nil {
 		return errors.WithStack(err)
@@ -307,8 +250,8 @@ func copyFile(srcFile, dstFile string) error {
 	return nil
 }
 
-func createDirIfNotExists(dir string, perm os.FileMode) error {
-	if pathExists(dir) {
+func CreateDirIfNotExists(dir string, perm os.FileMode) error {
+	if PathExists(dir) {
 		return nil
 	}
 
@@ -319,7 +262,7 @@ func createDirIfNotExists(dir string, perm os.FileMode) error {
 	return nil
 }
 
-func copySymLink(source, dest string) error {
+func CopySymLink(source, dest string) error {
 	link, err := os.Readlink(source)
 	if err != nil {
 		return err
@@ -327,7 +270,7 @@ func copySymLink(source, dest string) error {
 	return os.Symlink(link, dest)
 }
 
-func fileExists(path string) bool {
+func FileExists(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return false
@@ -335,7 +278,7 @@ func fileExists(path string) bool {
 	return !fi.IsDir()
 }
 
-func isDir(file string) bool {
+func IsDir(file string) bool {
 	info, err := os.Stat(file)
 	if err != nil {
 		if err.(*os.PathError).Err != syscall.ENOENT {
@@ -346,23 +289,23 @@ func isDir(file string) bool {
 	return info.Mode().IsDir()
 }
 
-func pathExists(path string) bool {
+func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-func validSymlinkExists(path string) (dest string, ok bool) {
-	if pathExists(path) {
+func ValidSymlinkExists(path string) (dest string, ok bool) {
+	if PathExists(path) {
 		if link, err := os.Readlink(path); err != nil {
-			return link, pathExists(link)
+			return link, PathExists(link)
 		}
 	}
 	return "", false
 }
 
-func lookPath(file string, path string) (string, error) {
+func LookPath(file string, path string) (string, error) {
 	if strings.Contains(file, "/") {
-		err := findExecutable(file)
+		err := FindExecutable(file)
 		if err == nil {
 			return file, nil
 		}
@@ -374,13 +317,13 @@ func lookPath(file string, path string) (string, error) {
 			dir = "."
 		}
 		path := filepath.Join(dir, file)
-		if err := findExecutable(path); err == nil {
+		if err := FindExecutable(path); err == nil {
 			return path, nil
 		}
 	}
 	return "", &exec.Error{Name: file, Err: exec.ErrNotFound}
 }
-func findExecutable(file string) error {
+func FindExecutable(file string) error {
 	d, err := os.Stat(file)
 	if err != nil {
 		return err

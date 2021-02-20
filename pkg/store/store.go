@@ -1,4 +1,4 @@
-package bramble
+package store
 
 import (
 	"fmt"
@@ -8,10 +8,14 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
+	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/pkg/errors"
 )
 
 var (
+	// does this ensure the same length always?
+	BuildDirPattern       = "bramble_build_directory*"
 	PathPaddingCharacters = "bramble_store_padding"
 	PathPaddingLength     = 50
 
@@ -20,39 +24,47 @@ var (
 
 func NewStore() (Store, error) {
 	s := Store{}
-	return s, s.ensureBramblePath()
+	return s, ensureBramblePath(&s)
 }
 
 type Store struct {
-	bramblePath string
-	storePath   string
+	BramblePath string
+	StorePath   string
 }
 
-func (s *Store) ensureBramblePath() (err error) {
+func (s Store) IsEmpty() bool {
+	return s.BramblePath == "" || s.StorePath == ""
+}
+
+func (s Store) TempDir() (tempDir string, err error) {
+	return ioutil.TempDir(s.StorePath, BuildDirPattern)
+}
+
+func ensureBramblePath(s *Store) (err error) {
 	var exists bool
 	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
 	// the user's home directory.
-	s.bramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
+	s.BramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
 	if !exists {
 		var home string
 		home, err = os.UserHomeDir()
 		if err != nil {
 			return errors.Wrap(err, "error searching for users home directory")
 		}
-		s.bramblePath = filepath.Join(home, "bramble")
+		s.BramblePath = filepath.Join(home, "bramble")
 	} else {
 		// Ensure we clean the path so that our padding calculation is consistent.
-		s.bramblePath = filepath.Clean(s.bramblePath)
+		s.BramblePath = filepath.Clean(s.BramblePath)
 	}
 
 	// No support for relative bramble paths.
-	if !filepath.IsAbs(s.bramblePath) {
-		return errors.Errorf("bramble path %s must be absolute", s.bramblePath)
+	if !filepath.IsAbs(s.BramblePath) {
+		return errors.Errorf("bramble path %s must be absolute", s.BramblePath)
 	}
 
-	if !pathExists(s.bramblePath) {
+	if !fileutil.PathExists(s.BramblePath) {
 		fmt.Println("bramble path directory doesn't exist, creating")
-		if err = os.Mkdir(s.bramblePath, 0755); err != nil {
+		if err = os.Mkdir(s.BramblePath, 0755); err != nil {
 			return err
 		}
 	}
@@ -60,7 +72,7 @@ func (s *Store) ensureBramblePath() (err error) {
 	fileMap := map[string]struct{}{}
 	{
 		// List all files in the bramble folder.
-		files, err := ioutil.ReadDir(s.bramblePath)
+		files, err := ioutil.ReadDir(s.BramblePath)
 		if err != nil {
 			return errors.Wrap(err, "error listing files in the BRAMBLE_PATH")
 		}
@@ -69,7 +81,7 @@ func (s *Store) ensureBramblePath() (err error) {
 		}
 
 		// Specifically check for files in the var folder.
-		files, _ = ioutil.ReadDir(s.joinBramblePath("var"))
+		files, _ = ioutil.ReadDir(s.JoinBramblePath("var"))
 		if len(files) > 0 {
 			for _, file := range files {
 				fileMap["var/"+file.Name()] = struct{}{}
@@ -78,19 +90,19 @@ func (s *Store) ensureBramblePath() (err error) {
 	}
 
 	var storeDirectoryName string
-	if storeDirectoryName, err = calculatePaddedDirectoryName(s.bramblePath, PathPaddingLength); err != nil {
+	if storeDirectoryName, err = calculatePaddedDirectoryName(s.BramblePath, PathPaddingLength); err != nil {
 		return err
 	}
 
-	s.storePath = s.joinBramblePath(storeDirectoryName)
+	s.StorePath = s.JoinBramblePath(storeDirectoryName)
 
 	// Add store folder with the correct padding and add a convenience symlink
 	// in the bramble folder.
 	if _, ok := fileMap["store"]; !ok {
-		if err = os.MkdirAll(s.storePath, 0755); err != nil {
+		if err = os.MkdirAll(s.StorePath, 0755); err != nil {
 			return err
 		}
-		if err = os.Symlink("."+storeDirectoryName, s.joinBramblePath("store")); err != nil {
+		if err = os.Symlink("."+storeDirectoryName, s.JoinBramblePath("store")); err != nil {
 			return err
 		}
 	}
@@ -112,47 +124,47 @@ func (s *Store) ensureBramblePath() (err error) {
 
 	for _, folder := range folders {
 		if _, ok := fileMap[folder]; !ok {
-			if err = os.Mkdir(s.joinBramblePath(folder), 0755); err != nil {
+			if err = os.Mkdir(s.JoinBramblePath(folder), 0755); err != nil {
 				return errors.Wrap(err, fmt.Sprintf("error creating bramble folder %q", folder))
 			}
 		}
 	}
 
 	// otherwise, check if the exact store path we need exists
-	if _, err = os.Stat(s.storePath); err != nil {
+	if _, err = os.Stat(s.StorePath); err != nil {
 		return ErrStoreDoesNotExist
 	}
 
 	return
 }
 
-func (s Store) joinStorePath(v ...string) string {
-	return filepath.Join(append([]string{s.storePath}, v...)...)
+func (s Store) JoinStorePath(v ...string) string {
+	return filepath.Join(append([]string{s.StorePath}, v...)...)
 }
-func (s Store) joinBramblePath(v ...string) string {
-	return filepath.Join(append([]string{s.bramblePath}, v...)...)
+func (s Store) JoinBramblePath(v ...string) string {
+	return filepath.Join(append([]string{s.BramblePath}, v...)...)
 }
 
-func (s Store) writeReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
-	hasher := NewHasher()
-	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
+func (s Store) WriteReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
+	hshr := hasher.NewHasher()
+	file, err := ioutil.TempFile(s.JoinBramblePath("tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a write to the store")
 		return
 	}
-	tee := io.TeeReader(src, hasher)
+	tee := io.TeeReader(src, hshr)
 	if _, err = io.Copy(file, tee); err != nil {
 		err = errors.Wrap(err, "error writing to the temporary store file")
 		return
 	}
-	fileName := hasher.String()
-	if validateHash != "" && hasher.Sha256Hex() != validateHash {
-		return hasher.Sha256Hex(), "", errHashMismatch
+	fileName := hshr.String()
+	if validateHash != "" && hshr.Sha256Hex() != validateHash {
+		return hshr.Sha256Hex(), "", hasher.ErrHashMismatch
 	}
 	if name != "" {
 		fileName += ("-" + name)
 	}
-	path = s.joinStorePath(fileName)
+	path = s.JoinStorePath(fileName)
 	if err = file.Close(); err != nil {
 		return "", "", err
 	}
@@ -163,16 +175,16 @@ func (s Store) writeReader(src io.Reader, name string, validateHash string) (con
 		return
 	}
 
-	return hasher.Sha256Hex(), path, nil
+	return hshr.Sha256Hex(), path, nil
 }
 
-func (s Store) writeConfigLink(location string, derivations map[string][]string) (err error) {
-	hasher := NewHasher()
-	if _, err = hasher.Write([]byte(location)); err != nil {
+func (s Store) WriteConfigLink(location string, derivations map[string][]string) (err error) {
+	hshr := hasher.NewHasher()
+	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
 	}
-	reg := s.joinBramblePath("var/config-registry")
-	hash := hasher.String()
+	reg := s.JoinBramblePath("var/config-registry")
+	hash := hshr.String()
 	configFileLocation := filepath.Join(reg, hash+"-metadata.toml")
 
 	f, err := os.OpenFile(configFileLocation,

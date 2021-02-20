@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/kballard/go-shellquote"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 
@@ -174,7 +175,7 @@ func (fn CmdFunction) newCmd(thread *starlark.Thread, args starlark.Tuple, kwarg
 	name := cmd.name()
 	if filepath.Base(name) == name {
 		var lp string
-		if lp, err = lookPath(name, cmd.path()); err != nil {
+		if lp, err = fileutil.LookPath(name, cmd.path()); err != nil {
 			return nil, err
 		}
 		cmd.Path = lp

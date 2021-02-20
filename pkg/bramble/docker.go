@@ -14,6 +14,7 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/pkg/errors"
 )
 
@@ -115,14 +116,14 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 		return errors.New("must include output paths")
 	}
 
-	volumeName := DockerBramblePathVolumePrefix + hashString(b.store.bramblePath)
+	volumeName := DockerBramblePathVolumePrefix + hasher.HashString(b.store.BramblePath)
 	if err = ensureBrambleVolume(volumeName, client); err != nil {
 		return
 	}
 
 	binds := []string{
 		// mount the entire store path as a ready-only volume
-		fmt.Sprintf("%s:%s:ro", b.store.storePath, b.store.storePath),
+		fmt.Sprintf("%s:%s:ro", b.store.StorePath, b.store.StorePath),
 		fmt.Sprintf("%s:%s", // volume mount the build directory
 			options.buildDir,
 			options.buildDir,
@@ -132,7 +133,7 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	if _, ok := os.LookupEnv("BRAMBLE_WITHIN_DOCKER"); ok {
 		user = fmt.Sprintf("%s:%s", os.Getenv("BRAMBLE_SET_UID"), os.Getenv("BRAMBLE_SET_GID"))
 		binds = []string{
-			fmt.Sprintf("%s:%s", volumeName, b.store.bramblePath),
+			fmt.Sprintf("%s:%s", volumeName, b.store.BramblePath),
 			// Mount the project that we're in
 			fmt.Sprintf("%s:%s",
 				b.configLocation,
@@ -152,7 +153,7 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 		// TODO: replace with symlink to store path of the specific bramble
 		// version we want
 		binds = append(binds, fmt.Sprintf("%s:%s", // bring in a version of bramble
-			filepath.Join(b.store.bramblePath, "var/linux-binary"),
+			filepath.Join(b.store.BramblePath, "var/linux-binary"),
 			"/bin/bramble",
 		))
 	}
@@ -264,7 +265,7 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	volumeName := DockerBramblePathVolumePrefix + hashString(b.store.bramblePath)
+	volumeName := DockerBramblePathVolumePrefix + hasher.HashString(b.store.BramblePath)
 	if err = ensureBrambleVolume(volumeName, client); err != nil {
 		return
 	}
@@ -275,11 +276,11 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 		// mount the bramble path
 		// we use the hosts bramble path here as a convenience so that we don't have
 		// to rewrite paths
-		fmt.Sprintf("%s:%s", volumeName, b.store.bramblePath),
+		fmt.Sprintf("%s:%s", volumeName, b.store.BramblePath),
 
 		// bring in a version of bramble
 		fmt.Sprintf("%s:%s",
-			filepath.Join(b.store.bramblePath, "var/linux-binary"),
+			filepath.Join(b.store.BramblePath, "var/linux-binary"),
 			"/bin/bramble"),
 
 		// Mount the project that we're in

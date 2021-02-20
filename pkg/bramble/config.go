@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 )
 
@@ -42,7 +43,7 @@ func findConfig() (c Config, lf LockFile, location string, err error) {
 		return
 	}
 	lockFile := filepath.Join(location, "bramble.lock")
-	if fileExists(lockFile) {
+	if fileutil.FileExists(lockFile) {
 		f, err = os.Open(lockFile)
 		if err != nil {
 			return
@@ -71,7 +72,7 @@ func (b *Bramble) writeConfigMetadata(derivations []*Derivation) (err error) {
 	}
 	derivationsStringMap := map[string][]string{}
 	derivationsStringMap[b.moduleEntrypoint+":"+b.calledFunction] = outputs
-	if err = b.store.writeConfigLink(b.configLocation, derivationsStringMap); err != nil {
+	if err = b.store.WriteConfigLink(b.configLocation, derivationsStringMap); err != nil {
 		return
 	}
 	return nil
