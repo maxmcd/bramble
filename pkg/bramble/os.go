@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -115,7 +116,7 @@ func (os OS) cp(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.
 		}
 		paths[i] = str
 	}
-	err = cp("", paths...)
+	err = fileutil.CP("", paths...)
 	fmt.Printf("%+v", err)
 	return starlark.None, err
 }

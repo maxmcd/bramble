@@ -137,6 +137,7 @@ func Child() (err error) {
 
 	cmd := &exec.Cmd{
 		Path: "/bin/sbx",
+
 		Args: []string{"app"},
 	}
 	cmd.Env = []string{"USER=bramblebuild0", "HOME=/homeless"}
@@ -146,6 +147,7 @@ func Child() (err error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: creds,
 	}
+
 	fmt.Println("running child")
 	if err := cmd.Run(); err != nil {
 		return errors.Wrap(err, "child run app")

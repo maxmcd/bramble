@@ -170,7 +170,7 @@ func (ci *CLI) run(args []string) {
 		os.Exit(0)
 		return
 	}
-	if len(ci.Args) >= 1 && !ci.containsHelp() {
+	if len(ci.Args) >= 1 && !ci.ContainsHelp() {
 		if ci.Args[0] == "run" {
 			// we must run this one manually so that cli doesn't parse [args] and
 			// [options] for -v and -h

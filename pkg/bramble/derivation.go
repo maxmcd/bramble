@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/maxmcd/bramble/pkg/bramblepb"
+	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -500,6 +501,6 @@ func (drv *Derivation) filename() (filename string) {
 
 	// We ignore this error, the errors would result from bad writes and all reads/writes are
 	// in memory. Is this safe?
-	_, filename, _ = hashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
+	_, filename, _ = hasher.HashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
 	return
 }

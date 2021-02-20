@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
@@ -23,9 +25,9 @@ import (
 func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	log.SetOutput(ioutil.Discard)
 	var err error
-	hasher := NewHasher()
+	hshr := hasher.NewHasher()
 	dir := tmpDir()
-	hasher2 := NewHasher()
+	hshr2 := hasher.NewHasher()
 	dir2 := tmpDir()
 
 	// TODO: this is all somewhat irellevant now because the store
@@ -37,24 +39,24 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	hd, _ := os.UserHomeDir()
 	dest := filepath.Join(dir, "var")
 	_ = os.MkdirAll(dest, 0755)
-	if err = cp("", filepath.Join(hd, "bramble/var/linux-binary"), dest); err != nil {
+	if err = fileutil.CP("", filepath.Join(hd, "bramble/var/linux-binary"), dest); err != nil {
 		t.Fatal(err)
 	}
 	cb(t)
-	if err = reptar.Reptar(dir+"/store", hasher); err != nil {
+	if err = reptar.Reptar(dir+"/store", hshr); err != nil {
 		t.Error(err)
 	}
 	os.Setenv("BRAMBLE_PATH", dir2)
 	dest2 := filepath.Join(dir2, "var")
 	_ = os.MkdirAll(dest2, 0755)
-	if err = cp("", filepath.Join(hd, "bramble/var/linux-binary"), dest2); err != nil {
+	if err = fileutil.CP("", filepath.Join(hd, "bramble/var/linux-binary"), dest2); err != nil {
 		t.Fatal(err)
 	}
 	cb(t)
-	if err = reptar.Reptar(dir2+"/store", hasher2); err != nil {
+	if err = reptar.Reptar(dir2+"/store", hshr2); err != nil {
 		t.Error(err)
 	}
-	if hasher.String() != hasher2.String() {
+	if hshr.String() != hshr2.String() {
 		t.Error("content doesn't match, non deterministic", dir, dir2)
 		return
 	}
