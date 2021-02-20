@@ -49,3 +49,18 @@ message FunctionBuilderMeta {
   string function = 2;
   map<string, string> module_cache = 3;
 }
+
+message BuildInput { FunctionBuild function_build = 1; }
+message BuildStatus {
+  bytes log = 1;
+  bool complete = 2;
+}
+
+// SingleBuilder controls a single build process that shares a filesystem with
+// other build processes
+service SingleBuilder {
+  rpc FetchBuild(stream BuildStatus) returns(stream BuildInput) {}
+}
+
+// Orchestrator controls an entire build server
+service Orchestrator {}

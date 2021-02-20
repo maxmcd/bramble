@@ -142,34 +142,6 @@ func RunCLI() {
 	os.Exit(0)
 }
 
-type command struct {
-	cli      *CLI
-	help     string
-	synopsis string
-	run      func(args []string) error
-}
-
-func (c command) factory() func() (cli.Command, error) {
-	return func() (cli.Command, error) {
-		return &c, nil
-	}
-}
-func (c *command) Help() string     { return c.help }
-func (c *command) Synopsis() string { return c.synopsis }
-func (c *command) Run(args []string) int {
-	if err := c.run(args); err != nil {
-		if err == errQuiet {
-			return 1
-		}
-		if err == errHelp {
-			return cli.RunResultHelp
-		}
-		fmt.Fprint(c.cli.stderr, starutil.AnnotateError(err))
-		return 1
-	}
-	return 0
-}
-
 type CLI struct {
 	stderr io.Writer
 	stdout io.Writer
@@ -177,39 +149,6 @@ type CLI struct {
 	exit func(int)
 
 	cli.CLI
-}
-
-func NewCLI() *CLI {
-	return &CLI{
-		stderr: os.Stderr,
-		stdout: os.Stdout,
-		exit:   os.Exit,
-		CLI: cli.CLI{
-			Autocomplete: true,
-			Commands:     make(map[string]cli.CommandFactory),
-		},
-	}
-}
-
-func (ci *CLI) AddCommand(name string, cmd command) {
-	cmd.cli = ci
-	ci.Commands[name] = cmd.factory()
-}
-
-func (ci *CLI) containsHelp() bool {
-	for _, arg := range ci.Args[1:] {
-		if arg == "--" {
-			break
-		}
-		if !strings.HasPrefix(arg, "-") {
-			// exit the run command after the first non-argument command
-			return false
-		}
-		if arg == "-h" || arg == "-help" || arg == "--help" {
-			return true
-		}
-	}
-	return false
 }
 
 func (ci *CLI) run(args []string) {
