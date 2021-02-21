@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	if err := sandbox.RunSetUID(); err != nil {
-		log.Fatal(err)
-	}
+	sandbox.Entrypoint()
+	// This shouldn't be reachable unless the entrypoint didn't run
+	log.Fatal("can't run bramble-setuid without correct arguments")
 }

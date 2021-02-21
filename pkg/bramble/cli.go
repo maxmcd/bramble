@@ -4,16 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"runtime/trace"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/mitchellh/cli"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
@@ -140,60 +137,6 @@ func RunCLI() {
 		os.Exit(1)
 	}
 	os.Exit(0)
-}
-
-type CLI struct {
-	stderr io.Writer
-	stdout io.Writer
-
-	exit func(int)
-
-	cli.CLI
-}
-
-func (ci *CLI) run(args []string) {
-	ci.Name = "bramble"
-	ci.HelpFunc = cli.BasicHelpFunc(ci.Name)
-	ci.Version = "0.0.1"
-	ci.Args = args
-	_, withinDocker := os.LookupEnv("BRAMBLE_WITHIN_DOCKER")
-	if !withinDocker {
-		b := Bramble{}
-		if err := b.init(); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if err := b.runDockerRun(context.Background(), args); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-		return
-	}
-	if len(ci.Args) >= 1 && !ci.ContainsHelp() {
-		if ci.Args[0] == "run" {
-			// we must run this one manually so that cli doesn't parse [args] and
-			// [options] for -v and -h
-			v := ci.Commands["run"]
-			c, _ := v()
-			ci.exit(c.Run(args[1:]))
-			return
-		} else if ci.Args[0] == BrambleFunctionBuildHiddenCommand {
-			if err := brambleFunctionBuildSingleton(); err != nil {
-				fmt.Fprint(ci.stderr, starutil.AnnotateError(err))
-				trace.Stop()
-				ci.exit(1)
-			}
-			ci.exit(0)
-			return
-		}
-	}
-
-	exitCode, err := ci.Run()
-	if err != nil {
-		fmt.Fprintln(ci.stderr, err)
-	}
-	ci.exit(exitCode)
 }
 
 func DefaultUsageFunc(c *ffcli.Command) string {

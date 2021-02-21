@@ -1,3 +1,4 @@
+// Ever been to a playground? It's pretty easy to step in and out of a sandbox.
 package sandbox
 
 import (
@@ -25,86 +26,147 @@ const (
 	setupStepArg        = "setup"
 	execStepArg         = "exec"
 	setUIDExecName      = "bramble-setuid"
-	debugMagicString    = "debugmagicstring"
 )
 
-func RunSetUID() (err error) {
-	firstArg := ""
-	if len(os.Args) > 1 {
-		firstArg = os.Args[1]
-	}
-	b, chrootDir, err := parseSerializedArg(firstArg)
+func firstArgMatchesStep() bool {
 	switch os.Args[0] {
 	case newNamespaceStepArg, setupStepArg, execStepArg:
-		if err != nil {
-			return err
-		}
+		return true
+	}
+	return false
+}
+
+// Entrypoint must be run at the beginning of your executable. When the sandbox
+// runs it re-runs the same binary with various arguments to indicate that we
+// want the process to be run as a sandbox. If this function detects that it
+// is needed it will run what it needs and then os.Exit the process, otherwise
+// it will be a no-op.
+func Entrypoint() {
+	if !firstArgMatchesStep() {
+		return
+	}
+	if err := entrypoint(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func entrypoint() (err error) {
+	if len(os.Args) <= 1 {
+		return errors.New("unexpected argument count for sandbox step")
+	}
+	s, err := parseSerializedArg(os.Args[1])
+	if err != nil {
+		return err
 	}
 	switch os.Args[0] {
 	case newNamespaceStepArg:
-		return b.newNamespaceStep()
+		return s.newNamespaceStep()
 	case setupStepArg:
-		return b.setupStep(chrootDir)
+		return s.setupStep()
 	case execStepArg:
-		b.runExecStep()
+		s.runExecStep()
 		return nil
 	default:
-		return errors.New("can't run process without specific path argument")
+		return errors.New("first argument didn't match any known sandbox steps")
 	}
 }
 
+// DebugFunction is a sandbox function that launches a rudimentary shell
+var DebugFunction = RegisterFunction(func() {
+	shell.Run()
+})
+
+// RunDebug launches a rudimentary shell within a sandbox
 func RunDebug() (err error) {
 	store, err := store.NewStore()
 	if err != nil {
 		return err
 	}
-	sbx := &Sandbox{
-		Store:  store,
-		Path:   debugMagicString,
-		Stdin:  os.Stdin,
-		Stderr: os.Stderr,
-		Stdout: os.Stdout,
+	chrootPath, err := store.TempBuildDir()
+	if err != nil {
+		return err
 	}
-	return sbx.Run()
+	s := &Sandbox{
+		ChrootPath: chrootPath,
+		Function:   DebugFunction,
+		Stdin:      os.Stdin,
+		Stderr:     os.Stderr,
+		Stdout:     os.Stdout,
+		Mounts:     []string{store.StorePath + ":ro"},
+	}
+	return s.Run()
 }
 
+type Function struct {
+	index int
+}
+
+func (f Function) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Index int `json:"index"`
+	}{
+		Index: f.index,
+	})
+}
+func (f *Function) UnmarshalJSON(data []byte) error {
+	aux := struct {
+		Index int `json:"index"`
+	}{}
+	err := json.Unmarshal(data, &aux)
+	f.index = aux.Index
+	return err
+}
+
+var registeredFunctions = []func(){}
+
+// RegisterFunction can be used to register a Go function that you want to run
+// in a sandbox instead of an external command. RegisterFunction must be
+// called at the very beginning of your executable.
+func RegisterFunction(fn func()) Function {
+	index := len(registeredFunctions) + 1 // zero is null
+	registeredFunctions = append(registeredFunctions, fn)
+	return Function{index: index}
+}
+
+// Sandbox defines a command or function that you want to run in a sandbox
 type Sandbox struct {
-	Store  store.Store
-	Stdin  io.Reader `json:"-"`
-	Stdout io.Writer `json:"-"`
-	Stderr io.Writer `json:"-"`
-	Path   string
-	Args   []string
-	Dir    string
-}
-type serializedSandbox struct {
-	Sandbox
-	ChrootDir string
+	Stdin      io.Reader `json:"-"`
+	Stdout     io.Writer `json:"-"`
+	Stderr     io.Writer `json:"-"`
+	ChrootPath string
+	Path       string
+	Args       []string
+	Dir        string
+	Env        []string
+	// Function can reference a function that has been created with
+	// RegisterFunction. TODO: fix overloading of function and Path
+	// functionality
+	Function Function
+	// Bind mounts or directories the process should have access too. These
+	// should be absolute paths. If a mount is intended to be readonly add
+	// ":ro" to the end of the path like `/tmp:ro`
+	Mounts []string
+	// DisableNetwork will remove network access within the sandbox process
+	DisableNetwork bool
+	// SetUIDBinary can be used if you want the parent process to call out
+	// first to a different binary
+	SetUIDBinary string // TODO
 }
 
-func (s Sandbox) serializeArg(chrootDir string) (string, error) {
-	sb := serializedSandbox{
-		Sandbox:   s,
-		ChrootDir: chrootDir,
-	}
-	byt, err := json.Marshal(sb)
-
+func (s Sandbox) serializeArg() (string, error) {
+	byt, err := json.Marshal(s)
 	return string(byt), err
 }
 
-func parseSerializedArg(arg string) (s Sandbox, chrootDir string, err error) {
-	var sb serializedSandbox
-	if err = json.Unmarshal([]byte(arg), &sb); err != nil {
-		return
-	}
-	return sb.Sandbox, sb.ChrootDir, nil
+func parseSerializedArg(arg string) (s Sandbox, err error) {
+	return s, json.Unmarshal([]byte(arg), &s)
 }
 
+// Run runs the sandbox until execution has been completed
 func (s Sandbox) Run() (err error) {
-	if s.Store.IsEmpty() {
-		return errors.New("sandbox has an empty store")
-	}
-	serialized, err := s.serializeArg("")
+	serialized, err := s.serializeArg()
 	if err != nil {
 		return err
 	}
@@ -113,14 +175,16 @@ func (s Sandbox) Run() (err error) {
 		return err
 	}
 	logger.Debugw("newSanbox", "execpath", path)
-	// TODO: audit the contents of serialized
+	// interrupt will be caught be the child process and the process
+	// will exiting, causing this process to exit
+	ignoreInterrupt()
 	cmd := &exec.Cmd{
-		Path: path,
-		Args: []string{newNamespaceStepArg, serialized},
+		Path:   path,
+		Args:   []string{newNamespaceStepArg, serialized},
+		Stdin:  s.Stdin,
+		Stdout: s.Stdout,
+		Stderr: s.Stderr,
 	}
-	cmd.Stdin = s.Stdin
-	cmd.Stdout = s.Stdout
-	cmd.Stderr = s.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error running newSandbox - %w", err)
 	}
@@ -132,20 +196,28 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	if err != nil {
 		return err
 	}
-	chrootDir, err := s.Store.TempDir()
-	if err != nil {
-		return err
-	}
 	defer func() {
-		logger.Debugw("clean up chrootDir", "path", chrootDir)
-		if er := os.RemoveAll(chrootDir); er != nil && err == nil {
-			err = errors.Wrap(er, "error removing all files in "+chrootDir)
+		logger.Debugw("clean up chrootDir", "path", s.ChrootPath)
+		if er := os.RemoveAll(s.ChrootPath); er != nil && err == nil {
+			err = errors.Wrap(er, "error removing all files in "+s.ChrootPath)
 		}
 	}()
-	serialized, err := s.serializeArg(chrootDir)
+	serialized, err := s.serializeArg()
 	if err != nil {
 		return err
 	}
+
+	var cloneFlags uintptr = syscall.CLONE_NEWUTS |
+		syscall.CLONE_NEWNS |
+		syscall.CLONE_NEWPID
+
+	if s.DisableNetwork {
+		cloneFlags |= syscall.CLONE_NEWNET
+	}
+
+	// interrupt will be caught be the child process and the process
+	// will exiting, causing this process to exit
+	ignoreInterrupt()
 	cmd := &exec.Cmd{
 		Path:   selfExe,
 		Args:   []string{setupStepArg, serialized},
@@ -153,31 +225,25 @@ func (s Sandbox) newNamespaceStep() (err error) {
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 		SysProcAttr: &syscall.SysProcAttr{
-			Pdeathsig: unix.SIGTERM,
-			Cloneflags: syscall.CLONE_NEWUTS |
-				syscall.CLONE_NEWNS |
-				syscall.CLONE_NEWPID |
-				syscall.CLONE_NEWNET, // no network access
+			Pdeathsig:  unix.SIGTERM, // ???
+			Cloneflags: cloneFlags,
 		},
 	}
 	return errors.Wrap(cmd.Run(), "error running newNamespace")
 }
 
-func (s Sandbox) setupStep(chrootDir string) (err error) {
-	logger.Debugw("setup chroot", "dir", chrootDir)
+func (s Sandbox) setupStep() (err error) {
+	logger.Debugw("setup chroot", "dir", s.ChrootPath)
 	buildUser, err := user.Lookup("bramblebuild0")
 	if err != nil {
 		return err
 	}
 	creds := userToCreds(buildUser)
-	if err := os.Chown(chrootDir, int(creds.Uid), int(creds.Gid)); err != nil {
+	if err := os.Chown(s.ChrootPath, int(creds.Uid), int(creds.Gid)); err != nil {
 		return err
 	}
 
-	chr := newChroot(chrootDir, []string{
-		s.Store.StorePath + ":ro",
-		// filepath.Join(s.Store.StorePath, "within"),
-	})
+	chr := newChroot(s.ChrootPath, s.Mounts)
 	defer func() {
 		if er := chr.Cleanup(); er != nil && err == nil {
 			err = er
@@ -190,10 +256,10 @@ func (s Sandbox) setupStep(chrootDir string) (err error) {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Join(chrootDir, filepath.Dir(selfExe)), 0777); err != nil {
+		if err := os.MkdirAll(filepath.Join(s.ChrootPath, filepath.Dir(selfExe)), 0777); err != nil {
 			return err
 		}
-		if err = os.Link(selfExe, filepath.Join(chrootDir, selfExe)); err != nil {
+		if err = os.Link(selfExe, filepath.Join(s.ChrootPath, selfExe)); err != nil {
 			return err
 		}
 	}
@@ -202,9 +268,14 @@ func (s Sandbox) setupStep(chrootDir string) (err error) {
 		return err
 	}
 
+	serialized, err := s.serializeArg()
+	if err != nil {
+		return err
+	}
+
 	cmd := exec.CommandContext(interruptContext(), selfExe)
 	cmd.Path = selfExe
-	cmd.Args = []string{execStepArg}
+	cmd.Args = []string{execStepArg, serialized}
 	cmd.Env = []string{"USER=bramblebuild0", "HOME=/homeless"}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -213,6 +284,16 @@ func (s Sandbox) setupStep(chrootDir string) (err error) {
 		Credential: creds,
 	}
 	return cmd.Run()
+}
+
+func ignoreInterrupt() {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for {
+			<-c
+		}
+	}()
 }
 
 func interruptContext() context.Context {
@@ -227,8 +308,28 @@ func interruptContext() context.Context {
 }
 
 func (s Sandbox) runExecStep() {
-	fmt.Println(s)
-	shell.Run()
+	if s.Function.index != 0 {
+		// TODO: env
+		// TODO: dir
+		registeredFunctions[s.Function.index-1]()
+	} else {
+		cmd := exec.Cmd{
+			Path: s.Path,
+			Dir:  s.Dir,
+			Args: s.Args,
+			// TODO: env
+
+			// We don't use the passed sandbox stdio because
+			// it's been passed to the very first run command
+			Stdin:  os.Stdin,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+		}
+		if err := cmd.Run(); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+	}
 }
 
 func userToCreds(u *user.User) *syscall.Credential {
