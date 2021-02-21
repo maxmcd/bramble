@@ -40,6 +40,10 @@ func (s Store) TempDir() (tempDir string, err error) {
 	return ioutil.TempDir(s.StorePath, BuildDirPattern)
 }
 
+func (s Store) TempBuildDir() (tempDir string, err error) {
+	return ioutil.TempDir(filepath.Join(s.BramblePath, "var/builds"), "build-")
+}
+
 func ensureBramblePath(s *Store) (err error) {
 	var exists bool
 	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
@@ -120,6 +124,9 @@ func ensureBramblePath(s *Store) (err error) {
 
 		// Cache for starlark file compilation.
 		"var/star-cache",
+
+		// Location to mount chroots for builds
+		"var/builds",
 	}
 
 	for _, folder := range folders {

@@ -486,7 +486,7 @@ func (b *Bramble) fetchGitBuilder(ctx context.Context, drv *Derivation, outputPa
 
 	// Override http(s) default protocol to use our custom client
 	gitclient.InstallProtocol("https", githttp.NewClient(customClient))
-	git.PlainClone("", false, &git.CloneOptions{})
+	_, _ = git.PlainClone("", false, &git.CloneOptions{})
 
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
@@ -1288,7 +1288,7 @@ func (b *Bramble) test(args []string) (err error) {
 	return
 }
 
-func (b *Bramble) repl(args []string) (err error) {
+func (b *Bramble) repl(_ []string) (err error) {
 	if err := b.init(); err != nil {
 		return err
 	}
@@ -1354,7 +1354,7 @@ func (b *Bramble) run(args []string) (err error) {
 	return b.writeConfigMetadata(returnedDerivations)
 }
 
-func (b *Bramble) gc(args []string) (err error) {
+func (b *Bramble) gc(_ []string) (err error) {
 	if err = b.init(); err != nil {
 		return
 	}

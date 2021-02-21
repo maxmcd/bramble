@@ -79,7 +79,7 @@ func (s Session) cd(path string) (out string, err error) {
 	}
 	_, err = os.Stat(out)
 	if err != nil {
-		errors.Wrap(err, fmt.Sprintf("can't change directory to %q", out))
+		err = errors.Wrap(err, fmt.Sprintf("can't change directory to %q", out))
 	}
 	return
 }

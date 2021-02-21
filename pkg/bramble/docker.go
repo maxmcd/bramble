@@ -296,7 +296,7 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 	// pass the host environment
 	env := []string{}
 	// make sure we use the bramble path that we've mounted
-	env = append(env, "BRAMBLE_PATH="+b.store.bramblePath)
+	env = append(env, "BRAMBLE_PATH="+b.store.BramblePath)
 	env = append(env, fmt.Sprintf("BRAMBLE_SET_UID=%d", os.Geteuid()))
 	env = append(env, fmt.Sprintf("BRAMBLE_SET_GID=%d", os.Getegid()))
 	env = append(env, "BRAMBLE_WITHIN_DOCKER=1")
