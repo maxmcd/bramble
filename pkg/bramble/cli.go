@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
@@ -18,7 +19,7 @@ var (
 	BrambleFunctionBuildHiddenCommand = "__bramble-function-build"
 )
 
-func createCLI(b *Bramble) *ffcli.Command {
+func (b *Bramble) createCLI() *ffcli.Command {
 	var (
 		run             *ffcli.Command
 		root            *ffcli.Command
@@ -123,9 +124,11 @@ func createCLI(b *Bramble) *ffcli.Command {
 
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	sandbox.Entrypoint()
+
 	log.SetOutput(ioutil.Discard)
 	b := &Bramble{}
-	command := createCLI(b)
+	command := b.createCLI()
 	if err := command.ParseAndRun(context.Background(), os.Args[1:]); err != nil {
 		if err == errQuiet {
 			os.Exit(1)
@@ -136,7 +139,6 @@ func RunCLI() {
 		fmt.Fprint(os.Stderr, starutil.AnnotateError(err))
 		os.Exit(1)
 	}
-	os.Exit(0)
 }
 
 func DefaultUsageFunc(c *ffcli.Command) string {

@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/trace"
@@ -43,6 +42,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/maxmcd/bramble/pkg/textreplace"
@@ -200,9 +200,9 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	case "fetch_git":
 		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	case "function":
-		err = b.dockerFunctionBuilder(ctx, drvCopy, buildDir, outputPaths)
+		err = b.functionBuilder(ctx, drvCopy, buildDir, outputPaths)
 	default:
-		err = b.dockerRegularBuilder(ctx, drvCopy, buildDir, outputPaths)
+		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths)
 	}
 	if err != nil {
 		return
@@ -557,25 +557,37 @@ func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, bui
 	return b.runDockerBuild(ctx, drv.filename(), options)
 }
 
-func (b *Bramble) regularBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
 	builderLocation := drv.Builder
-
 	if _, err := os.Stat(builderLocation); err != nil {
-		return errors.Wrap(err, "error checking if builder location exists")
+		return errors.Wrap(err, "builder location doesn't exist")
 	}
-	cmd := exec.Command(builderLocation, drv.Args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: b.credentials,
+	env := drv.env()
+	mounts := []string{
+		b.store.StorePath + ":ro",
+		buildDir,
 	}
-	cmd.Dir = filepath.Join(buildDir, drv.BuildContextRelativePath)
-	cmd.Env = drv.env()
 	for outputName, outputPath := range outputPaths {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", outputName, outputPath))
+		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
+		mounts = append(mounts, outputPath)
 	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	chrootDir, err := ioutil.TempDir("", "bramble-chroot-")
+	// chrootDir, err := b.store.TempBuildDir()
+	if err != nil {
+		return err
+	}
+	fmt.Println(drv.prettyJSON())
+	sbx := sandbox.Sandbox{
+		Path:       builderLocation,
+		Args:       drv.Args,
+		Stdout:     os.Stdout,
+		Stderr:     os.Stderr,
+		Env:        env,
+		ChrootPath: chrootDir,
+		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),
+		Mounts:     mounts,
+	}
+	return sbx.Run(ctx)
 }
 
 func (b *Bramble) constructBrambleProto() *bramblepb.Bramble {
@@ -691,7 +703,7 @@ func (b *Bramble) dockerFunctionBuilder(ctx context.Context, drv *Derivation, bu
 		})
 }
 
-func (b *Bramble) functionBuilder(drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+func (b *Bramble) functionBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
 	var meta functionBuilderMeta
 	if err = json.Unmarshal([]byte(drv.Env["function_builder_meta"]), &meta); err != nil {
 		return errors.Wrap(err, "error parsing function_builder_meta")

@@ -103,10 +103,15 @@ func (chr *chroot) Cleanup() (err error) {
 	if err := syscall.Unmount(filepath.Join(root, "proc"), 0); err != nil {
 		return err
 	}
-	for _, mount := range chr.mounts {
+
+	// must go in reverse order in case we have mounts within mounts
+	for i := len(chr.mounts) - 1; i >= 0; i-- {
+		mount := chr.mounts[i]
 		loc, _, _ := parseMount(mount)
-		if err := syscall.Unmount(filepath.Join(root, loc), 0); err != nil {
-			return errors.Wrap(err, "error mounting location: "+loc)
+		loc = filepath.Join(root, loc)
+		logger.Debugw("cleaning up mount", "path", loc)
+		if err := syscall.Unmount(loc, 0); err != nil {
+			return errors.Wrap(err, "error unmounting location: "+loc)
 		}
 	}
 	return nil

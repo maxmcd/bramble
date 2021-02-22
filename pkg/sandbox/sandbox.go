@@ -96,7 +96,7 @@ func RunDebug() (err error) {
 		Stdout:     os.Stdout,
 		Mounts:     []string{store.StorePath + ":ro"},
 	}
-	return s.Run()
+	return s.Run(context.Background())
 }
 
 type Function struct {
@@ -165,11 +165,12 @@ func parseSerializedArg(arg string) (s Sandbox, err error) {
 }
 
 // Run runs the sandbox until execution has been completed
-func (s Sandbox) Run() (err error) {
+func (s Sandbox) Run(ctx context.Context) (err error) {
 	serialized, err := s.serializeArg()
 	if err != nil {
 		return err
 	}
+	// TODO: allow reference to self
 	path, err := exec.LookPath(setUIDExecName)
 	if err != nil {
 		return err
@@ -185,8 +186,24 @@ func (s Sandbox) Run() (err error) {
 		Stdout: s.Stdout,
 		Stderr: s.Stderr,
 	}
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running newSandbox - %w", err)
+	errChan := make(chan error)
+	go func() {
+		if err := cmd.Run(); err != nil {
+			errChan <- fmt.Errorf("error running newSandbox - %w", err)
+		}
+		close(errChan)
+	}()
+	select {
+	case <-ctx.Done():
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			return err
+		}
+		// TODO: do this for all of them? Stop ignoring the interrupt in the children?
+	case err = <-errChan:
+		if err == nil && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() != 0 {
+			return errors.New("ah!a")
+		}
+		return err
 	}
 	return nil
 }
@@ -198,8 +215,11 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	}
 	defer func() {
 		logger.Debugw("clean up chrootDir", "path", s.ChrootPath)
-		if er := os.RemoveAll(s.ChrootPath); er != nil && err == nil {
-			err = errors.Wrap(er, "error removing all files in "+s.ChrootPath)
+		if er := os.RemoveAll(s.ChrootPath); er != nil {
+			logger.Debugw("error cleaning up", "err", er)
+			if err == nil {
+				err = errors.Wrap(er, "error removing all files in "+s.ChrootPath)
+			}
 		}
 	}()
 	serialized, err := s.serializeArg()
@@ -245,8 +265,12 @@ func (s Sandbox) setupStep() (err error) {
 
 	chr := newChroot(s.ChrootPath, s.Mounts)
 	defer func() {
-		if er := chr.Cleanup(); er != nil && err == nil {
-			err = er
+		if er := chr.Cleanup(); er != nil {
+			if err == nil {
+				err = er
+			} else {
+				logger.Debugw("error during cleanup", "err", er)
+			}
 		}
 	}()
 	var selfExe string
@@ -276,7 +300,7 @@ func (s Sandbox) setupStep() (err error) {
 	cmd := exec.CommandContext(interruptContext(), selfExe)
 	cmd.Path = selfExe
 	cmd.Args = []string{execStepArg, serialized}
-	cmd.Env = []string{"USER=bramblebuild0", "HOME=/homeless"}
+	cmd.Env = append([]string{"USER=bramblebuild0", "HOME=/homeless"}, s.Env...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -313,11 +337,12 @@ func (s Sandbox) runExecStep() {
 		// TODO: dir
 		registeredFunctions[s.Function.index-1]()
 	} else {
+		fmt.Println(s.Path, s.Args, s.Dir)
 		cmd := exec.Cmd{
 			Path: s.Path,
 			Dir:  s.Dir,
-			Args: s.Args,
-			// TODO: env
+			Args: append([]string{s.Path}, s.Args...),
+			Env:  os.Environ(),
 
 			// We don't use the passed sandbox stdio because
 			// it's been passed to the very first run command
