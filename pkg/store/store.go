@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	// does this ensure the same length always?
-	BuildDirPattern       = "bramble_build_directory*"
+	BuildDirPattern       = "bramble_build_directory*" // TODO: does this ensure the same length always?
 	PathPaddingCharacters = "bramble_store_padding"
 	PathPaddingLength     = 50
 
@@ -37,7 +36,11 @@ func (s Store) IsEmpty() bool {
 }
 
 func (s Store) TempDir() (tempDir string, err error) {
-	return ioutil.TempDir(s.StorePath, BuildDirPattern)
+	tempDir, err = ioutil.TempDir(s.StorePath, BuildDirPattern)
+	if err != nil {
+		return
+	}
+	return tempDir, os.Chmod(tempDir, 0777)
 }
 
 func (s Store) TempBuildDir() (tempDir string, err error) {

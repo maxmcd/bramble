@@ -26,7 +26,7 @@ LICENSE: main.go pkg/*/*.go
 		&& mv bramble ~/bramble/var/linux-binary
 	touch LICENSE
 
-install: ./pkg/bramblepb/bramble_pb.pb.go LICENSE
+install: ./pkg/bramblepb/bramble_pb.pb.go LICENSE build_setuid
 
 bramble_tests: install
 	bramble test
@@ -43,7 +43,7 @@ touch_file: install
 	bramble run lib/busybox:touch_file
 
 simple: install
-	bramble run tests/simple/simple:run_simple
+	bramble run tests/simple/simple:simple
 
 simple2: install
 	bramble run tests/simple/simple:simple2
@@ -84,7 +84,7 @@ all_bramble: install
 install_reptar:
 	cd pkg/reptar/reptar && go install
 
-build_thorn:
+build_setuid:
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 		go build -tags netgo -ldflags '-w' ./pkg/cmd/bramble-setuid
 	sudo chown root:root ./bramble-setuid
