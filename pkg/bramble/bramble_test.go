@@ -189,8 +189,8 @@ func TestBramble_moduleNameFromFileName(t *testing.T) {
 			filename:       "default.bramble",
 			wantModuleName: "github.com/maxmcd/bramble/pkg/bramble/testfiles",
 		}, {
-			filename:       "../../../tests/busybox.bramble",
-			wantModuleName: "github.com/maxmcd/bramble/tests/busybox",
+			filename:       "../../../tests/basic.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/tests/basic",
 		},
 	}
 	for _, tt := range tests {

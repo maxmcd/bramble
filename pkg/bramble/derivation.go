@@ -28,6 +28,17 @@ var (
 	// DerivationOutputTemplate is the template string we use to write
 	// derivation outputs into other derivations.
 	DerivationOutputTemplate = "{{ %s:%s }}"
+
+	// TemplateStringRegexp is the regular expression that matches template strings
+	// in our derivations. I assume the ".*" parts won't run away too much because
+	// of the earlier match on "{{ [0-9a-z]{32}" but might be worth further
+	// investigation.
+	//
+	// TODO: should we limit the content of the derivation name? would at least
+	// be limited by filesystem rules. If we're not eager about warning about this
+	// we risk having derivation names only work on certain systems through that
+	// limitation alone. Maybe this is ok?
+	TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv):(.+?) \}\}`)
 )
 
 // DerivationFunction is the function that creates derivations
@@ -353,17 +364,6 @@ func (drv *Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
-
-// TemplateStringRegexp is the regular expression that matches template strings
-// in our derivations. I assume the ".*" parts won't run away too much because
-// of the earlier match on "{{ [0-9a-z]{32}" but might be worth further
-// investigation.
-//
-// TODO: should we limit the content of the derivation name? would at least
-// be limited by filesystem rules. If we're not eager about warning about this
-// we risk having derivation names only work on certain systems through that
-// limitation alone. Maybe this is ok?
-var TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{([0-9a-z]{32}-.*?\.drv):(.+?)\}\}`)
 
 func (drv *Derivation) searchForDerivationOutputs() DerivationOutputs {
 	return searchForDerivationOutputs(string(drv.JSON()))
