@@ -14,13 +14,9 @@ go_test: install
 # just use LICENSE as a file we can harmlessly "touch" and use as a cache marker
 LICENSE: main.go pkg/*/*.go
 	go install
-	mkdir -p ~/bramble/var
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-		go build -tags netgo -ldflags '-w' . \
-		&& mv bramble ~/bramble/var/linux-binary
 	touch LICENSE
 
-install: LICENSE build_setuid
+install:  LICENSE build_setuid
 
 bramble_tests: install
 	bramble test

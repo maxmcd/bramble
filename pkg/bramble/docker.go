@@ -152,6 +152,7 @@ func (b *Bramble) runDockerBuild(ctx context.Context, name string, options runDo
 	if options.mountBrambleBinary {
 		// TODO: replace with symlink to store path of the specific bramble
 		// version we want
+		// TODO: deprecated
 		binds = append(binds, fmt.Sprintf("%s:%s", // bring in a version of bramble
 			filepath.Join(b.store.BramblePath, "var/linux-binary"),
 			"/bin/bramble",
@@ -279,6 +280,7 @@ func (b *Bramble) runDockerRun(ctx context.Context, args []string) (err error) {
 		fmt.Sprintf("%s:%s", volumeName, b.store.BramblePath),
 
 		// bring in a version of bramble
+		// TODO: deprecated
 		fmt.Sprintf("%s:%s",
 			filepath.Join(b.store.BramblePath, "var/linux-binary"),
 			"/bin/bramble"),
