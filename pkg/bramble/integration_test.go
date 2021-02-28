@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -29,22 +28,11 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
-	hd, _ := os.UserHomeDir()
-	dest := filepath.Join(dir, "var")
-	_ = os.MkdirAll(dest, 0755)
-	if err = fileutil.CP("", filepath.Join(hd, "bramble/var/linux-binary"), dest); err != nil {
-		t.Fatal(err)
-	}
 	cb(t)
 	if err = reptar.Reptar(dir+"/store", hshr); err != nil {
 		t.Error(err)
 	}
 	os.Setenv("BRAMBLE_PATH", dir2)
-	dest2 := filepath.Join(dir2, "var")
-	_ = os.MkdirAll(dest2, 0755)
-	if err = fileutil.CP("", filepath.Join(hd, "bramble/var/linux-binary"), dest2); err != nil {
-		t.Fatal(err)
-	}
 	cb(t)
 	if err = reptar.Reptar(dir2+"/store", hshr2); err != nil {
 		t.Error(err)
