@@ -7,5 +7,9 @@ func newSugaredLogger() *zap.SugaredLogger {
 	return logger.Sugar()
 }
 
-var Logger = newSugaredLogger()
-var Debugw = Logger.Debugw
+var (
+	Logger = newSugaredLogger()
+	Debugw = Logger.Debugw
+	Debug  = Logger.Debug
+	Info   = Logger.Info
+)

@@ -3,6 +3,7 @@ package bramble
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/store"
@@ -47,6 +48,25 @@ func TestDerivationValueReplacement(t *testing.T) {
 	}
 	assert.Contains(t, buildCopy.prettyJSON(), "/bramble/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bin/sh")
 	assert.Contains(t, buildCopy.prettyJSON(), "/bramble/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/bin")
+}
+
+type scriptTest struct {
+	name         string
+	script       string
+	errContains  string
+	respContains string
+}
+
+func fixUpScript(script string) string {
+	var sb strings.Builder
+	lines := strings.Split(script, "\n")
+	sb.WriteString("def test():\n")
+	if len(lines) > 1 {
+		sb.WriteString("\t")
+		sb.WriteString(strings.Join(lines[:len(lines)-1], "\n\t"))
+	}
+	sb.WriteString("\n\treturn " + lines[len(lines)-1])
+	return sb.String()
 }
 
 func TestDerivationCreation(t *testing.T) {

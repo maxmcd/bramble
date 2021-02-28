@@ -1,42 +1,12 @@
 load("github.com/maxmcd/bramble/lib/seed")
-load("github.com/maxmcd/bramble/lib/stdenv")
-load("github.com/maxmcd/bramble/lib/std")
 
 
 def simple():
     s = seed.seed()
     return derivation(
+        name="simple",
         builder=s.out + "/bin/sh",
         env={"seed": s},
         args=["./simple_builder.sh"],
         sources=["./simple.c", "simple_builder.sh"],
     )
-
-
-def run_simple():
-    s = simple()
-    std.exec(os.session(), s.out + "/simple")
-
-def test_simple():
-    s = simple()
-    s = os.session().setenv("PATH", s.out)
-    assert.eq(s.cmd("simple").output(), "Simple!\n")
-
-def simple2():
-    s = seed.seed()
-    return derivation(
-        builder=_simple2,
-        sources=["./simple.c", "simple_builder.sh"],
-        env={"stdenv": stdenv.stdenv().out},
-    )
-
-
-def test_simple2():
-    s = simple2()
-    s = os.session().setenv("PATH", s.out)
-    assert.eq(s.cmd("simple").output(), "Simple!\n")
-
-
-def _simple2(s, outputs):
-    stdenv.gcc(s, "-o", outputs["out"] + "/simple", "./simple.c")
-    std.exec(s, outputs["out"] + "/simple")

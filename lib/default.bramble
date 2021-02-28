@@ -2,84 +2,76 @@ load("github.com/maxmcd/bramble/lib/seed")
 load("github.com/maxmcd/bramble/lib/std")
 
 
-def nix_stdenv():
-    pass
-
-
-def autoconf():
-    autoconf = std.fetch_url("https://brmbl.s3.amazonaws.com/autoconf.tar.gz")
-    return derivation(
-        name="autoconf",
-        builder=_build_autoconf,
-        env=dict(autoconf_src=autoconf, seed=seed.seed()),
-    )
-
-
-def _build_autoconf(s, outputs):
-    s = s.setenv("PATH", s.getenv("seed") + "/bin")
-    os.mkdir(outputs["out"] + "/bin")
-    std.exec(s, "cp -r $autoconf_src/autoconf/ $out/bin")
-
-
-# there's a "no such file or directory" error with autoconf, it
-# seems to be looking for a file that's not there in the scratch
-# container. investigate with tracing
-# def test_autoconf():
-#     ac = autoconf()
-#     print(os.cmd(ac.out + "/bin/autoconf/autoconf -h").output())
-
-
-def _make():
-    make_src = derivation(
-        name="make_src",
+def busybox():
+    b = derivation(
+        name="busybox_download",
         builder="fetch_url",
         env={
-            "url": "https://ftp.gnu.org/gnu/make/make-4.2.tar.gz",
-            "hash": "e968ce3c57ad39a593a92339e23eb148af6296b9f40aa453a9a9202c99d34436",
+            "decompress": False,
+            "url": "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz",
+            "hash": "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1",
         },
     )
+
+    commands = """
+[, [[, acpid, add-shell, addgroup, adduser, adjtimex, arch, arp, arping, ash, awk,
+base64, basename, bc, beep, blkdiscard, blkid, blockdev, bootchartd, brctl, bunzip2,
+bzcat, bzip2, cal, cat, chat, chattr, chgrp, chmod, chown, chpasswd, chpst, chroot,
+chrt, chvt, cksum, clear, cmp, comm, conspy, cp, cpio, crond, crontab, cryptpw,
+cttyhack, cut, date, dc, dd, deallocvt, delgroup, deluser, depmod, devmem, df,
+dhcprelay, diff, dirname, dmesg, dnsd, dnsdomainname, dos2unix, dpkg, dpkg-deb, du,
+dumpkmap, dumpleases, echo, ed, egrep, eject, env, envdir, envuidgid, ether-wake,
+expand, expr, factor, fakeidentd, fallocate, false, fatattr, fbset, fbsplash, fdflush,
+fdformat, fdisk, fgconsole, fgrep, find, findfs, flock, fold, free, freeramdisk, fsck,
+fsck.minix, fsfreeze, fstrim, fsync, ftpd, ftpget, ftpput, fuser, getopt, getty, grep,
+groups, gunzip, gzip, halt, hd, hdparm, head, hexdump, hexedit, hostid, hostname, httpd,
+hush, hwclock, i2cdetect, i2cdump, i2cget, i2cset, i2ctransfer, id, ifconfig, ifdown,
+ifenslave, ifplugd, ifup, inetd, init, insmod, install, ionice, iostat, ip, ipaddr,
+ipcalc, ipcrm, ipcs, iplink, ipneigh, iproute, iprule, iptunnel, kbd_mode, kill,
+killall, killall5, klogd, last, less, link, linux32, linux64, linuxrc, ln, loadfont,
+loadkmap, logger, login, logname, logread, losetup, lpd, lpq, lpr, ls, lsattr, lsmod,
+lsof, lspci, lsscsi, lsusb, lzcat, lzma, lzop, makedevs, makemime, man, md5sum, mdev,
+mesg, microcom, mkdir, mkdosfs, mke2fs, mkfifo, mkfs.ext2, mkfs.minix, mkfs.vfat, mknod,
+mkpasswd, mkswap, mktemp, modinfo, modprobe, more, mount, mountpoint, mpstat, mt, mv,
+nameif, nanddump, nandwrite, nbd-client, nc, netstat, nice, nl, nmeter, nohup, nologin,
+nproc, nsenter, nslookup, ntpd, nuke, od, openvt, partprobe, passwd, paste, patch,
+pgrep, pidof, ping, ping6, pipe_progress, pivot_root, pkill, pmap, popmaildir, poweroff,
+powertop, printenv, printf, ps, pscan, pstree, pwd, pwdx, raidautorun, rdate, rdev,
+readahead, readlink, readprofile, realpath, reboot, reformime, remove-shell, renice,
+reset, resize, resume, rev, rm, rmdir, rmmod, route, rpm, rpm2cpio, rtcwake, run-init,
+run-parts, runlevel, runsv, runsvdir, rx, script, scriptreplay, sed, sendmail, seq,
+setarch, setconsole, setfattr, setfont, setkeycodes, setlogcons, setpriv, setserial,
+setsid, setuidgid, sh, sha1sum, sha256sum, sha3sum, sha512sum, showkey, shred, shuf,
+slattach, sleep, smemcap, softlimit, sort, split, ssl_client, start-stop-daemon, stat,
+strings, stty, su, sulogin, sum, sv, svc, svlogd, svok, swapoff, swapon, switch_root,
+sync, sysctl, syslogd, tac, tail, tar, taskset, tc, tcpsvd, tee, telnet, telnetd, test,
+tftp, tftpd, time, timeout, top, touch, tr, traceroute, traceroute6, true, truncate, ts,
+tty, ttysize, tunctl, ubiattach, ubidetach, ubimkvol, ubirename, ubirmvol, ubirsvol,
+ubiupdatevol, udhcpc, udhcpc6, udhcpd, udpsvd, uevent, umount, uname, unexpand, uniq,
+unix2dos, unlink, unlzma, unshare, unxz, unzip, uptime, users, usleep, uudecode,
+uuencode, vconfig, vi, vlock, volname, w, wall, watch, watchdog, wc, wget, which, who,
+whoami, whois, xargs, xxd, xz, xzcat, yes, zcat, zcip
+    """
+
+    command_list = " ".join(commands.strip().split("\n")).split(", ")
+    command_list.remove("ln")
+    command_symlinks = "\n".join([("./ln -s busybox %s" % c) for c in command_list])
+    command_symlinks
+    script = (
+        """
+    set -e
+    $busybox_download/busybox-x86_64 mkdir $out/bin
+    $busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
+    cd $out/bin
+    ./busybox ln -s busybox ln
+    %s
+    """
+        % command_symlinks
+    )
+
     return derivation(
-        name="bash",
-        builder=_build_make,
-        env=dict(make_srv=make_src, seed=seed.seed(), autoconf=autoconf()),
+        name="busybox",
+        builder=b.out + "/busybox-x86_64",
+        args=["sh", "-c", script],
+        env={"busybox_download": b},
     )
-
-
-def _build_make():
-    os.setenv("PATH", os.getenv("seed") + "/bin" + ":" + os.getenv("autoconf") + "/bin")
-    os.setenv("CC", "x86_64-linux-musl-gcc --static")
-    os.setenv("CFLAGS", "-O2 -fstack-protector")
-    os.setenv("LDFLAGS", "-s")
-
-    std.exec("cp -r $make_src/make-4.2/ .")
-    os.cd("./make-4.2")
-
-    std.exec("ls -lah")
-    std.exec("$seed/bin/sh", "./configure", "--prefix=$out")
-    std.exec("$seed/bin/sh", "./build.sh")
-    std.exec("ls -lah $out")
-    std.exec("./make", "install")
-
-
-def _bash():
-    bash_src = derivation(
-        name="bash_src",
-        builder="fetch_url",
-        env={
-            "url": "http://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz",
-            "hash": "d86b3392c1202e8ff5a423b302e6284db7f8f435ea9f39b5b1b20fd3ac36dfcb",
-        },
-    )
-    return derivation(
-        name="bash", builder=_build_bash, env=dict(bash_src=bash_src, seed=seed.seed()),
-    )
-
-
-def _build_bash():
-    os.setenv("PATH", os.getenv("seed") + "/bin")
-    std.exec("cp -r $bash_src/bash-4.4/ .")
-    os.cd("./bash-4.4")
-    os.setenv("LD_LIBRARY_PATH", "$seed/x86_64-linux-musl/lib")
-    std.exec("env")
-    guess = std.exec("$seed/bin/sh ./support/config.guess").output()
-    std.exec("$seed/bin/sh", "--prefix=$out", "./configure", "--without-bash-malloc")

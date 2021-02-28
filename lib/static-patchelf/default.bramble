@@ -1,11 +1,14 @@
-def _upload():
-    s = os.session()
-    s = s.setenv("AWS_PROFILE", "max")
-    print(
-        s.cmd(
-            "aws s3 cp ./patchelf.tar.gz s3://brmbl/patchelf.tar.gz --acl public-read",
-        ).output()
-    )
+load("github.com/maxmcd/bramble/lib")
+
+
+# def _upload():
+#     s = os.session()
+#     s = s.setenv("AWS_PROFILE", "max")
+#     print(
+#         s.cmd(
+#             "aws s3 cp ./patchelf.tar.gz s3://brmbl/patchelf.tar.gz --acl public-read",
+#         ).output()
+#     )
 
 
 def patchelf():
@@ -19,13 +22,15 @@ def patchelf():
     )
 
     return derivation(
-        name="patchelf", builder=_install_patchelf, env=dict(patch_dl=patch_dl)
+        name="patchelf",
+        builder=lib.busybox().out + "/bin/sh",
+        args=[
+            "-c",
+            """
+            echo $out/bin
+            mkdir $out/bin
+            cp $patch_dl/patchelf $out/bin
+            """,
+        ],
+        env=dict(patch_dl=patch_dl, PATH=lib.busybox().out + "/bin"),
     )
-
-
-def _install_patchelf(s, outputs):
-    """hi"""
-    out_dir = outputs["out"] + "/bin"
-    print(out_dir)
-    os.mkdir(out_dir)
-    os.cp(s.getenv("patch_dl") + "/patchelf", out_dir)
