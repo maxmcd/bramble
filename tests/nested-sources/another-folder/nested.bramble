@@ -1,8 +1,8 @@
-load("github.com/maxmcd/bramble/tests/busybox")
+load("github.com/maxmcd/bramble/lib")
 
 
 def nested():
-    bb = busybox.busybox()
+    bb = lib.busybox()
     return [_nested1(bb), _nested2(bb), _nested3(bb)]
 
 

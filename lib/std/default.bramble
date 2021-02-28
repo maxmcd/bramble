@@ -1,17 +1,5 @@
 """std defines some standard bramble helper functions"""
 
 
-def exec(session, *args, **kwargs):
-    expanded_args = []
-    for arg in args:
-        expanded_args.append(session.expand(str(arg)))
-    defaults = dict(print_output=True)
-    for k, v in defaults.items():
-        if kwargs.get(k) == None:
-            kwargs[k] = v
-    c = session.cmd(*expanded_args, **kwargs)
-    return c.wait()
-
-
 def fetch_url(url):
     return derivation(builder="fetch_url", env={"url": url})

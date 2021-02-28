@@ -4,7 +4,6 @@ package bramble
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,13 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/pkg/errors"
 )
 
 func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
@@ -29,10 +26,6 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	dir := tmpDir()
 	hshr2 := hasher.NewHasher()
 	dir2 := tmpDir()
-
-	// TODO: this is all somewhat irellevant now because the store
-	// is in a docker volume. Update this test to support hashing
-	// those contents.
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
@@ -114,11 +107,14 @@ func assembleModules(t *testing.T) []string {
 }
 
 func runBrambleRun(args []string) error {
-	b := Bramble{}
-	if err := b.init(); err != nil {
-		return errors.Wrap(err, "b.init")
+	// ensure $GOPATH/bin is in PATH
+	path := os.Getenv("PATH")
+	gobin := filepath.Join(os.Getenv("GOPATH"), "bin")
+	if !strings.Contains(path, gobin) {
+		os.Setenv("PATH", path+":"+gobin)
 	}
-	return b.runDockerRun(context.Background(), append([]string{"run"}, args...))
+	b := Bramble{}
+	return b.run(args)
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
@@ -169,21 +165,4 @@ func TestIntegrationNixSeed(t *testing.T) {
 			t.Fatal(starutil.AnnotateError(err))
 		}
 	})
-}
-func TestIntegrationBenchmarkFullCacheHit(t *testing.T) {
-	t.Skip("don't run benchmarks")
-	if err := runBrambleRun([]string{"../../all:all"}); err != nil {
-		t.Fatal(err)
-	}
-	res := testing.Benchmark(func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if err := runBrambleRun([]string{"../../all:all"}); err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-
-	fmt.Printf("Time per run: %s\n", time.Duration(time.Nanosecond*time.Duration(res.NsPerOp())))
-	fmt.Printf("Total time: %s\n", res.T)
-	fmt.Println(res.Extra)
 }

@@ -1,6 +1,6 @@
 load(static_patchelf="github.com/maxmcd/bramble/lib/static-patchelf")
 load("github.com/maxmcd/bramble/lib/std")
-load("github.com/maxmcd/bramble/lib/busybox")
+load("github.com/maxmcd/bramble/lib")
 
 
 def stdenv():
@@ -11,62 +11,8 @@ def stdenv():
         "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
     )
     return derivation(
-        builder=_build_stdenv,
-        env=dict(
-            src=src, patchelf=static_patchelf.patchelf(), busybox=busybox.busybox()
-        ),
+        builder=lib.busybox().out + "/bin/sh",
+        args=["./build_stdenv.sh"],
+        sources=["./build_stdenv.sh"],
+        env=dict(src=src, patchelf=static_patchelf.patchelf(), busybox=lib.busybox()),
     )
-
-
-def _build_stdenv(s, outputs):
-    # put busybox and patchelf in the path
-    print(s.environ)
-    s = s.setenv("PATH", s.getenv("patchelf") + "/bin/:" + s.getenv("busybox") + "/bin")
-
-    print(s.getenv("PATH"))
-    # move the lib bin and include dirs from the download into our output
-    os.cp(s.getenv("src") + "/lib", s.getenv("out"))
-    os.cp(s.getenv("src") + "/include", s.getenv("out"))
-    os.cp(s.getenv("src") + "/libexec", s.getenv("out"))
-    os.cp(s.getenv("src") + "/include-glibc", s.getenv("out"))
-    os.cp(s.getenv("src") + "/bin", s.getenv("out"))
-
-    # set LD_LIBRARY_PATH to the output lib path
-    s = s.setenv("LD_LIBRARY_PATH", s.getenv("out") + "/lib")
-
-    s = s.cd(s.getenv("out"))
-
-    for folder in ["bin", "libexec/gcc/x86_64-unknown-linux-gnu/8.3.0"]:
-        for line in std.exec(s, "ls ./" + folder).output:
-            if "liblto" in line:
-                continue
-            ldd_output = _ldd(s, "./" + folder + "/" + line)
-            binary = "{}/{}/{}".format(s.getenv("out"), folder, line)
-
-            # if glibc is in the dynamic library links lets patch it
-            # TODO: could use more specific logic here
-            if "glibc" in ldd_output:
-                std.exec(s, "patchelf --shrink-rpath " + binary)
-                std.exec(
-                    s,
-                    "patchelf --set-interpreter $out/lib/ld-linux-x86-64.so.2 "
-                    + binary,
-                )
-                std.exec(s, "patchelf --set-rpath $out/lib " + binary)
-
-
-def _ldd(s, path):
-    return std.exec(
-        s,
-        s.getenv("out") + "/lib/ld-linux-x86-64.so.2",
-        "--list",
-        path,
-        print_output=False,
-    ).output()
-
-
-def ldd(s, path):
-    outpath = stdenv().out
-    return std.exec(
-        s, outpath + "/lib/ld-linux-x86-64.so.2", "--list", path, print_output=True,
-    ).output()

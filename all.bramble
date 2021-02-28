@@ -4,16 +4,14 @@ Run a handful of functions
 
 load("github.com/maxmcd/bramble/lib/seed")
 load("github.com/maxmcd/bramble/tests/simple/simple")
-load("github.com/maxmcd/bramble/tests/busybox")
+load("github.com/maxmcd/bramble/lib")
 load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested")
-load(bb="github.com/maxmcd/bramble/lib/busybox")
 
 
 def all():
     return [
         seed.seed(),
-        busybox.busybox(),
+        lib.busybox(),
         nested.nested(),
         simple.simple(),
-        bb.busybox(),
     ]

@@ -11,7 +11,6 @@ import (
 	"runtime/trace"
 	"sort"
 
-	"github.com/maxmcd/bramble/pkg/bramblepb"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
@@ -27,10 +26,8 @@ var (
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
 
 	// DerivationOutputTemplate is the template string we use to write
-	// derivation outputs into other derivations. It doesn't have spaces so
-	// that it can be passed to cmd() without messing with shellquote.Split. We
-	// might want to disallow spaces in output names to aide with this as well.
-	DerivationOutputTemplate = "{{%s:%s}}"
+	// derivation outputs into other derivations.
+	DerivationOutputTemplate = "{{ %s:%s }}"
 )
 
 // DerivationFunction is the function that creates derivations
@@ -91,26 +88,9 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	}
 
 	filename := drv.filename()
-	if err = f.bramble.CalledDerivation(filename); err != nil {
-		return
-	}
 	f.bramble.derivations.Set(filename, drv)
 
 	return drv, nil
-}
-
-type functionBuilderMeta struct {
-	Module      string
-	Function    string
-	ModuleCache map[string]string
-}
-
-func (fbm functionBuilderMeta) constructFunctionBuilderMetaProto() *bramblepb.FunctionBuilderMeta {
-	return &bramblepb.FunctionBuilderMeta{
-		Module:      fbm.Module,
-		Function:    fbm.Function,
-		ModuleCache: fbm.ModuleCache,
-	}
 }
 
 func (f *DerivationFunction) newDerivationFromArgs(ctx context.Context, args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
@@ -372,65 +352,6 @@ func (drv *Derivation) prettyJSON() string {
 	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
-}
-
-func constructDerivationFromProto(in *bramblepb.Derivation) *Derivation {
-	drv := &Derivation{
-		Args:                     in.Args,
-		BuildContextSource:       in.BuildContextSource,
-		BuildContextRelativePath: in.BuildContextRelativePath,
-		Builder:                  in.Builder,
-		Env:                      in.Env,
-		Name:                     in.Name,
-		OutputNames:              in.OutputNames,
-		Platform:                 in.Platform,
-		SourcePaths:              in.SourcePaths,
-	}
-	for _, id := range in.InputDerivations {
-		drv.InputDerivations = append(drv.InputDerivations, DerivationOutput{
-			Filename:   id.Filename,
-			OutputName: id.OutputName,
-		})
-	}
-
-	for _, o := range in.Outputs {
-		drv.Outputs = append(drv.Outputs, Output{
-			Path:         o.Path,
-			Dependencies: o.Dependencies,
-		})
-	}
-	return drv
-}
-
-func (drv *Derivation) constructDerivationProto() *bramblepb.Derivation {
-	var inputDerivations []*bramblepb.DerivationOutput
-	for _, id := range drv.InputDerivations {
-		inputDerivations = append(inputDerivations, &bramblepb.DerivationOutput{
-			Filename:   id.Filename,
-			OutputName: id.OutputName,
-		})
-	}
-
-	var outputs []*bramblepb.Output
-	for _, o := range drv.Outputs {
-		outputs = append(outputs, &bramblepb.Output{
-			Path:         o.Path,
-			Dependencies: o.Dependencies,
-		})
-	}
-	return &bramblepb.Derivation{
-		Args:                     drv.Args,
-		BuildContextSource:       drv.BuildContextSource,
-		BuildContextRelativePath: drv.BuildContextRelativePath,
-		Builder:                  drv.Builder,
-		Env:                      drv.Env,
-		InputDerivations:         inputDerivations,
-		Name:                     drv.Name,
-		OutputNames:              drv.OutputNames,
-		Outputs:                  outputs,
-		Platform:                 drv.Platform,
-		SourcePaths:              drv.SourcePaths,
-	}
 }
 
 // TemplateStringRegexp is the regular expression that matches template strings

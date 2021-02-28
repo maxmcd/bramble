@@ -6,20 +6,18 @@ require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
-	github.com/davecgh/go-spew v1.1.1
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/go-git/go-git/v5 v5.2.0
-	github.com/golang/protobuf v1.4.2
 	github.com/hashicorp/terraform v0.14.4
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
-	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/maxmcd/gosh v0.2.1-0.20210220180849-bf4312bc9f06
 	github.com/mholt/archiver/v3 v3.3.1-0.20200626164424-d44471c49aa7
 	github.com/moby/moby v1.13.1
 	github.com/morikuni/aec v1.0.0
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1
+	github.com/posener/complete/v2 v2.0.1-alpha.13
 	github.com/stretchr/testify v1.6.1
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee
@@ -27,8 +25,7 @@ require (
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/sys v0.0.0-20201029080932-201ba4db2418
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	google.golang.org/grpc v1.34.0
-	google.golang.org/protobuf v1.25.0
+	google.golang.org/grpc v1.34.0 // indirect
 )
 
 replace (

@@ -13,6 +13,8 @@ import (
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"github.com/posener/complete/v2"
+	"github.com/posener/complete/v2/predict"
 )
 
 var (
@@ -20,6 +22,11 @@ var (
 )
 
 func (b *Bramble) createCLI() *ffcli.Command {
+	completeCmd := &complete.Command{
+		Flags: map[string]complete.Predictor{},
+		Sub:   map[string]*complete.Command{},
+	}
+
 	var (
 		run             *ffcli.Command
 		root            *ffcli.Command
@@ -108,18 +115,48 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		},
 	}
 
-	// Recursively patch all commands
-	var fixup func(*ffcli.Command)
-	fixup = func(cmd *ffcli.Command) {
+	// Recursively patch all command descriptions and usage functions
+	var fixup func(*ffcli.Command, *complete.Command)
+	fixup = func(cmd *ffcli.Command, cmp *complete.Command) {
+		if cmd.FlagSet != nil {
+			cmd.FlagSet.VisitAll(func(f *flag.Flag) {
+				cmp.Flags[f.Name] = predict.Something
+			})
+		}
 		for _, c := range cmd.Subcommands {
+			childCmp := &complete.Command{
+				Flags: map[string]complete.Predictor{},
+				Sub:   map[string]*complete.Command{},
+			}
+			cmp.Sub[c.Name] = childCmp
+
 			c.UsageFunc = DefaultUsageFunc
 			// replace tabs in help with 4 width spaces
 			c.LongHelp = strings.ReplaceAll(c.LongHelp, "\t", "    ")
-			fixup(c)
+			fixup(c, childCmp)
 		}
 	}
-	fixup(root)
+	fixup(root, completeCmd)
+	completeCmd.Sub["run"].Args = modulePredictor{b: b, filePredictor: predict.Files("*.bramble")}
+	completeCmd.Complete("bramble")
 	return root
+}
+
+type modulePredictor struct {
+	b             *Bramble
+	filePredictor complete.Predictor
+}
+
+func (m modulePredictor) Predict(prefix string) []string {
+	out := []string{}
+	for _, opt := range m.filePredictor.Predict(prefix) {
+		if strings.HasSuffix(opt, ".bramble") {
+			opt = opt[:len(opt)-8] + ":"
+		}
+		out = append(out, opt)
+	}
+	// fmt.Printf("%q", out)
+	return out
 }
 
 // RunCLI runs the cli with os.Args
