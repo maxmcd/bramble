@@ -11,12 +11,6 @@ go_test: install
 	go test -race -v ./...
 	go test -run="(TestIntegration|TestRunAlmostAllPublicFunctions)"unique -v ./...
 
-
-generate_proto: ./pkg/bramblepb/bramble_pb.pb.go
-
-./pkg/bramblepb/bramble_pb.pb.go: ./pkg/bramblepb/bramble_pb.proto
-	cd pkg/bramblepb && go generate
-
 # just use LICENSE as a file we can harmlessly "touch" and use as a cache marker
 LICENSE: main.go pkg/*/*.go
 	go install
@@ -26,7 +20,7 @@ LICENSE: main.go pkg/*/*.go
 		&& mv bramble ~/bramble/var/linux-binary
 	touch LICENSE
 
-install: ./pkg/bramblepb/bramble_pb.pb.go LICENSE build_setuid
+install: LICENSE build_setuid
 
 bramble_tests: install
 	bramble test

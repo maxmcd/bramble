@@ -143,14 +143,6 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 	})
 }
 
-func TestIntegrationStarlarkBuilder(t *testing.T) {
-	runTwiceAndCheck(t, func(t *testing.T) {
-		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/lib/busybox:test_busybox"}); err != nil {
-			t.Fatal(starutil.AnnotateError(err))
-		}
-	})
-}
-
 func TestIntegrationSimple(t *testing.T) {
 	runTwiceAndCheck(t, func(t *testing.T) {
 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
