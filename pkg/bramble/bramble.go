@@ -141,7 +141,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 		b.derivations.Set(filename, drv)
 		return
 	}
-	fmt.Println("Building derivation", filename)
+	fmt.Println("Building derivation", filename, drv.prettyJSON())
 	if err = b.buildDerivation(ctx, drv); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
@@ -213,7 +213,7 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 		// location, no archiving and byte replacing
 		return b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
 	}
-	return b.hashAndMoveBuildOutputs(ctx, drv, outputPaths)
+	return errors.Wrap(b.hashAndMoveBuildOutputs(ctx, drv, outputPaths), "hash and move build outputs")
 }
 
 func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
@@ -234,7 +234,7 @@ func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, 
 		}
 		// remove build output, we have it in an archive
 		if err = os.RemoveAll(outputPath); err != nil {
-			return err
+			return errors.Wrap(err, "error removing build output")
 		}
 
 		hashedFolderName := hshr.String()
@@ -948,7 +948,7 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 
 	var wg sync.WaitGroup
 	errChan := make(chan error)
-	semaphore := make(chan struct{}, 2)
+	semaphore := make(chan struct{}, 1)
 
 	if err = graph.Validate(); err != nil {
 		return err
@@ -974,6 +974,7 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 			if err := b.buildDerivationIfNew(ctx, drv); err != nil {
 				// Passing the error might block, so we need an explicit Done call here.
 				wg.Done()
+				fmt.Println(err)
 				errChan <- err
 				return nil
 			}

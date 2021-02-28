@@ -101,7 +101,7 @@ func (chr *chroot) Cleanup() (err error) {
 		root = chr.location
 	}
 	if err := syscall.Unmount(filepath.Join(root, "proc"), 0); err != nil {
-		return err
+		return errors.Wrap(err, "error unmounting proc")
 	}
 
 	// must go in reverse order in case we have mounts within mounts
