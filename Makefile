@@ -84,6 +84,9 @@ all_bramble: install
 install_reptar:
 	cd pkg/reptar/reptar && go install
 
+busybox_sh: install
+	bramble run ./tests/busybox:busybox
+
 build_setuid:
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 		go build -tags netgo -ldflags '-w' ./pkg/cmd/bramble-setuid

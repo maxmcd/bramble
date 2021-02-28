@@ -6,7 +6,6 @@ load("github.com/maxmcd/bramble/lib/std")
 def simple():
     s = seed.seed()
     return derivation(
-        name="simple",
         builder=s.out + "/bin/sh",
         env={"seed": s},
         args=["./simple_builder.sh"],

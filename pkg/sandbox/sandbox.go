@@ -195,8 +195,10 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 	}()
 	select {
 	case <-ctx.Done():
-		if err := cmd.Process.Signal(os.Interrupt); err != nil {
-			return err
+		if cmd.Process != nil {
+			if err := cmd.Process.Signal(os.Interrupt); err != nil {
+				return err
+			}
 		}
 		// TODO: do this for all of them? Stop ignoring the interrupt in the children?
 	case err = <-errChan:
@@ -254,7 +256,7 @@ func (s Sandbox) newNamespaceStep() (err error) {
 
 func (s Sandbox) setupStep() (err error) {
 	logger.Debugw("setup chroot", "dir", s.ChrootPath)
-	buildUser, err := user.Lookup("bramblebuild0")
+	buildUser, err := user.Lookup("maxm") // TODO
 	if err != nil {
 		return err
 	}
