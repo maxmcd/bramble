@@ -140,6 +140,9 @@ type Sandbox struct {
 	Args       []string
 	Dir        string
 	Env        []string
+
+	User string
+
 	// Function can reference a function that has been created with
 	// RegisterFunction. TODO: fix overloading of function and Path
 	// functionality
@@ -256,7 +259,7 @@ func (s Sandbox) newNamespaceStep() (err error) {
 
 func (s Sandbox) setupStep() (err error) {
 	logger.Debugw("setup chroot", "dir", s.ChrootPath)
-	buildUser, err := user.Lookup("maxm") // TODO
+	buildUser, err := user.Lookup(s.User)
 	if err != nil {
 		return err
 	}
