@@ -1,0 +1,8 @@
+load("github.com/maxmcd/bramble/lib/stdenv")
+
+
+# def step_1():
+#     std = stdenv.stdenv()
+#     return stdenv.std_derivation(
+#         builder=std.out + "/bin/bash", sources=["./step1.sh"], args=["./step1.sh"]
+#     )

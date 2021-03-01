@@ -1,0 +1,36 @@
+load("github.com/maxmcd/bramble/lib")
+
+
+# def _upload():
+#     s = os.session()
+#     s = s.setenv("AWS_PROFILE", "max")
+#     print(
+#         s.cmd(
+#             "aws s3 cp ./patchelf.tar.gz s3://brmbl/patchelf.tar.gz --acl public-read",
+#         ).output()
+#     )
+
+
+def patchelf():
+    patch_dl = derivation(
+        name="patch_dl",
+        builder="fetch_url",
+        env={
+            "url": "https://brmbl.s3.amazonaws.com/patchelf.tar.gz",
+            "hash": "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960",
+        },
+    )
+
+    return derivation(
+        name="patchelf",
+        builder=lib.busybox().out + "/bin/sh",
+        args=[
+            "-c",
+            """
+            echo $out/bin
+            mkdir $out/bin
+            cp $patch_dl/patchelf $out/bin
+            """,
+        ],
+        env=dict(patch_dl=patch_dl, PATH=lib.busybox().out + "/bin"),
+    )

@@ -1,12 +1,12 @@
-load("github.com/maxmcd/bramble/seed", "seed")
+load("github.com/maxmcd/bramble/lib/seed")
 
 
 def simple():
-    out = seed().out
+    s = seed.seed()
     return derivation(
         name="simple",
-        env={"seed": out},
-        builder="%s/bin/sh" % out,
+        builder=s.out + "/bin/sh",
+        env={"seed": s},
         args=["./simple_builder.sh"],
         sources=["./simple.c", "simple_builder.sh"],
     )

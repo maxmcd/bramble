@@ -1,0 +1,18 @@
+load(static_patchelf="github.com/maxmcd/bramble/lib/static-patchelf")
+load("github.com/maxmcd/bramble/lib/std")
+load("github.com/maxmcd/bramble/lib")
+
+
+def stdenv():
+    """
+    the standard environment
+    """
+    src = std.fetch_url(
+        "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
+    )
+    return derivation(
+        builder=lib.busybox().out + "/bin/sh",
+        args=["./build_stdenv.sh"],
+        sources=["./build_stdenv.sh"],
+        env=dict(src=src, patchelf=static_patchelf.patchelf(), busybox=lib.busybox()),
+    )
