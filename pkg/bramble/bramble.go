@@ -18,6 +18,7 @@ import (
 	"runtime/debug"
 	"runtime/trace"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -515,12 +516,15 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	if err != nil {
 		return err
 	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
 	sbx := sandbox.Sandbox{
 		Path:       builderLocation,
 		Args:       drv.Args,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
-		User:       u.Name,
+		UserID:     uid,
+		GroupID:    gid,
 		Env:        env,
 		ChrootPath: chrootDir,
 		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),

@@ -15,4 +15,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run all tests
-        run: make test
+        run: |
+          id -u
+          id -u -n
+          echo $USER
+          make test
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
