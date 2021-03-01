@@ -9,9 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"syscall"
 
 	"github.com/maxmcd/bramble/pkg/logger"
@@ -141,7 +139,8 @@ type Sandbox struct {
 	Dir        string
 	Env        []string
 
-	User string
+	UserID  int
+	GroupID int
 
 	// Function can reference a function that has been created with
 	// RegisterFunction. TODO: fix overloading of function and Path
@@ -259,11 +258,10 @@ func (s Sandbox) newNamespaceStep() (err error) {
 
 func (s Sandbox) setupStep() (err error) {
 	logger.Debugw("setup chroot", "dir", s.ChrootPath)
-	buildUser, err := user.Lookup(s.User)
-	if err != nil {
-		return err
+	creds := &syscall.Credential{
+		Gid: uint32(s.GroupID),
+		Uid: uint32(s.UserID),
 	}
-	creds := userToCreds(buildUser)
 	if err := os.Chown(s.ChrootPath, int(creds.Uid), int(creds.Gid)); err != nil {
 		return err
 	}
@@ -359,14 +357,5 @@ func (s Sandbox) runExecStep() {
 			fmt.Println(err.Error())
 			os.Exit(1)
 		}
-	}
-}
-
-func userToCreds(u *user.User) *syscall.Credential {
-	uid, _ := strconv.Atoi(u.Uid)
-	guid, _ := strconv.Atoi(u.Gid)
-	return &syscall.Credential{
-		Gid: uint32(guid),
-		Uid: uint32(uid),
 	}
 }
