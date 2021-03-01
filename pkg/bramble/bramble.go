@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/trace"
@@ -510,11 +511,16 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	if err != nil {
 		return err
 	}
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
 	sbx := sandbox.Sandbox{
 		Path:       builderLocation,
 		Args:       drv.Args,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
+		User:       u.Name,
 		Env:        env,
 		ChrootPath: chrootDir,
 		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),
