@@ -59,6 +59,7 @@ func sourceLine(path string, lineNumber int32) string {
 	if err != nil {
 		return ""
 	}
+	defer func() { _ = f.Close() }()
 	var index int32 = 1
 	reader := bufio.NewReader(f)
 	for {

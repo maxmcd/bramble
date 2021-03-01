@@ -2,3 +2,5 @@ brambles
 *.gz
 .vscode
 .idea
+*.prof
+trace.out

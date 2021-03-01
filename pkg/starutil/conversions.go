@@ -6,7 +6,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func ListToGoList(list *starlark.List) (out []string, err error) {
+func IterableToGoList(list starlark.Iterable) (out []string, err error) {
 	iterator := list.Iterate()
 	defer iterator.Done()
 	var val starlark.Value
@@ -49,15 +49,10 @@ func DictToGoStringMap(dict *starlark.Dict) (out map[string]string, err error) {
 	return
 }
 
-func ListToListOfStrings(listValue starlark.Value) (out []string, err error) {
-	list, ok := listValue.(*starlark.List)
-	if !ok {
-		return nil, ErrIncorrectType{is: listValue.Type(), shouldBe: "list"}
-	}
-	return ListToGoList(list)
-}
-
 func ValueToString(val starlark.Value) (out string, err error) {
+	if val.Type() == "derivation" {
+		return val.String(), nil
+	}
 	switch v := val.(type) {
 	case starlark.String:
 		out = v.GoString()

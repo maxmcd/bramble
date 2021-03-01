@@ -1,0 +1,36 @@
+"""the seed/stdenv"""
+
+
+def seed():
+    return derivation(
+        name="seed",
+        builder="fetch_url",
+        env={
+            "decompress": True,
+            "url": "https://github.com/maxmcd/bramble/releases/download/v0.0.1/linux-x86_64-seed.tar.gz",
+            "hash": "111005a76fa66c148799a8fb67fb784ac47944fcba791efe7599128bbd5884ac",
+        },
+    )
+
+
+# def ldd():
+#     s = seed()
+#     return derivation(name="ld", builder=_build_ldd, env={"seed": s})
+
+
+# def _build_ldd(s, outputs):
+#     s = s.setenv("PATH", s.expand("$seed/bin/"))
+#     os.mkdir(s.expand("$out/bin"))
+#     script = """#!{seed}/bin/sh
+# exec {seed}/x86_64-linux-musl/lib/ld-musl-x86_64.so.1 --list "$@"
+# #hihihihi""".format(
+#         seed=s.getenv("seed")
+#     )
+#     s.cmd("echo", script).output.to_file(s.expand("$out/bin/ldd"))
+#     std.exec(s, "$seed/bin/chmod", "+x", "$out/bin/ldd")
+#     if (
+#         "Version 1.1.24\nDynamic Program Loader"
+#         not in std.exec(s, "$out/bin/ldd", "--help", ignore_failure=True).output()
+#     ):
+#         # todo, use the assert module
+#         std.exec(s, "error")

@@ -3,9 +3,13 @@ package textreplace
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base32"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,13 +64,13 @@ func GenerateRandomCorpus(values []string) io.Reader {
 }
 func TestFrameReader(t *testing.T) {
 	lorem := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam pharetra velit sit amet nibh vulputate imperdiet. Pellentesque hendrerit consequat metus.")
-	expectedAnswer := bytes.Replace(lorem, []byte("dolor"), []byte("fishy"), -1)
+	expectedAnswer := bytes.ReplaceAll(lorem, []byte("dolor"), []byte("fishy"))
 	source := bytes.NewBuffer(lorem)
 
 	out := bytes.Buffer{}
 
-	_, _ = CopyWithFrames(&out, source, make([]byte, 15), 5, func(b []byte) error {
-		copy(b, bytes.Replace(b, []byte("dolor"), []byte("fishy"), -1))
+	_, _ = CopyWithFrames(source, &out, make([]byte, 15), 5, func(b []byte) error {
+		copy(b, bytes.ReplaceAll(b, []byte("dolor"), []byte("fishy")))
 		return nil
 	})
 
@@ -97,15 +101,15 @@ func ExampleCopyWithFrames() {
 	// []byte("Lorem ipsum dol") and []byte("or sit amet")
 	// and miss the opportunity to replace "dolor"
 	bufferSize := 15
-	expectedAnswer := bytes.Replace(lorem, []byte("dolor"), []byte("fishy"), -1)
+	expectedAnswer := bytes.ReplaceAll(lorem, []byte("dolor"), []byte("fishy"))
 	source := bytes.NewBuffer(lorem)
 
 	out := bytes.Buffer{}
 
-	// if we set a frame size of 5 we'll ensure we see all length 5 segments of text
-	_, _ = CopyWithFrames(&out, source, make([]byte, bufferSize), 5, func(b []byte) error {
+	// if we set an overlap size of 5 we'll ensure we see all length 5 segments of text
+	_, _ = CopyWithFrames(source, &out, make([]byte, bufferSize), 5, func(b []byte) error {
 		fmt.Println(string(b))
-		copy(b, bytes.Replace(b, []byte("dolor"), []byte("fishy"), -1))
+		copy(b, bytes.ReplaceAll(b, []byte("dolor"), []byte("fishy")))
 		return nil
 	})
 	fmt.Println(bytes.Equal(out.Bytes(), expectedAnswer))
@@ -114,6 +118,61 @@ func ExampleCopyWithFrames() {
 	//  ipsum dolor si
 	// hy sit amety si
 	// true
+}
+
+// Hasher is used to compute path hash values. Hasher implements io.Writer and
+// takes a sha256 hash of the input bytes. The output string is a lowercase
+// base32 representation of the first 160 bits of the hash
+type Hasher struct {
+	hash hash.Hash
+}
+
+func NewHasher() *Hasher {
+	return &Hasher{
+		hash: sha256.New(),
+	}
+}
+
+func (h *Hasher) Write(b []byte) (n int, err error) {
+	return h.hash.Write(b)
+}
+
+func (h *Hasher) String() string {
+	return bytesToBase32Hash(h.hash.Sum(nil))
+}
+func (h *Hasher) Sha256Hex() string {
+	return fmt.Sprintf("%x", h.hash.Sum(nil))
+}
+
+// bytesToBase32Hash copies nix here
+// https://nixos.org/nixos/nix-pills/nix-store-paths.html
+// Finally the comments tell us to compute the base32 representation of the
+// first 160 bits (truncation) of a sha256 of the above string:
+func bytesToBase32Hash(b []byte) string {
+	var buf bytes.Buffer
+	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(b[:20])
+	return strings.ToLower(buf.String())
+}
+func TestNoop(t *testing.T) {
+	var buf bytes.Buffer
+	b := make([]byte, 100)
+	for i := 0; i < 1000; i++ {
+		_, _ = rand.Read(b)
+		buf.Write(b)
+	}
+	hasher := NewHasher()
+	hasher2 := NewHasher()
+
+	var buf2 bytes.Buffer
+	written, _ := io.Copy(io.MultiWriter(&buf2, hasher), &buf)
+	if written == 0 {
+		t.Fatal("nope")
+	}
+	_, _, err := ReplaceStringsPrefix(&buf2, hasher2, []string{"adfadsfasdfasdfasdf"}, "/hi", "/ho")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, hasher.String(), hasher2.String())
 }
 
 func TestOverlap(t *testing.T) {
@@ -149,26 +208,49 @@ func BenchmarkFrameReader(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
 		var buf bytes.Buffer
-		_, _ = CopyWithFrames(&buf, corpus, nil, 100, func(b []byte) error {
+		_, _ = CopyWithFrames(corpus, &buf, nil, 100, func(b []byte) error {
 			return nil
 		})
 	}
 }
 
 func BenchmarkReplace(b *testing.B) {
+	b.StopTimer()
 	values := prepNixPaths(SomeRandomNixPaths)
 
 	corpus := GenerateRandomCorpus(values)
 
 	var buf bytes.Buffer
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
 		_, _, _ = ReplaceStringsPrefix(
 			corpus, &buf,
 			values,
 			"/nix/store/",
 			"/tmp/wings/")
-		buf.Truncate(0)
+		buf.Reset()
+	}
+}
+
+func BenchmarkReplaceReplacer(b *testing.B) {
+	b.StopTimer()
+	values := prepNixPaths(SomeRandomNixPaths)
+
+	corpus := GenerateRandomCorpus(values)
+
+	var buf bytes.Buffer
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
+		_ = replaceStringsPrefixReplacer(
+			corpus, &buf,
+			values,
+			"/nix/store/",
+			"/tmp/wings/")
+		buf.Reset()
 	}
 }
 
@@ -179,22 +261,104 @@ func BenchmarkJustStream(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
 		_, _ = ioutil.ReadAll(corpus)
 	}
 }
 
 func BenchmarkUninterruptedReplace(b *testing.B) {
+	b.StopTimer()
 	values := prepNixPaths(SomeRandomNixPaths)
 	corpus := GenerateUninterruptedCorpus(values, 1000)
 
 	var buf bytes.Buffer
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
 		_, _, _ = ReplaceStringsPrefix(
 			corpus, &buf,
 			values,
 			"/nix/store/",
 			"/tmp/wings/")
-		buf.Truncate(0)
+		buf.Reset()
+	}
+}
+
+func BenchmarkUninterruptedReplaceReplacer(b *testing.B) {
+	b.StopTimer()
+	values := prepNixPaths(SomeRandomNixPaths)
+	corpus := GenerateUninterruptedCorpus(values, 1000)
+
+	var buf bytes.Buffer
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
+		_ = replaceStringsPrefixReplacer(
+			corpus, &buf,
+			values,
+			"/nix/store/",
+			"/tmp/wings/")
+		buf.Reset()
+	}
+}
+
+func BenchmarkUninterruptedReplaceBytesReplace(b *testing.B) {
+	b.StopTimer()
+	values := prepNixPaths(SomeRandomNixPaths)
+	corpus := GenerateUninterruptedCorpus(values, 1000)
+	buildDirPrefix := []byte("zzsfwzjxvkvp3qmak8pwi05z99hihyng")
+	nullBytes := make([]byte, len(buildDirPrefix))
+	var buf bytes.Buffer
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
+		_, _ = replaceBytesReplace(
+			corpus, &buf,
+			buildDirPrefix,
+			nullBytes)
+		buf.Reset()
+	}
+}
+
+func TestReplaceBytes(t *testing.T) {
+	values := prepNixPaths(SomeRandomNixPaths)
+	corpus := GenerateUninterruptedCorpus(values, 1000)
+
+	buildDirPrefix := []byte("zzsfwzjxvkvp3qmak8pwi05z99hihyng")
+	c, _ := ioutil.ReadAll(corpus)
+	assert.Equal(t, bytes.Count(c, buildDirPrefix), 100)
+
+	nullBytes := make([]byte, len(buildDirPrefix))
+	var buf bytes.Buffer
+	_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+	_, _ = ReplaceBytes(
+		corpus, &buf,
+		buildDirPrefix,
+		nullBytes)
+	assert.Equal(t,
+		bytes.ReplaceAll(buf.Bytes(), buildDirPrefix, nullBytes),
+		buf.Bytes(),
+	)
+}
+
+func BenchmarkUninterruptedReplaceBytes(b *testing.B) {
+	b.StopTimer()
+	values := prepNixPaths(SomeRandomNixPaths)
+	corpus := GenerateUninterruptedCorpus(values, 1000)
+	buildDirPrefix := []byte("zzsfwzjxvkvp3qmak8pwi05z99hihyng")
+	nullBytes := make([]byte, len(buildDirPrefix))
+	var buf bytes.Buffer
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = corpus.(*bytes.Reader).Seek(0, 0)
+		b.SetBytes(int64(corpus.(*bytes.Reader).Len()))
+		_, _ = ReplaceBytes(
+			corpus, &buf,
+			buildDirPrefix,
+			nullBytes)
+		buf.Reset()
 	}
 }
