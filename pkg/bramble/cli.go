@@ -10,11 +10,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
-	"github.com/posener/complete/v2"
-	"github.com/posener/complete/v2/predict"
 )
 
 var (
@@ -22,16 +21,10 @@ var (
 )
 
 func (b *Bramble) createCLI() *ffcli.Command {
-	completeCmd := &complete.Command{
-		Flags: map[string]complete.Predictor{},
-		Sub:   map[string]*complete.Command{},
-	}
-
 	var (
-		run             *ffcli.Command
 		root            *ffcli.Command
 		repl            *ffcli.Command
-		test            *ffcli.Command
+		build           *ffcli.Command
 		store           *ffcli.Command
 		storeGC         *ffcli.Command
 		derivation      *ffcli.Command
@@ -40,12 +33,12 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		version         = rootFlagSet.Bool("version", false, "version")
 	)
 
-	run = &ffcli.Command{
-		Name:       "run",
-		ShortUsage: "bramble run [options] [module]:<function> [args...]",
-		ShortHelp:  "Run a function",
-		LongHelp:   "Run a function",
-		Exec:       func(ctx context.Context, args []string) error { return b.run(args) },
+	build = &ffcli.Command{
+		Name:       "build",
+		ShortUsage: "bramble build [options] [module]:<function> [args...]",
+		ShortHelp:  "Build a function",
+		LongHelp:   "Build a function",
+		Exec:       func(ctx context.Context, args []string) error { return b.build(args) },
 	}
 
 	repl = &ffcli.Command{
@@ -53,16 +46,6 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		ShortUsage: "bramble repl",
 		ShortHelp:  "Run an interactive shell",
 		Exec:       func(ctx context.Context, args []string) error { return b.repl(args) },
-	}
-	test = &ffcli.Command{
-		Name:       "test",
-		ShortUsage: "bramble test [path]",
-		ShortHelp:  "Run tests",
-		LongHelp: `    Run tests
-
-	Bramble test parses all bramble files recursively and runs all global
-	functions that begin with 'test_'`,
-		Exec: func(ctx context.Context, args []string) error { return b.test(args) },
 	}
 
 	storeGC = &ffcli.Command{
@@ -103,12 +86,12 @@ func (b *Bramble) createCLI() *ffcli.Command {
 
 	root = &ffcli.Command{
 		ShortUsage:  "bramble [--version] [--help] <command> [<args>]",
-		Subcommands: []*ffcli.Command{run, repl, test, store, derivation},
+		Subcommands: []*ffcli.Command{build, repl, store, derivation},
 		FlagSet:     rootFlagSet,
 		UsageFunc:   DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *version {
-				fmt.Println("0.0.1")
+				logger.Print("0.0.1")
 				return nil
 			}
 			return flag.ErrHelp
@@ -116,47 +99,17 @@ func (b *Bramble) createCLI() *ffcli.Command {
 	}
 
 	// Recursively patch all command descriptions and usage functions
-	var fixup func(*ffcli.Command, *complete.Command)
-	fixup = func(cmd *ffcli.Command, cmp *complete.Command) {
-		if cmd.FlagSet != nil {
-			cmd.FlagSet.VisitAll(func(f *flag.Flag) {
-				cmp.Flags[f.Name] = predict.Something
-			})
-		}
+	var fixup func(*ffcli.Command)
+	fixup = func(cmd *ffcli.Command) {
 		for _, c := range cmd.Subcommands {
-			childCmp := &complete.Command{
-				Flags: map[string]complete.Predictor{},
-				Sub:   map[string]*complete.Command{},
-			}
-			cmp.Sub[c.Name] = childCmp
-
 			c.UsageFunc = DefaultUsageFunc
 			// replace tabs in help with 4 width spaces
 			c.LongHelp = strings.ReplaceAll(c.LongHelp, "\t", "    ")
-			fixup(c, childCmp)
+			fixup(c)
 		}
 	}
-	fixup(root, completeCmd)
-	completeCmd.Sub["run"].Args = modulePredictor{b: b, filePredictor: predict.Files("*.bramble")}
-	completeCmd.Complete("bramble")
+	fixup(root)
 	return root
-}
-
-type modulePredictor struct {
-	b             *Bramble
-	filePredictor complete.Predictor
-}
-
-func (m modulePredictor) Predict(prefix string) []string {
-	out := []string{}
-	for _, opt := range m.filePredictor.Predict(prefix) {
-		if strings.HasSuffix(opt, ".bramble") {
-			opt = opt[:len(opt)-8] + ":"
-		}
-		out = append(out, opt)
-	}
-	// fmt.Printf("%q", out)
-	return out
 }
 
 // RunCLI runs the cli with os.Args

@@ -46,17 +46,17 @@ derivation(
 
 ### CLI
 
-Run
+Build
 ```bash
-# run the function "foo" in the file default.bramble
-bramble run :foo
+# build the function "foo" in the file default.bramble
+bramble build :foo
 
-# run the function foo in the file main.bramble or ./main/default.bramble
-bramble run main:foo
+# build the function foo in the file main.bramble or ./main/default.bramble
+bramble build main:foo
 
-# download the package github.com/maxmcd/bramble and run the function "seed"
+# download the package github.com/maxmcd/bramble and build the function "seed"
 # in ./seed/default.bramble
-bramble run github.com/maxmcd/bramble/seed:seed
+bramble build github.com/maxmcd/bramble/seed:seed
 ```
 
 Test

@@ -7,9 +7,7 @@ import (
 )
 
 var (
-	errRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
-	errQuiet                    = errors.New("")
-	errHelp                     = errors.New("")
+	errQuiet = errors.New("")
 )
 
 type errModuleDoesNotExist string

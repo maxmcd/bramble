@@ -1,12 +1,11 @@
-load("github.com/maxmcd/bramble/lib/seed")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
 
 def simple():
-    s = seed.seed()
     return derivation(
         name="simple",
-        builder=s.out + "/bin/sh",
-        env={"seed": s},
+        builder=nix_seed.stdenv().out + "/bin/bash",
+        env={"stdenv": nix_seed.stdenv()},
         args=["./simple_builder.sh"],
         sources=["./simple.c", "simple_builder.sh"],
     )
