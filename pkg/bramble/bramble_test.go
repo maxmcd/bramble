@@ -33,7 +33,7 @@ func brambleBramble(t *testing.T) *Bramble {
 	return &b
 }
 
-func Test_argsToImport(t *testing.T) {
+func Test_parseModuleFuncArgument(t *testing.T) {
 	b := brambleBramble(t)
 	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
@@ -80,26 +80,22 @@ func Test_argsToImport(t *testing.T) {
 			wantFn:     "ok",
 		}, {
 			name:       "reference by default fn",
-			args:       []string{"default"},
+			args:       []string{":default"},
 			wantModule: "github.com/maxmcd/bramble/pkg/bramble/testfiles",
 			wantFn:     "default",
 		}, {
 			name:    "missing file",
 			args:    []string{"missing:foo"},
-			wantErr: "can't find",
-		}, {
-			name:    "mangled",
-			args:    []string{"missing:foo:bar"},
-			wantErr: "many colons",
+			wantErr: "no such file",
 		}, {
 			name:    "missing arg",
 			args:    []string{},
-			wantErr: errRequiredFunctionArgument.Error(),
+			wantErr: "flag: help requested",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotModule, gotFn, err := b.argsToImport(tt.args)
+			gotModule, gotFn, err := b.parseModuleFuncArgument(tt.args)
 			if (err != nil) && tt.wantErr != "" {
 				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("argsToImport() error doesn't match\nwanted:     %q\nto contain: %q", err, tt.wantErr)

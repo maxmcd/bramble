@@ -23,3 +23,8 @@ If bramble is going to have this level of flexibility it should be sandboxed by 
 - https://github.com/NixOS/nix/issues/1429 - nix disallows setuid
 - https://bazel.build/designs/2016/06/02/sandboxing.html
 Support docker as an option, would work only for linux or just for running things in docker.
+
+
+## Linux
+
+Default mounts: https://github.com/opencontainers/runtime-tools/blob/a7974a4078764ec41acf5feaa05f07854af44aa6/generate/generate.go#L174-L211

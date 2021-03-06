@@ -1,9 +1,7 @@
 """various derivation tests"""
 
-
 def _no_name():
     derivation()
-
 
 def test_derivation():
     other()

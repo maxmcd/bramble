@@ -1,4 +1,3 @@
-load("github.com/maxmcd/bramble/lib/seed")
 load("github.com/maxmcd/bramble/lib/std")
 
 
