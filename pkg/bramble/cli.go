@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -23,7 +24,6 @@ func (b *Bramble) createCLI() *ffcli.Command {
 	var (
 		root            *ffcli.Command
 		repl            *ffcli.Command
-		test            *ffcli.Command
 		build           *ffcli.Command
 		store           *ffcli.Command
 		storeGC         *ffcli.Command
@@ -38,7 +38,7 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		ShortUsage: "bramble build [options] [module]:<function> [args...]",
 		ShortHelp:  "Build a function",
 		LongHelp:   "Build a function",
-		Exec:       func(ctx context.Context, args []string) error { return b.run(args) },
+		Exec:       func(ctx context.Context, args []string) error { return b.build(args) },
 	}
 
 	repl = &ffcli.Command{
@@ -86,12 +86,12 @@ func (b *Bramble) createCLI() *ffcli.Command {
 
 	root = &ffcli.Command{
 		ShortUsage:  "bramble [--version] [--help] <command> [<args>]",
-		Subcommands: []*ffcli.Command{build, repl, test, store, derivation},
+		Subcommands: []*ffcli.Command{build, repl, store, derivation},
 		FlagSet:     rootFlagSet,
 		UsageFunc:   DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *version {
-				fmt.Println("0.0.1")
+				logger.Print("0.0.1")
 				return nil
 			}
 			return flag.ErrHelp

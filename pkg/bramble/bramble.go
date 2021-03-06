@@ -49,22 +49,28 @@ import (
 
 func init() {
 	// It's easier to start giving away free coffee than it is to take away
-	// free coffee
+	// free coffee.
 
 	// I think this would allow storing arbitrary state in function closures
 	// and make the codebase much harder to reason about. Maybe we want this
-	// level of complexity at some point, but nice to avoid for now
+	// level of complexity at some point, but nice to avoid for now.
 	resolve.AllowLambda = false
 	resolve.AllowNestedDef = false
 
-	// recursion is probably ok, open to allowing it
+	// Recursion might make it easier to write long executing code.
 	resolve.AllowRecursion = false
 
-	// sets seem harmless tho?
+	// Sets seem harmless tho?
 	resolve.AllowSet = true
-	// see little need for this (currently), but open to allowing it
+
+	// See little need for this (currently), but open to allowing it. Are there
+	// correctness issues here?
 	resolve.AllowFloat = false
 }
+
+var (
+	BrambleExtension string = ".bramble"
+)
 
 type Bramble struct {
 	thread      *starlark.Thread
@@ -241,7 +247,7 @@ func (b *Bramble) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, 
 		}
 
 		drv.SetOutput(outputName, Output{Path: hashedFolderName, Dependencies: matches})
-		fmt.Println("Output at ", newPath)
+		logger.Print("Output at ", newPath)
 	}
 	return nil
 }
@@ -538,8 +544,7 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 // downloadFile downloads a file into the store. Must include an expected hash
 // of the downloaded file as a hex string of a  sha256 hash
 func (b *Bramble) downloadFile(ctx context.Context, url string, hash string) (path string, err error) {
-	fmt.Printf("Downloading url %s\n", url)
-
+	logger.Printfln("Downloading url %s", url)
 	if hash != "" {
 		byt, err := hex.DecodeString(hash)
 		if err != nil {
@@ -739,17 +744,19 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 
 func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	graph := b.assembleDerivationDependencyGraph(dos)
-
 	var wg sync.WaitGroup
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 1)
-
+	var errored bool
 	if err = graph.Validate(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
+		graph.Walk(func(v dag.Vertex) (_ tfdiags.Diagnostics) {
+			if errored {
+				return
+			}
 			semaphore <- struct{}{}
 			defer func() {
 				<-semaphore
@@ -757,23 +764,24 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 			// serial for now
 
 			if root, ok := v.(string); ok && root == "root" {
-				return nil
+				return
 			}
 			do := v.(DerivationOutput)
 			drv := b.derivations.Get(do.Filename)
 			if drv.Output(do.OutputName).Path != "" {
-				return nil
+				return
 			}
 			wg.Add(1)
 			if err := b.buildDerivationIfNew(ctx, drv); err != nil {
 				// Passing the error might block, so we need an explicit Done call here.
 				wg.Done()
-				fmt.Println(err)
+				errored = true
+				logger.Print(err)
 				errChan <- err
-				return nil
+				return
 			}
 			wg.Done()
-			return nil
+			return
 		})
 		errChan <- nil
 	}()
@@ -784,11 +792,6 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 		wg.Wait()
 	}
 	return err
-}
-
-func (b *Bramble) reset() {
-	b.moduleCache = map[string]string{}
-	b.filenameCache = NewBiStringMap()
 }
 
 func (b *Bramble) init() (err error) {
@@ -832,6 +835,9 @@ func (b *Bramble) initPredeclared() (err error) {
 	if err != nil {
 		return
 	}
+	// set the necessary error reporter so that the assert package can catch
+	// errors
+	assert.SetReporter(b.thread, runErrorReporter{})
 
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
@@ -856,8 +862,6 @@ func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err err
 	}
 	return starlark.Call(b.thread, globals["test"], nil, nil)
 }
-
-var BrambleExtension string = ".bramble"
 
 func findBrambleFiles(path string) (brambleFiles []string, err error) {
 	if fileutil.FileExists(path) {
@@ -884,17 +888,7 @@ type runErrorReporter struct{}
 func (e runErrorReporter) Error(err error) {}
 func (e runErrorReporter) FailNow() bool   { return true }
 
-// testErrorReporter reports errors during an individual test
-type testErrorReporter struct {
-	errors []error
-}
-
-func (e *testErrorReporter) Error(err error) {
-	e.errors = append(e.errors, err)
-}
-func (e *testErrorReporter) FailNow() bool { return false }
-
-func (b *Bramble) compilePath(path string) (prog *starlark.Program, err error) {
+func (b *Bramble) compileStarlarkPath(path string) (prog *starlark.Program, err error) {
 	compiledProgram, err := os.Open(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening moduleCache storeLocation")
@@ -902,12 +896,12 @@ func (b *Bramble) compilePath(path string) (prog *starlark.Program, err error) {
 	return starlark.CompiledProgram(compiledProgram)
 }
 
-func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Program, err error) {
+func (b *Bramble) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
 	b.filenameCache.Store(filename, moduleName)
 	storeLocation, ok := b.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
-		return b.compilePath(b.store.JoinStorePath(storeLocation))
+		return b.compileStarlarkPath(b.store.JoinStorePath(storeLocation))
 	}
 
 	// hash the file input
@@ -932,7 +926,7 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 			return nil, err
 		}
 		b.moduleCache[moduleName] = relStoreLocation
-		return b.compilePath(relStoreLocation)
+		return b.compileStarlarkPath(relStoreLocation)
 	}
 
 	// if we're this far we don't have a cache of the program, process it directly
@@ -957,8 +951,8 @@ func (b *Bramble) sourceProgram(moduleName, filename string) (prog *starlark.Pro
 	return prog, os.Symlink(path, inputHashStoreLocation)
 }
 
-func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
-	prog, err := b.sourceProgram(moduleName, filename)
+func (b *Bramble) starlarkExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
+	prog, err := b.sourceStarlarkProgram(moduleName, filename)
 	if err != nil {
 		return
 	}
@@ -975,53 +969,40 @@ func (b *Bramble) repl(_ []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) run(args []string) (err error) {
+func (b *Bramble) build(args []string) (err error) {
 	if len(args) == 0 {
-		err = errHelp
-		return
-	}
-	set := flag.NewFlagSet("bramble", flag.ExitOnError)
-	var all bool
-	// TODO
-	set.BoolVar(&all, "all", false, "run all public functions recursively")
-	if err = set.Parse(args); err != nil {
-		return
+		logger.Print(`"bramble build" requires 1 argument`)
+		return flag.ErrHelp
 	}
 
 	if err = b.init(); err != nil {
 		return
 	}
 
-	{
-		f, err := os.Create(filepath.Join(b.configLocation, "trace.out"))
-		if err != nil {
-			return err
-		}
-		if err = trace.Start(f); err != nil {
-			return err
-		}
-		defer trace.Stop()
-	}
-
-	assert.SetReporter(b.thread, runErrorReporter{})
-
-	module, fn, err := b.argsToImport(args)
+	// parse something like ./tests:foo into the correct module and function
+	// name
+	module, fn, err := b.parseModuleFuncArgument(args)
 	if err != nil {
 		return
 	}
+
+	// parse the module and all of its imports, return available functions
 	globals, err := b.resolveModule(module)
 	if err != nil {
 		return
 	}
 	toCall, ok := globals[fn]
 	if !ok {
-		return errors.Errorf("global function %q not found", fn)
+		return errors.Errorf("function %q not found in module %q", fn, module)
 	}
 
 	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
 	if err != nil {
 		return errors.Wrap(err, "error running")
 	}
+
+	// The function must return a single derivation or a list of derivations, or
+	// a tuple of derivations. We turn them into an array.
 	returnedDerivations := valuesToDerivations(values)
 
 	if err = b.buildDerivationOutputs(b.derivationsToDerivationOutputs(returnedDerivations)); err != nil {
@@ -1029,6 +1010,22 @@ func (b *Bramble) run(args []string) (err error) {
 	}
 
 	return b.writeConfigMetadata(returnedDerivations, fn, module)
+}
+
+func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
+	switch v := values.(type) {
+	case *Derivation:
+		return []*Derivation{v}
+	case *starlark.List:
+		for _, v := range starutil.ListToValueList(v) {
+			derivations = append(derivations, valuesToDerivations(v)...)
+		}
+	case starlark.Tuple:
+		for _, v := range v {
+			derivations = append(derivations, valuesToDerivations(v)...)
+		}
+	}
+	return
 }
 
 func (b *Bramble) gc(_ []string) (err error) {
@@ -1057,7 +1054,7 @@ func (b *Bramble) gc(_ []string) (err error) {
 	var do DerivationOutput
 	var runtimeDep bool
 
-	defer fmt.Println(pathsToKeep)
+	defer logger.Print(pathsToKeep)
 
 	processedDerivations := map[DerivationOutput]bool{}
 	for {
@@ -1096,7 +1093,7 @@ func (b *Bramble) gc(_ []string) (err error) {
 	}
 	for _, file := range files {
 		if _, ok := pathsToKeep[file.Name()]; !ok {
-			fmt.Println("deleting", file.Name())
+			logger.Print("deleting", file.Name())
 			if err = os.RemoveAll(b.store.JoinStorePath(file.Name())); err != nil {
 				return err
 			}
@@ -1129,11 +1126,11 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 			return nil, err
 		}
 		_ = f.Close()
-		fmt.Println("assembling derivations for", drvMap.Location)
+		logger.Print("assembling derivations for", drvMap.Location)
 		// delete the config if we can't find the project any more
 		tomlLoc := filepath.Join(drvMap.Location, "bramble.toml")
 		if !fileutil.PathExists(tomlLoc) {
-			fmt.Printf("deleting cache for %q, it no longer exists\n", tomlLoc)
+			logger.Printfln("deleting cache for %q, it no longer exists", tomlLoc)
 			if err := os.Remove(registryLoc); err != nil {
 				return nil, err
 			}
@@ -1234,7 +1231,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 		if !exists {
 			return nil, errors.Errorf("module %q returns no matching filename", module)
 		}
-		return b.ExecFile(module, filename)
+		return b.starlarkExecFile(module, filename)
 	}
 
 	path := module[len(b.config.Module.Name):]
@@ -1259,23 +1256,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 		return
 	}
 
-	return b.ExecFile(module, path)
-}
-
-func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
-	switch v := values.(type) {
-	case *Derivation:
-		return []*Derivation{v}
-	case *starlark.List:
-		for _, v := range starutil.ListToValueList(v) {
-			derivations = append(derivations, valuesToDerivations(v)...)
-		}
-	case starlark.Tuple:
-		for _, v := range v {
-			derivations = append(derivations, valuesToDerivations(v)...)
-		}
-	}
-	return
+	return b.starlarkExecFile(module, path)
 }
 
 func (b *Bramble) moduleFromPath(path string) (module string, err error) {
@@ -1304,7 +1285,7 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 	fullName := path + BrambleExtension
 	if !fileutil.FileExists(fullName) {
 		if !fileutil.FileExists(path + "/default.bramble") {
-			return "", errors.Errorf("can't find module at %q", path)
+			return "", errors.Errorf("%q: no such file or directory", path)
 		}
 	}
 	// we found it, return
@@ -1322,26 +1303,19 @@ func (b *Bramble) relativePathFromConfig() string {
 	return relativePath
 }
 
-func (b *Bramble) argsToImport(args []string) (module, function string, err error) {
+func (b *Bramble) parseModuleFuncArgument(args []string) (module, function string, err error) {
 	if len(args) == 0 {
-		return "", "", errRequiredFunctionArgument
+		logger.Print(`"bramble build" requires 1 argument`)
+		return "", "", flag.ErrHelp
 	}
 
 	firstArgument := args[0]
-	if !strings.Contains(firstArgument, ":") {
-		function = firstArgument
-		module = b.config.Module.Name
-		if loc := b.relativePathFromConfig(); loc != "" {
-			module += ("/" + loc)
-		}
-	} else {
-		parts := strings.Split(firstArgument, ":")
-		if len(parts) != 2 {
-			return "", "", errors.New("function name has too many colons")
-		}
-		var path string
-		path, function = parts[0], parts[1]
-		module, err = b.moduleFromPath(path)
+	lastIndex := strings.LastIndex(firstArgument, ":")
+	if lastIndex < 0 {
+		logger.Print("module and function argument is not properly formatted")
+		return "", "", flag.ErrHelp
 	}
+	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
+	module, err = b.moduleFromPath(path)
 	return
 }

@@ -354,7 +354,6 @@ func (s Sandbox) runExecStep() {
 			Stderr: os.Stderr,
 		}
 		if err := cmd.Run(); err != nil {
-
 			path := "/home/maxm/bramble/bramble_store_padding/bramble_/ieqjuyrfv7lmdb2bur76jgjcrd33j7na/bin/sh"
 			cmd := exec.Cmd{
 				Path: path,

@@ -94,7 +94,7 @@ func runBrambleRun(args []string) error {
 		os.Setenv("PATH", path+":"+gobin)
 	}
 	b := Bramble{}
-	return b.run(args)
+	return b.build(args)
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
