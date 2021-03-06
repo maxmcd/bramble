@@ -17,7 +17,6 @@ require (
 	github.com/morikuni/aec v1.0.0
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1
-	github.com/posener/complete/v2 v2.0.1-alpha.13
 	github.com/stretchr/testify v1.6.1
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee

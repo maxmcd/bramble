@@ -1,5 +1,3 @@
-// +build !race
-
 package bramble
 
 import (
@@ -17,6 +15,12 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 )
+
+func initIntegrationTest(t *testing.T) {
+	if _, ok := os.LookupEnv("BRAMBLE_INTEGRATION_TEST"); !ok {
+		t.Skip("skipping integration tests unless BRAMBLE_INTEGRATION_TEST is set")
+	}
+}
 
 func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	log.SetOutput(ioutil.Discard)
@@ -43,18 +47,6 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	}
 	_ = os.RemoveAll(dir)
 	_ = os.RemoveAll(dir2)
-}
-
-func TestIntegration(t *testing.T) {
-	t.Skip("b.test doesn't work without fixing the docker pieces")
-	runTests := func(t *testing.T) {
-		b := Bramble{}
-		if err := b.test([]string{"../../tests"}); err != nil {
-			fmt.Printf("%+v", err)
-			t.Error(err)
-		}
-	}
-	runTwiceAndCheck(t, runTests)
 }
 
 func assembleModules(t *testing.T) []string {
@@ -106,6 +98,7 @@ func runBrambleRun(args []string) error {
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
+	initIntegrationTest(t)
 	modules := assembleModules(t)
 	toSkip := []string{
 		"nix-seed/default.bramble:ldd",
@@ -132,6 +125,7 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 }
 
 func TestIntegrationSimple(t *testing.T) {
+	initIntegrationTest(t)
 	runTwiceAndCheck(t, func(t *testing.T) {
 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
@@ -140,6 +134,7 @@ func TestIntegrationSimple(t *testing.T) {
 }
 
 func TestIntegrationNixSeed(t *testing.T) {
+	initIntegrationTest(t)
 	runTwiceAndCheck(t, func(t *testing.T) {
 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))

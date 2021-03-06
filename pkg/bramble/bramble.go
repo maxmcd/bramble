@@ -967,61 +967,6 @@ func (b *Bramble) ExecFile(moduleName, filename string) (globals starlark.String
 	return g, err
 }
 
-func (b *Bramble) test(args []string) (err error) {
-	failFast := true
-	if err = b.init(); err != nil {
-		return
-	}
-	location := "."
-	if len(args) > 0 {
-		location = args[0]
-	}
-	testFiles, err := findBrambleFiles(location)
-	if err != nil {
-		return errors.Wrap(err, "error finding test files")
-	}
-
-	for _, filename := range testFiles {
-		moduleName, err := b.moduleNameFromFileName(filename)
-		if err != nil {
-			return err
-		}
-		b.reset()
-		absFilename, _ := filepath.Abs(filename)
-		fmt.Printf("Running tests in file %q\n", filename)
-		globals, err := b.ExecFile(moduleName, absFilename)
-		if err != nil {
-			return err
-		}
-		for name, fn := range globals {
-			if !strings.HasPrefix(name, "test_") {
-				continue
-			}
-			starFn, ok := fn.(*starlark.Function)
-			if !ok {
-				continue
-			}
-			fmt.Printf("\trunning test %q\n", name)
-			errors := testErrorReporter{}
-			assert.SetReporter(b.thread, &errors)
-			_, err = starlark.Call(b.thread, starFn, nil, nil)
-			if len(errors.errors) > 0 {
-				fmt.Printf("\nGot %d errors while running %q in %q:\n", len(errors.errors), name, filename)
-				for _, err := range errors.errors {
-					fmt.Print(starutil.AnnotateError(err))
-				}
-				if failFast {
-					return errQuiet
-				}
-			}
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return
-}
-
 func (b *Bramble) repl(_ []string) (err error) {
 	if err := b.init(); err != nil {
 		return err

@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	errRequiredFunctionArgument = errors.New("bramble run takes a required positional argument \"function\"")
+	errRequiredFunctionArgument = errors.New("bramble build takes a required positional argument \"function\"")
 	errQuiet                    = errors.New("")
 	errHelp                     = errors.New("")
 )
