@@ -1,4 +1,5 @@
 load("github.com/maxmcd/bramble/lib/seed")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 
 
 def simple():
@@ -9,4 +10,14 @@ def simple():
         env={"seed": s},
         args=["./simple_builder.sh"],
         sources=["./simple.c", "simple_builder.sh"],
+    )
+
+
+def simple_glibc():
+    return derivation(
+        name="simple",
+        builder=nix_seed.stdenv().out + "/bin/bash",
+        env={"stdenv": nix_seed.stdenv()},
+        args=["./simple_builder_glibc.sh"],
+        sources=["./simple.c", "simple_builder_glibc.sh"],
     )

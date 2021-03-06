@@ -502,6 +502,7 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	mounts := []string{
 		b.store.StorePath + ":ro",
 		buildDir,
+		// "/dev/", //TODO: this can't be allowed
 	}
 	for outputName, outputPath := range outputPaths {
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
@@ -521,6 +522,7 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	sbx := sandbox.Sandbox{
 		Path:       builderLocation,
 		Args:       drv.Args,
+		Stdin:      os.Stdin,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
 		UserID:     uid,

@@ -1,18 +1,20 @@
-# load("github.com/maxmcd/bramble/lib/std")
-# load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load("github.com/maxmcd/bramble/lib/std")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 # load(patchelf="github.com/maxmcd/bramble/lib/static-patchelf")
-
+load("github.com/maxmcd/bramble/lib")
 # # https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/compilers/go/1.4.nix
 
 
-# def _bootstrap():
-#     go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
+def _bootstrap():
+    go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
 
-#     return derivation(
-#         name="go-1.4",
-#         builder=_build_go,
-#         env=dict(go1_4=go1_4, stdenv=nix_seed.stdenv()),
-#     )
+    return derivation(
+        name="go-1.4",
+        builder=lib.busybox().out + "/bin/sh",
+        args=["./build.sh"],
+        sources=["./build.sh"],
+        env=dict(go1_4=go1_4, stdenv=nix_seed.stdenv(), busybox=lib.busybox()),
+    )
 
 
 # def _build_go(s, outputs):
