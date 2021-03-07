@@ -1,8 +1,25 @@
 load("github.com/maxmcd/bramble/lib/stdenv")
+load("github.com/maxmcd/bramble/lib")
+load("github.com/maxmcd/bramble/lib/std")
 
 
-# def step_1():
-#     std = stdenv.stdenv()
-#     return stdenv.std_derivation(
-#         builder=std.out + "/bin/bash", sources=["./step1.sh"], args=["./step1.sh"]
+def fetch_a_url():
+    return std.fetch_url("https://maxmcd.com/")
+
+
+def step_1():
+    return derivation(
+        builder="%s/bin/bash" % stdenv.stdenv(),
+        env=dict(PATH="{}/bin/:{}/bin".format(stdenv.stdenv(), lib.busybox())),
+        sources=["./step1.sh"],
+        args=["./step1.sh"],
+    )
+
+
+# def step_2():
+#     return derivation(
+#         builder="%s/bin/bash" % stdenv.stdenv(),
+#         env=dict(PATH="{}/bin/:{}/bin".format(stdenv.stdenv(), lib.busybox())),
+#         sources=["./step1.sh"],
+#         args=["./step1.sh"],
 #     )

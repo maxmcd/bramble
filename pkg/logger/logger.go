@@ -6,17 +6,32 @@ import (
 	"go.uber.org/zap"
 )
 
-func newSugaredLogger() *zap.SugaredLogger {
+func newDebugLogger() *zap.SugaredLogger {
 	logger, _ := zap.NewDevelopment()
 	return logger.Sugar()
 }
 
 var (
-	Logger = newSugaredLogger()
+	Logger = newInfoLogger()
 	Debugw = Logger.Debugw
 	Debug  = Logger.Debug
 	Info   = Logger.Info
 )
+
+func SetDebugLogger() {
+	Logger = newDebugLogger()
+}
+
+func newInfoLogger() *zap.SugaredLogger {
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	logger, _ := cfg.Build()
+	return logger.Sugar()
+}
+
+func SetInfoLogger() {
+	Logger = newInfoLogger()
+}
 
 func Print(a ...interface{}) {
 	fmt.Println(a...)

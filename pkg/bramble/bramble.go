@@ -129,7 +129,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 		b.derivations.Set(filename, drv)
 		return
 	}
-	logger.Info("Building derivation ", filename)
+	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.prettyJSON())
 
 	if err = b.buildDerivation(ctx, drv); err != nil {
@@ -154,6 +154,9 @@ func (b *Bramble) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outp
 		err = os.RemoveAll(outputPath)
 	} else {
 		err = os.Rename(outputPath, outputStorePath)
+	}
+	if err == nil {
+		logger.Print("Output at", outputStorePath)
 	}
 	return
 }
@@ -468,7 +471,10 @@ func (b *Bramble) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPa
 	}
 	// TODO: what if this package changes?
 	if err = archiver.Unarchive(path, outputPaths["out"]); err != nil {
-		return errors.Wrap(err, "error unpacking url archive")
+		if !strings.Contains(err.Error(), "format unrecognized by filename") {
+			return errors.Wrap(err, "error unpacking url archive")
+		}
+		return os.Rename(path, filepath.Join(outputPaths["out"], filepath.Base(url)))
 	}
 	return nil
 }
