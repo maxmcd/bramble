@@ -16,8 +16,6 @@ import (
 	"github.com/creack/pty"
 	"github.com/docker/docker/pkg/term"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/store"
-	"github.com/maxmcd/gosh/shell"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
@@ -74,63 +72,6 @@ func entrypoint() (err error) {
 	}
 }
 
-// DebugFunction is a sandbox function that launches a rudimentary shell
-var DebugFunction = RegisterFunction(func() {
-	shell.Run()
-})
-
-// RunDebug launches a rudimentary shell within a sandbox
-func RunDebug() (err error) {
-	store, err := store.NewStore()
-	if err != nil {
-		return err
-	}
-	chrootPath, err := store.TempBuildDir()
-	if err != nil {
-		return err
-	}
-	s := &Sandbox{
-		ChrootPath: chrootPath,
-		Function:   DebugFunction,
-		Stdin:      os.Stdin,
-		Stderr:     os.Stderr,
-		Stdout:     os.Stdout,
-		Mounts:     []string{store.StorePath + ":ro"},
-	}
-	return s.Run(context.Background())
-}
-
-type Function struct {
-	index int
-}
-
-func (f Function) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Index int `json:"index"`
-	}{
-		Index: f.index,
-	})
-}
-func (f *Function) UnmarshalJSON(data []byte) error {
-	aux := struct {
-		Index int `json:"index"`
-	}{}
-	err := json.Unmarshal(data, &aux)
-	f.index = aux.Index
-	return err
-}
-
-var registeredFunctions = []func(){}
-
-// RegisterFunction can be used to register a Go function that you want to run
-// in a sandbox instead of an external command. RegisterFunction must be
-// called at the very beginning of your executable.
-func RegisterFunction(fn func()) Function {
-	index := len(registeredFunctions) + 1 // zero is null
-	registeredFunctions = append(registeredFunctions, fn)
-	return Function{index: index}
-}
-
 // Sandbox defines a command or function that you want to run in a sandbox
 type Sandbox struct {
 	Stdin      io.Reader `json:"-"`
@@ -145,10 +86,6 @@ type Sandbox struct {
 	UserID  int
 	GroupID int
 
-	// Function can reference a function that has been created with
-	// RegisterFunction. TODO: fix overloading of function and Path
-	// functionality
-	Function Function
 	// Bind mounts or directories the process should have access too. These
 	// should be absolute paths. If a mount is intended to be readonly add
 	// ":ro" to the end of the path like `/tmp:ro`
@@ -378,26 +315,20 @@ func interruptContext() context.Context {
 }
 
 func (s Sandbox) runExecStep() {
-	if s.Function.index != 0 {
-		// TODO: env
-		// TODO: dir
-		registeredFunctions[s.Function.index-1]()
-	} else {
-		cmd := exec.Cmd{
-			Path: s.Path,
-			Dir:  s.Dir,
-			Args: append([]string{s.Path}, s.Args...),
-			Env:  os.Environ(),
+	cmd := exec.Cmd{
+		Path: s.Path,
+		Dir:  s.Dir,
+		Args: append([]string{s.Path}, s.Args...),
+		Env:  os.Environ(),
 
-			// We don't use the passed sandbox stdio because
-			// it's been passed to the very first run command
-			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
-		}
-		if err := cmd.Run(); err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
-		}
+		// We don't use the passed sandbox stdio because
+		// it's been passed to the very first run command
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}
+	if err := cmd.Run(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 }

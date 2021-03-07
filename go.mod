@@ -13,7 +13,6 @@ require (
 	github.com/hashicorp/terraform v0.14.4
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
-	github.com/maxmcd/gosh v0.2.1-0.20210228220323-59420ac4567a
 	github.com/mholt/archiver/v3 v3.3.1-0.20200626164424-d44471c49aa7
 	github.com/moby/moby v1.13.1
 	github.com/morikuni/aec v1.0.0
