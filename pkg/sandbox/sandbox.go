@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
+	"github.com/creack/pty"
+	"github.com/docker/docker/pkg/term"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/maxmcd/gosh/shell"
@@ -168,6 +171,11 @@ func parseSerializedArg(arg string) (s Sandbox, err error) {
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
+
+	if term.IsTerminal(os.Stdin.Fd()) {
+		fmt.Println("is terminal")
+	}
+
 	serialized, err := s.serializeArg()
 	if err != nil {
 		return err
@@ -209,7 +217,8 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 		}
 		return err
 	}
-	return nil
+	return nil // Start the command with a pty.
+
 }
 
 func (s Sandbox) newNamespaceStep() (err error) {
@@ -242,18 +251,52 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	// interrupt will be caught be the child process and the process
 	// will exiting, causing this process to exit
 	ignoreInterrupt()
+
 	cmd := &exec.Cmd{
-		Path:   selfExe,
-		Args:   []string{setupStepArg, serialized},
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+		Path: selfExe,
+		Args: []string{setupStepArg, serialized},
 		SysProcAttr: &syscall.SysProcAttr{
-			Pdeathsig:  unix.SIGTERM, // ???
+			// maybe sigint will allow the child more time to clean up its mounts????
+			Pdeathsig:  unix.SIGINT,
 			Cloneflags: cloneFlags,
 		},
 	}
-	return errors.Wrap(cmd.Run(), "error running newNamespace")
+
+	// We must use a pty here to enable interactive input. If we naively pass
+	// os.Stdin to an exec.Cmd then we run into issues with the parent and
+	// child terminals getting confused about who is supposed to process various
+	// control signals.
+	// We can then just set to raw and copy the bytes across. We could remove
+	// the pty entirely for jobs that don't pass a terminal as a stdin.
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return errors.Wrap(err, "error starting pty")
+	}
+	defer func() { _ = ptmx.Close() }()
+	// Handle pty resize
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+				log.Printf("error resizing pty: %s", err)
+			}
+		}
+	}()
+	ch <- syscall.SIGWINCH // Initial resize.
+
+	// only handle stdin and set raw if it's an interactive terminal
+	if os.Stdin != nil && term.IsTerminal(os.Stdin.Fd()) {
+		oldState, err := term.MakeRaw(os.Stdin.Fd())
+		if err != nil {
+			return err
+		}
+		// restore when complete
+		defer func() { _ = term.RestoreTerminal(os.Stdin.Fd(), oldState) }()
+		go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	}
+	_, _ = io.Copy(os.Stdout, ptmx)
+	return errors.Wrap(cmd.Wait(), "error running newNamespace")
 }
 
 func (s Sandbox) setupStep() (err error) {

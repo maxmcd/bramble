@@ -6,6 +6,8 @@ require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
+	github.com/creack/pty v1.1.11
+	github.com/docker/docker v1.4.2-0.20191101170500-ac7306503d23
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/go-git/go-git/v5 v5.2.0
 	github.com/hashicorp/terraform v0.14.4
@@ -22,7 +24,7 @@ require (
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee
 	go.uber.org/zap v1.10.0
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83 // indirect
-	golang.org/x/sys v0.0.0-20201029080932-201ba4db2418
+	golang.org/x/sys v0.0.0-20210305230114-8fe3ee5dd75b
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/grpc v1.34.0 // indirect
 )

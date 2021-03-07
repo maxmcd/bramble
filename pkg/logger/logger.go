@@ -12,14 +12,21 @@ func newDebugLogger() *zap.SugaredLogger {
 }
 
 var (
-	Logger = newInfoLogger()
+	Logger = newDebugLogger()
 	Debugw = Logger.Debugw
 	Debug  = Logger.Debug
 	Info   = Logger.Info
 )
 
+func resetGlobals() {
+	Debugw = Logger.Debugw
+	Debug = Logger.Debug
+	Info = Logger.Info
+}
+
 func SetDebugLogger() {
 	Logger = newDebugLogger()
+	resetGlobals()
 }
 
 func newInfoLogger() *zap.SugaredLogger {
@@ -31,6 +38,7 @@ func newInfoLogger() *zap.SugaredLogger {
 
 func SetInfoLogger() {
 	Logger = newInfoLogger()
+	resetGlobals()
 }
 
 func Print(a ...interface{}) {

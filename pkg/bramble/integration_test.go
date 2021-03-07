@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -88,13 +89,14 @@ func assembleModules(t *testing.T) []string {
 
 func runBrambleRun(args []string) error {
 	// ensure $GOPATH/bin is in PATH
+	// we set this so we can use the setuid binary, maybe there is a better way
 	path := os.Getenv("PATH")
 	gobin := filepath.Join(os.Getenv("GOPATH"), "bin")
 	if !strings.Contains(path, gobin) {
 		os.Setenv("PATH", path+":"+gobin)
 	}
 	b := Bramble{}
-	return b.build(args)
+	return b.build(context.Background(), args)
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
