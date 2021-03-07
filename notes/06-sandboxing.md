@@ -23,8 +23,11 @@ If bramble is going to have this level of flexibility it should be sandboxed by 
 - https://github.com/NixOS/nix/issues/1429 - nix disallows setuid
 - https://bazel.build/designs/2016/06/02/sandboxing.html
 Support docker as an option, would work only for linux or just for running things in docker.
+- https://unix.stackexchange.com/questions/6433/how-to-jail-a-process-without-being-root interesting notes
 
 
 ## Linux
 
-Default mounts: https://github.com/opencontainers/runtime-tools/blob/a7974a4078764ec41acf5feaa05f07854af44aa6/generate/generate.go#L174-L211
+- Default mounts: https://github.com/opencontainers/runtime-tools/blob/a7974a4078764ec41acf5feaa05f07854af44aa6/generate/generate.go#L174-L211
+- Create dev/null https://www.commandlinefu.com/commands/view/24199/create-devnull-if-accidentally-deleted-or-for-a-chroot
+- container linux with mknod examples https://github.com/cloudify-incubator/cloudify-rest-go-client/blob/f8139d8e38b0909fae3e4212eb05497483c0e5b8/container/container_linux.go
