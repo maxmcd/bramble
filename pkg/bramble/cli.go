@@ -31,6 +31,7 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		derivationBuild *ffcli.Command
 		rootFlagSet     = flag.NewFlagSet("bramble", flag.ExitOnError)
 		version         = rootFlagSet.Bool("version", false, "version")
+		verbose         = rootFlagSet.Bool("v", false, "print verbose logs")
 	)
 
 	build = &ffcli.Command{
@@ -96,6 +97,10 @@ func (b *Bramble) createCLI() *ffcli.Command {
 			}
 			return flag.ErrHelp
 		},
+	}
+
+	if *verbose {
+		logger.SetDebugLogger()
 	}
 
 	// Recursively patch all command descriptions and usage functions
