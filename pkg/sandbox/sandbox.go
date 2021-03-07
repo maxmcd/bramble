@@ -340,7 +340,6 @@ func (s Sandbox) runExecStep() {
 		// TODO: dir
 		registeredFunctions[s.Function.index-1]()
 	} else {
-		fmt.Println(s.Path, s.Args, s.Dir)
 		cmd := exec.Cmd{
 			Path: s.Path,
 			Dir:  s.Dir,
