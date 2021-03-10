@@ -132,7 +132,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (er
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.prettyJSON())
 
-	if err = b.buildDerivation(ctx, drv); err != nil {
+	if err = b.buildDerivation(ctx, drv, false); err != nil {
 		return errors.Wrap(err, "error building "+filename)
 	}
 	return b.writeDerivation(drv)
@@ -161,7 +161,7 @@ func (b *Bramble) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outp
 	return
 }
 
-func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err error) {
+func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation, shell bool) (err error) {
 	var task *trace.Task
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
@@ -187,13 +187,18 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation) (err err
 	if err != nil {
 		return
 	}
+
+	if shell && (drv.Builder == "fetch_url" || drv.Builder == "fetch_git") {
+		return errors.New("can't spawn a shell with a builtin builder")
+	}
+
 	switch drv.Builder {
 	case "fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
 	case "fetch_git":
 		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	default:
-		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths)
+		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
 	if err != nil {
 		return
@@ -505,7 +510,8 @@ func (b *Bramble) dockerRegularBuilder(ctx context.Context, drv *Derivation, bui
 	return b.runDockerBuild(ctx, drv.filename(), options)
 }
 
-func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir string, outputPaths map[string]string) (err error) {
+func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir string,
+	outputPaths map[string]string, shell bool) (err error) {
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "builder location doesn't exist")
@@ -534,7 +540,6 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	sbx := sandbox.Sandbox{
 		Path:       builderLocation,
 		Args:       drv.Args,
-		Stdin:      os.Stdin,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
 		UserID:     uid,
@@ -543,6 +548,10 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 		ChrootPath: chrootDir,
 		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),
 		Mounts:     mounts,
+	}
+	if shell {
+		sbx.Args = nil
+		sbx.Stdin = os.Stdin
 	}
 	return sbx.Run(ctx)
 }
@@ -748,7 +757,7 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 	return graph
 }
 
-func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
+func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutputs, skipDerivation *Derivation) (err error) {
 	graph := b.assembleDerivationDependencyGraph(dos)
 	var wg sync.WaitGroup
 	errChan := make(chan error)
@@ -757,7 +766,7 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	if err = graph.Validate(); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		graph.Walk(func(v dag.Vertex) (_ tfdiags.Diagnostics) {
 			if errored {
@@ -777,9 +786,13 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 			if drv.Output(do.OutputName).Path != "" {
 				return
 			}
+			if skipDerivation != nil && skipDerivation.filename() == drv.filename() {
+				return
+			}
 			wg.Add(1)
 			if err := b.buildDerivationIfNew(ctx, drv); err != nil {
-				// Passing the error might block, so we need an explicit Done call here.
+				// Passing the error might block, so we need an explicit Done
+				// call here.
 				wg.Done()
 				errored = true
 				logger.Print(err)
@@ -794,7 +807,8 @@ func (b *Bramble) buildDerivationOutputs(dos DerivationOutputs) (err error) {
 	err = <-errChan
 	cancel() // Call cancel on the context, no-op if nothing is running
 	if err != nil {
-		// If we receive an error cancel the context and wait for any jobs that are running.
+		// If we receive an error cancel the context and wait for any jobs that
+		// are running.
 		wg.Wait()
 	}
 	return err
@@ -975,10 +989,11 @@ func (b *Bramble) repl(_ []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) build(args []string) (err error) {
+func (b *Bramble) parseBuildArg(cmd string, args []string) (module, fn string, derivations []*Derivation, err error) {
 	if len(args) == 0 {
-		logger.Print(`"bramble build" requires 1 argument`)
-		return flag.ErrHelp
+		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
+		err = flag.ErrHelp
+		return
 	}
 
 	if err = b.init(); err != nil {
@@ -987,8 +1002,7 @@ func (b *Bramble) build(args []string) (err error) {
 
 	// parse something like ./tests:foo into the correct module and function
 	// name
-	module, fn, err := b.parseModuleFuncArgument(args)
-	if err != nil {
+	if module, fn, err = b.parseModuleFuncArgument(args); err != nil {
 		return
 	}
 
@@ -999,23 +1013,58 @@ func (b *Bramble) build(args []string) (err error) {
 	}
 	toCall, ok := globals[fn]
 	if !ok {
-		return errors.Errorf("function %q not found in module %q", fn, module)
+		err = errors.Errorf("function %q not found in module %q", fn, module)
+		return
 	}
 
 	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
 	if err != nil {
-		return errors.Wrap(err, "error running")
+		err = errors.Wrap(err, "error running")
+		return
 	}
 
 	// The function must return a single derivation or a list of derivations, or
 	// a tuple of derivations. We turn them into an array.
-	returnedDerivations := valuesToDerivations(values)
+	derivations = valuesToDerivations(values)
+	return
+}
 
-	if err = b.buildDerivationOutputs(b.derivationsToDerivationOutputs(returnedDerivations)); err != nil {
+func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
+	module, fn, derivations, err := b.parseBuildArg("build", args)
+	if err != nil {
+		return err
+	}
+	if len(derivations) > 1 {
+		return errors.New(`cannot run "bramble shell" with a function that returns multiple derivations`)
+	}
+	shellDerivation := derivations[0]
+
+	if err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), shellDerivation); err != nil {
 		return
 	}
 
-	return b.writeConfigMetadata(returnedDerivations, fn, module)
+	if err := b.writeConfigMetadata(derivations, module, fn); err != nil {
+		return err
+	}
+	filename := shellDerivation.filename()
+	logger.Print("Launching shell for derivation", filename)
+	logger.Debugw(shellDerivation.prettyJSON())
+	if err = b.buildDerivation(ctx, shellDerivation, true); err != nil {
+		return errors.Wrap(err, "error spawning "+filename)
+	}
+	return nil
+}
+
+func (b *Bramble) build(ctx context.Context, args []string) (err error) {
+	module, fn, derivations, err := b.parseBuildArg("build", args)
+	if err != nil {
+		return err
+	}
+	if err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), nil); err != nil {
+		return
+	}
+
+	return b.writeConfigMetadata(derivations, module, fn)
 }
 
 func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {

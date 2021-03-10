@@ -37,13 +37,44 @@ func newChroot(location string, mounts []string) *chroot {
 	}
 }
 
+func makedev(major int, minor int) int {
+	return (minor & 0xff) | (major&0xfff)<<8
+}
+
 func (chr *chroot) Init() (err error) {
 	if chr.initialized {
 		return errors.New("chroot env already initialized")
 	}
 	chr.initialized = true
-	if err := os.Mkdir(filepath.Join(chr.location, "proc"), 0755); err != nil {
-		return err
+
+	// reset file mode creation mask to zero
+	syscall.Umask(0)
+
+	for _, dir := range []string{"proc", "dev", "tmp"} {
+		if err := os.Mkdir(filepath.Join(chr.location, dir), 0755); err != nil {
+			return err
+		}
+	}
+	if err = os.Chmod(filepath.Join(chr.location, "tmp"), 0777); err != nil {
+		return errors.Wrap(err, "chmod tmp 0777")
+	}
+
+	if err := syscall.Mknod(filepath.Join(chr.location, "dev", "/null"),
+		syscall.S_IFCHR|0666, makedev(1, 3)); err != nil {
+		return errors.Wrap(err, "mknod /dev/null")
+	}
+	if err := syscall.Mknod(filepath.Join(chr.location, "dev", "/random"),
+		syscall.S_IFCHR|0666, makedev(1, 8)); err != nil {
+		return errors.Wrap(err, "mknod /dev/random")
+	}
+	if err := syscall.Mknod(filepath.Join(chr.location, "dev", "/urandom"),
+		syscall.S_IFCHR|0666, makedev(1, 9)); err != nil {
+		return errors.Wrap(err, "mknod /dev/urandom")
+	}
+
+	// mount proc
+	if err := syscall.Mount("proc", filepath.Join(chr.location, "proc"), "proc", 0, ""); err != nil {
+		return errors.Wrap(err, "proc mount")
 	}
 	for _, mount := range chr.mounts {
 		src, ro, valid := parseMount(mount)
@@ -83,9 +114,6 @@ func (chr *chroot) Init() (err error) {
 
 	if err := os.Chdir("/"); err != nil {
 		return errors.Wrap(err, "chdir")
-	}
-	if err := syscall.Mount("proc", "proc", "proc", 0, ""); err != nil {
-		return errors.Wrap(err, "proc mount")
 	}
 	return nil
 }

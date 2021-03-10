@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
+	"github.com/creack/pty"
+	"github.com/docker/docker/pkg/term"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/store"
-	"github.com/maxmcd/gosh/shell"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
@@ -71,63 +72,6 @@ func entrypoint() (err error) {
 	}
 }
 
-// DebugFunction is a sandbox function that launches a rudimentary shell
-var DebugFunction = RegisterFunction(func() {
-	shell.Run()
-})
-
-// RunDebug launches a rudimentary shell within a sandbox
-func RunDebug() (err error) {
-	store, err := store.NewStore()
-	if err != nil {
-		return err
-	}
-	chrootPath, err := store.TempBuildDir()
-	if err != nil {
-		return err
-	}
-	s := &Sandbox{
-		ChrootPath: chrootPath,
-		Function:   DebugFunction,
-		Stdin:      os.Stdin,
-		Stderr:     os.Stderr,
-		Stdout:     os.Stdout,
-		Mounts:     []string{store.StorePath + ":ro"},
-	}
-	return s.Run(context.Background())
-}
-
-type Function struct {
-	index int
-}
-
-func (f Function) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Index int `json:"index"`
-	}{
-		Index: f.index,
-	})
-}
-func (f *Function) UnmarshalJSON(data []byte) error {
-	aux := struct {
-		Index int `json:"index"`
-	}{}
-	err := json.Unmarshal(data, &aux)
-	f.index = aux.Index
-	return err
-}
-
-var registeredFunctions = []func(){}
-
-// RegisterFunction can be used to register a Go function that you want to run
-// in a sandbox instead of an external command. RegisterFunction must be
-// called at the very beginning of your executable.
-func RegisterFunction(fn func()) Function {
-	index := len(registeredFunctions) + 1 // zero is null
-	registeredFunctions = append(registeredFunctions, fn)
-	return Function{index: index}
-}
-
 // Sandbox defines a command or function that you want to run in a sandbox
 type Sandbox struct {
 	Stdin      io.Reader `json:"-"`
@@ -142,10 +86,6 @@ type Sandbox struct {
 	UserID  int
 	GroupID int
 
-	// Function can reference a function that has been created with
-	// RegisterFunction. TODO: fix overloading of function and Path
-	// functionality
-	Function Function
 	// Bind mounts or directories the process should have access too. These
 	// should be absolute paths. If a mount is intended to be readonly add
 	// ":ro" to the end of the path like `/tmp:ro`
@@ -168,6 +108,10 @@ func parseSerializedArg(arg string) (s Sandbox, err error) {
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
+	if term.IsTerminal(os.Stdin.Fd()) {
+		logger.Debug("is terminal")
+	}
+
 	serialized, err := s.serializeArg()
 	if err != nil {
 		return err
@@ -209,7 +153,8 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 		}
 		return err
 	}
-	return nil
+	return nil // Start the command with a pty.
+
 }
 
 func (s Sandbox) newNamespaceStep() (err error) {
@@ -242,18 +187,52 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	// interrupt will be caught be the child process and the process
 	// will exiting, causing this process to exit
 	ignoreInterrupt()
+
 	cmd := &exec.Cmd{
-		Path:   selfExe,
-		Args:   []string{setupStepArg, serialized},
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+		Path: selfExe,
+		Args: []string{setupStepArg, serialized},
 		SysProcAttr: &syscall.SysProcAttr{
-			Pdeathsig:  unix.SIGTERM, // ???
+			// maybe sigint will allow the child more time to clean up its mounts????
+			Pdeathsig:  unix.SIGINT,
 			Cloneflags: cloneFlags,
 		},
 	}
-	return errors.Wrap(cmd.Run(), "error running newNamespace")
+
+	// We must use a pty here to enable interactive input. If we naively pass
+	// os.Stdin to an exec.Cmd then we run into issues with the parent and
+	// child terminals getting confused about who is supposed to process various
+	// control signals.
+	// We can then just set to raw and copy the bytes across. We could remove
+	// the pty entirely for jobs that don't pass a terminal as a stdin.
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return errors.Wrap(err, "error starting pty")
+	}
+	defer func() { _ = ptmx.Close() }()
+	// Handle pty resize
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+				log.Printf("error resizing pty: %s", err)
+			}
+		}
+	}()
+	ch <- syscall.SIGWINCH // Initial resize.
+
+	// only handle stdin and set raw if it's an interactive terminal
+	if os.Stdin != nil && term.IsTerminal(os.Stdin.Fd()) {
+		oldState, err := term.MakeRaw(os.Stdin.Fd())
+		if err != nil {
+			return err
+		}
+		// restore when complete
+		defer func() { _ = term.RestoreTerminal(os.Stdin.Fd(), oldState) }()
+		go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	}
+	_, _ = io.Copy(os.Stdout, ptmx)
+	return errors.Wrap(cmd.Wait(), "error running newNamespace")
 }
 
 func (s Sandbox) setupStep() (err error) {
@@ -335,40 +314,20 @@ func interruptContext() context.Context {
 }
 
 func (s Sandbox) runExecStep() {
-	if s.Function.index != 0 {
-		// TODO: env
-		// TODO: dir
-		registeredFunctions[s.Function.index-1]()
-	} else {
-		cmd := exec.Cmd{
-			Path: s.Path,
-			Dir:  s.Dir,
-			Args: append([]string{s.Path}, s.Args...),
-			Env:  os.Environ(),
+	cmd := exec.Cmd{
+		Path: s.Path,
+		Dir:  s.Dir,
+		Args: append([]string{s.Path}, s.Args...),
+		Env:  os.Environ(),
 
-			// We don't use the passed sandbox stdio because
-			// it's been passed to the very first run command
-			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
-		}
-		if err := cmd.Run(); err != nil {
-			path := "/home/maxm/bramble/bramble_store_padding/bramble_/ieqjuyrfv7lmdb2bur76jgjcrd33j7na/bin/sh"
-			cmd := exec.Cmd{
-				Path: path,
-				Dir:  s.Dir,
-				Args: []string{path},
-				Env:  os.Environ(),
-
-				// We don't use the passed sandbox stdio because
-				// it's been passed to the very first run command
-				Stdin:  os.Stdin,
-				Stdout: os.Stdout,
-				Stderr: os.Stderr,
-			}
-			cmd.Run()
-			fmt.Println(err.Error())
-			os.Exit(1)
-		}
+		// We don't use the passed sandbox stdio because
+		// it's been passed to the very first run command
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}
+	if err := cmd.Run(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 }
