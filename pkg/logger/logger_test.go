@@ -19,21 +19,6 @@ func Test_newInfoLogger(t *testing.T) {
 	}
 }
 
-func TestMatches(t *testing.T) {
-	// "hello"
-	// "warn"
-	// "WARN"
-	// "info"
-	// "INFO"
-	// "hello=debug"
-	// "hello=DEBUG"
-	// "hello,std::option"
-	// "error,hello=warn"
-	// "error,hello=off"
-	// "off"
-	// "OFF"
-}
-
 func Test_newModuleEncoder(t *testing.T) {
 	tests := []struct {
 		arg  string

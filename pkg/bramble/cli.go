@@ -32,7 +32,6 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		derivationBuild *ffcli.Command
 		rootFlagSet     = flag.NewFlagSet("bramble", flag.ExitOnError)
 		version         = rootFlagSet.Bool("version", false, "version")
-		verbose         = rootFlagSet.Bool("v", false, "print verbose logs")
 	)
 
 	build = &ffcli.Command{
@@ -123,9 +122,6 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 	if err := root.Parse(args); err != nil {
 		return nil, err
 	}
-	if *verbose {
-		logger.SetDebugLogger()
-	}
 
 	return root, nil
 }
@@ -143,7 +139,7 @@ func RunCLI() {
 		if err == flag.ErrHelp {
 			os.Exit(127)
 		}
-		fmt.Fprint(os.Stderr, starutil.AnnotateError(err))
+		logger.Print(starutil.AnnotateError(err))
 		os.Exit(1)
 	}
 

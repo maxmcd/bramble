@@ -108,9 +108,8 @@ func parseSerializedArg(arg string) (s Sandbox, err error) {
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
-
 	if term.IsTerminal(os.Stdin.Fd()) {
-		fmt.Println("is terminal")
+		logger.Debug("is terminal")
 	}
 
 	serialized, err := s.serializeArg()

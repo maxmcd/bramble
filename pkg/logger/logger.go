@@ -10,41 +10,27 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func newDebugLogger() *zap.SugaredLogger {
+func newLogger() *zap.SugaredLogger {
 	cfg := zap.NewDevelopmentConfig()
-	cfg.Encoding = "conditional"
-	_ = zap.RegisterEncoder("conditional", newModuleEncoder)
+	cfg.Encoding = "module"
+	_ = zap.RegisterEncoder("module", newModuleEncoder)
+	// this must be at debug level because we handle the level ourselves
 	cfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
 	logger, _ := cfg.Build()
 	return logger.Sugar()
 }
 
-func init() {
-	// BRAMBLE_LOG=level=module
-	os.Getenv("BRAMBLE_LOG")
-}
-
 var (
-	Logger = newDebugLogger()
+	Logger = newLogger()
 	Debugw = Logger.Debugw
 	Debug  = Logger.Debug
 	Info   = Logger.Info
+	Warn   = Logger.Warn
 )
-
-func resetGlobals() {
-	Debugw = Logger.Debugw
-	Debug = Logger.Debug
-	Info = Logger.Info
-}
-
-func SetDebugLogger() {
-	Logger = newDebugLogger()
-	resetGlobals()
-}
 
 func newModuleEncoder(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 	me := moduleEncoder{
-		Encoder: zapcore.NewJSONEncoder(cfg),
+		Encoder: zapcore.NewConsoleEncoder(cfg),
 		level:   zapcore.ErrorLevel,
 		modules: map[string]zapcore.Level{},
 	}
@@ -113,29 +99,15 @@ func (me moduleEncoder) EncodeEntry(entry zapcore.Entry, fields []zapcore.Field)
 		}
 	}
 	if entry.Level < effectiveLevel {
-		line.Reset()
+		line.Reset() // return nothing
 		return line, err
 	}
 	return line, err
 }
 
-func newInfoLogger() *zap.SugaredLogger {
-	cfg := zap.NewDevelopmentConfig()
-	cfg.Encoding = "conditional"
-	_ = zap.RegisterEncoder("conditional", newModuleEncoder)
-	cfg.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	logger, _ := cfg.Build()
-	return logger.Sugar()
-}
-
-func SetInfoLogger() {
-	Logger = newInfoLogger()
-	resetGlobals()
-}
-
 func Print(a ...interface{}) {
-	fmt.Println(a...)
+	fmt.Fprintln(os.Stderr, a...)
 }
 func Printfln(format string, a ...interface{}) {
-	fmt.Printf(format+"\n", a...)
+	fmt.Fprintf(os.Stderr, format+"\n", a...)
 }
