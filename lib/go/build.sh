@@ -5,7 +5,6 @@ export PATH=$stdenv/bin:$busybox/bin
 export LD_LIBRARY_PATH=$stdenv/lib
 
 mkdir -p /var/tmp
-mkdir /tmp
 
 cp -r $go1_4/go .
 include=$(pwd)/go/include
