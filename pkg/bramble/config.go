@@ -58,7 +58,7 @@ type LockFile struct {
 	URLHashes map[string]string
 }
 
-func (b *Bramble) writeConfigMetadata(derivations []*Derivation, fn, module string) (err error) {
+func (b *Bramble) writeConfigMetadata(derivations []*Derivation, module, fn string) (err error) {
 	outputs := []string{}
 	for _, drv := range b.inputDerivations {
 		outputs = append(outputs, drv.Filename+":"+drv.OutputName)

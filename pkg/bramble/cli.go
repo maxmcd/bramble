@@ -20,10 +20,11 @@ var (
 	BrambleFunctionBuildHiddenCommand = "__bramble-function-build"
 )
 
-func (b *Bramble) createCLI() *ffcli.Command {
+func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 	var (
 		root            *ffcli.Command
 		repl            *ffcli.Command
+		shell           *ffcli.Command
 		build           *ffcli.Command
 		store           *ffcli.Command
 		storeGC         *ffcli.Command
@@ -31,7 +32,6 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		derivationBuild *ffcli.Command
 		rootFlagSet     = flag.NewFlagSet("bramble", flag.ExitOnError)
 		version         = rootFlagSet.Bool("version", false, "version")
-		verbose         = rootFlagSet.Bool("v", false, "print verbose logs")
 	)
 
 	build = &ffcli.Command{
@@ -39,7 +39,15 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		ShortUsage: "bramble build [options] [module]:<function> [args...]",
 		ShortHelp:  "Build a function",
 		LongHelp:   "Build a function",
-		Exec:       func(ctx context.Context, args []string) error { return b.build(args) },
+		Exec:       func(ctx context.Context, args []string) error { return b.build(ctx, args) },
+	}
+
+	shell = &ffcli.Command{
+		Name:       "shell",
+		ShortUsage: "bramble shell [options] [module]:<function> [args...]",
+		ShortHelp:  "Open a shell from a derivation",
+		LongHelp:   "Open a shell from a derivation",
+		Exec:       func(ctx context.Context, args []string) error { return b.shell(ctx, args) },
 	}
 
 	repl = &ffcli.Command{
@@ -86,8 +94,8 @@ func (b *Bramble) createCLI() *ffcli.Command {
 	}
 
 	root = &ffcli.Command{
-		ShortUsage:  "bramble [--version] [--help] <command> [<args>]",
-		Subcommands: []*ffcli.Command{build, repl, store, derivation},
+		ShortUsage:  "bramble [flags] <command> [<args>]",
+		Subcommands: []*ffcli.Command{build, repl, store, shell, derivation},
 		FlagSet:     rootFlagSet,
 		UsageFunc:   DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -97,10 +105,6 @@ func (b *Bramble) createCLI() *ffcli.Command {
 			}
 			return flag.ErrHelp
 		},
-	}
-
-	if *verbose {
-		logger.SetDebugLogger()
 	}
 
 	// Recursively patch all command descriptions and usage functions
@@ -114,7 +118,12 @@ func (b *Bramble) createCLI() *ffcli.Command {
 		}
 	}
 	fixup(root)
-	return root
+
+	if err := root.Parse(args); err != nil {
+		return nil, err
+	}
+
+	return root, nil
 }
 
 // RunCLI runs the cli with os.Args
@@ -123,16 +132,24 @@ func RunCLI() {
 
 	log.SetOutput(ioutil.Discard)
 	b := &Bramble{}
-	command := b.createCLI()
-	if err := command.ParseAndRun(context.Background(), os.Args[1:]); err != nil {
+	handleErr := func(err error) {
 		if err == errQuiet {
 			os.Exit(1)
 		}
 		if err == flag.ErrHelp {
 			os.Exit(127)
 		}
-		fmt.Fprint(os.Stderr, starutil.AnnotateError(err))
+		logger.Print(starutil.AnnotateError(err))
 		os.Exit(1)
+	}
+
+	command, err := b.createAndParseCLI(os.Args[1:])
+	if err != nil {
+		handleErr(err)
+	}
+	// TODO, use context to handle interrupt
+	if err := command.Run(context.Background()); err != nil {
+		handleErr(err)
 	}
 }
 

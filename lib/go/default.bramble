@@ -5,11 +5,13 @@ load("github.com/maxmcd/bramble/lib")
 
 def _bootstrap():
     go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
-
+    path = "%s/bin:%s/bin" % (nix_seed.stdenv(), lib.busybox())
     return derivation(
         name="go-1.4",
         builder=lib.busybox().out + "/bin/sh",
         args=["./build.sh"],
         sources=["./build.sh"],
-        env=dict(go1_4=go1_4, stdenv=nix_seed.stdenv(), busybox=lib.busybox()),
+        env=dict(
+            go1_4=go1_4, stdenv=nix_seed.stdenv(), busybox=lib.busybox(), PATH=path
+        ),
     )

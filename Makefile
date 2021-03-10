@@ -9,9 +9,10 @@ go_test: install
 # just use LICENSE as a file we can harmlessly "touch" and use as a cache marker
 LICENSE: main.go pkg/*/*.go
 	go install
+	make build_setuid
 	touch LICENSE
 
-install: LICENSE build_setuid
+install: LICENSE
 
 integration_test: install
 	env BRAMBLE_INTEGRATION_TEST=truthy go test -v ./pkg/bramble/
