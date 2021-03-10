@@ -3,21 +3,10 @@ package logger
 import (
 	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"go.uber.org/zap/zapcore"
 )
-
-func Test_newInfoLogger(t *testing.T) {
-	logger := newDebugLogger()
-	logger.Info("hi")
-	logger.Debug("hi")
-
-	for _, match := range strings.Split("foo", ",") {
-		strings.Split(match, "=")
-	}
-}
 
 func Test_newModuleEncoder(t *testing.T) {
 	tests := []struct {
