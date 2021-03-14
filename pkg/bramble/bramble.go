@@ -121,6 +121,7 @@ func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output,
 func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (err error) {
 	filename := drv.filename()
 	outputs, exists, err := b.checkForExistingDerivation(filename)
+	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
 	if err != nil {
 		return err
 	}
@@ -635,6 +636,9 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 	if len(drv.sources) == 0 {
 		return
 	}
+
+	// TODO: should extend reptar to handle hasing the files before moving
+	// them to a tempdir
 	tmpDir, err := b.store.TempDir()
 	if err != nil {
 		return
@@ -917,6 +921,7 @@ func (b *Bramble) compileStarlarkPath(path string) (prog *starlark.Program, err 
 }
 
 func (b *Bramble) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
+	logger.Debugw("sourceStarlarkProgram", "moduleName", moduleName, "file", filename)
 	b.filenameCache.Store(filename, moduleName)
 	storeLocation, ok := b.moduleCache[moduleName]
 	if ok {
@@ -989,7 +994,7 @@ func (b *Bramble) repl(_ []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) parseBuildArg(cmd string, args []string) (module, fn string, derivations []*Derivation, err error) {
+func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (module, fn string, derivations []*Derivation, err error) {
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
@@ -1006,6 +1011,7 @@ func (b *Bramble) parseBuildArg(cmd string, args []string) (module, fn string, d
 		return
 	}
 
+	logger.Debug("resolving module", module)
 	// parse the module and all of its imports, return available functions
 	globals, err := b.resolveModule(module)
 	if err != nil {
@@ -1017,6 +1023,7 @@ func (b *Bramble) parseBuildArg(cmd string, args []string) (module, fn string, d
 		return
 	}
 
+	logger.Debug("Calling function ", fn)
 	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
 	if err != nil {
 		err = errors.Wrap(err, "error running")
@@ -1030,7 +1037,7 @@ func (b *Bramble) parseBuildArg(cmd string, args []string) (module, fn string, d
 }
 
 func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
-	module, fn, derivations, err := b.parseBuildArg("build", args)
+	module, fn, derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
 	}
@@ -1056,7 +1063,7 @@ func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
 }
 
 func (b *Bramble) build(ctx context.Context, args []string) (err error) {
-	module, fn, derivations, err := b.parseBuildArg("build", args)
+	module, fn, derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
 	}
