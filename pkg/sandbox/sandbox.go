@@ -209,20 +209,20 @@ func (s Sandbox) newNamespaceStep() (err error) {
 		return errors.Wrap(err, "error starting pty")
 	}
 	defer func() { _ = ptmx.Close() }()
-	// Handle pty resize
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
-	go func() {
-		for range ch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				log.Printf("error resizing pty: %s", err)
-			}
-		}
-	}()
-	ch <- syscall.SIGWINCH // Initial resize.
 
 	// only handle stdin and set raw if it's an interactive terminal
 	if os.Stdin != nil && term.IsTerminal(os.Stdin.Fd()) {
+		// Handle pty resize
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGWINCH)
+		go func() {
+			for range ch {
+				if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+					log.Printf("error resizing pty: %s", err)
+				}
+			}
+		}()
+		ch <- syscall.SIGWINCH // Initial resize.
 		oldState, err := term.MakeRaw(os.Stdin.Fd())
 		if err != nil {
 			return err

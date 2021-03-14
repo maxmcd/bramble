@@ -24,6 +24,7 @@ var (
 	Logger = newLogger()
 	Debugw = Logger.Debugw
 	Debug  = Logger.Debug
+	Debugf = Logger.Debugf
 	Info   = Logger.Info
 	Warn   = Logger.Warn
 )
