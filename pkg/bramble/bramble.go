@@ -982,6 +982,12 @@ func (b *Bramble) starlarkExecFile(moduleName, filename string) (globals starlar
 		return
 	}
 	g, err := prog.Init(b.thread, b.predeclared)
+	for name := range g {
+		// no importing or calling of underscored methods
+		if strings.HasPrefix(name, "_") {
+			delete(g, name)
+		}
+	}
 	g.Freeze()
 	return g, err
 }
@@ -994,7 +1000,7 @@ func (b *Bramble) repl(_ []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (module, fn string, derivations []*Derivation, err error) {
+func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations []*Derivation, err error) {
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
@@ -1007,7 +1013,8 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (module, fn st
 
 	// parse something like ./tests:foo into the correct module and function
 	// name
-	if module, fn, err = b.parseModuleFuncArgument(args); err != nil {
+	module, fn, err := b.parseModuleFuncArgument(args)
+	if err != nil {
 		return
 	}
 
@@ -1037,7 +1044,7 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (module, fn st
 }
 
 func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
-	module, fn, derivations, err := b.parseAndCallBuildArg("build", args)
+	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
 	}
@@ -1050,7 +1057,7 @@ func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
 		return
 	}
 
-	if err := b.writeConfigMetadata(derivations, module, fn); err != nil {
+	if err := b.writeConfigMetadata(); err != nil {
 		return err
 	}
 	filename := shellDerivation.filename()
@@ -1063,7 +1070,7 @@ func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
 }
 
 func (b *Bramble) build(ctx context.Context, args []string) (err error) {
-	module, fn, derivations, err := b.parseAndCallBuildArg("build", args)
+	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
 	}
@@ -1071,7 +1078,7 @@ func (b *Bramble) build(ctx context.Context, args []string) (err error) {
 		return
 	}
 
-	return b.writeConfigMetadata(derivations, module, fn)
+	return b.writeConfigMetadata()
 }
 
 func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
@@ -1278,6 +1285,25 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, err error) {
 
 func (b *Bramble) derivationBuild(args []string) error {
 	return nil
+}
+
+func (b *Bramble) filepathToModuleName(path string) (module string, err error) {
+	if !strings.HasSuffix(path, BrambleExtension) {
+		return "", errors.Errorf("path %q is not a bramblefile", path)
+	}
+	if !fileutil.FileExists(path) {
+		return "", errors.Wrap(os.ErrNotExist, path)
+	}
+	rel, err := filepath.Rel(b.configLocation, path)
+	if err != nil {
+		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, b.configLocation)
+	}
+	if strings.HasSuffix(path, "default"+BrambleExtension) {
+		rel = strings.TrimSuffix(rel, "/default"+BrambleExtension)
+	} else {
+		rel = strings.TrimSuffix(rel, BrambleExtension)
+	}
+	return b.config.Module.Name + "/" + rel, nil
 }
 
 func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err error) {

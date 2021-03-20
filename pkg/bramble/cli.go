@@ -28,6 +28,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		build           *ffcli.Command
 		store           *ffcli.Command
 		storeGC         *ffcli.Command
+		storeAudit      *ffcli.Command
 		derivation      *ffcli.Command
 		derivationBuild *ffcli.Command
 		rootFlagSet     = flag.NewFlagSet("bramble", flag.ExitOnError)
@@ -72,12 +73,22 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		},
 	}
 
+	storeAudit = &ffcli.Command{
+		Name:       "audit",
+		ShortUsage: "bramble store audit",
+		ShortHelp:  "",
+		LongHelp:   "",
+		Exec: func(ctx context.Context, args []string) error {
+			return b.gc(args)
+		},
+	}
+
 	store = &ffcli.Command{
 		Name:        "store",
 		ShortUsage:  "bramble store <subcommand>",
 		ShortHelp:   "Interact with the store",
 		Exec:        func(ctx context.Context, args []string) error { return flag.ErrHelp },
-		Subcommands: []*ffcli.Command{storeGC},
+		Subcommands: []*ffcli.Command{storeGC, storeAudit},
 	}
 
 	derivationBuild = &ffcli.Command{

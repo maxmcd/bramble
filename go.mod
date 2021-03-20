@@ -7,6 +7,7 @@ require (
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
 	github.com/creack/pty v1.1.11
+	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v1.4.2-0.20191101170500-ac7306503d23
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/go-git/go-git/v5 v5.2.0
