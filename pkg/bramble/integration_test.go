@@ -12,9 +12,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/pkg/errors"
+	"go.starlark.net/starlark"
 )
 
 func initIntegrationTest(t *testing.T) {
@@ -85,6 +88,56 @@ func assembleModules(t *testing.T) []string {
 		t.Fatal(err)
 	}
 	return modules
+}
+
+func TestAllFunctions(t *testing.T) {
+	b := Bramble{}
+	if err := b.init(); err != nil {
+		t.Fatal(err)
+	}
+	err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// TODO: ignore .git, ignore .gitignore?
+		if strings.HasSuffix(path, ".bramble") {
+			module, err := b.filepathToModuleName(path)
+			if err != nil {
+				return err
+			}
+			globals, err := b.resolveModule(module)
+			if err != nil {
+				return err
+			}
+			for name, v := range globals {
+				if fn, ok := v.(*starlark.Function); ok {
+					if fn.NumParams()+fn.NumKwonlyParams() > 0 {
+						continue
+					}
+					fn.NumParams()
+					_, err := starlark.Call(b.thread, fn, nil, nil)
+					if err != nil {
+						return errors.Wrapf(err, "calling %q in %s", name, path)
+					}
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := []string{}
+	b.derivations.Range(func(filename string, drv *Derivation) bool {
+		if drv.Builder == "fetch_url" {
+			url, ok := drv.Env["url"]
+			if ok {
+				urls = append(urls, url)
+			}
+		}
+		return true
+	})
+	spew.Dump(urls)
 }
 
 func runBrambleRun(args []string) error {

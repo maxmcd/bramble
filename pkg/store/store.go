@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/pkg/errors"
@@ -188,44 +187,15 @@ func (s Store) WriteReader(src io.Reader, name string, validateHash string) (con
 	return hshr.Sha256Hex(), path, nil
 }
 
-func (s Store) WriteConfigLink(location string, derivations map[string][]string) (err error) {
+func (s Store) WriteConfigLink(location string) (err error) {
 	hshr := hasher.NewHasher()
 	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
 	}
 	reg := s.JoinBramblePath("var/config-registry")
 	hash := hshr.String()
-	configFileLocation := filepath.Join(reg, hash+"-metadata.toml")
-
-	f, err := os.OpenFile(configFileLocation,
-		os.O_RDWR|os.O_APPEND|os.O_CREATE,
-		0644)
-	if err != nil {
-		return
-	}
-	var dm derivationMap
-	if _, err = toml.DecodeReader(f, &dm); err != nil {
-		return
-	}
-	_ = f.Truncate(0)
-	_, _ = f.Seek(0, 0)
-
-	dm.Location = location
-	if dm.Derivations == nil {
-		dm.Derivations = map[string][]string{}
-	}
-	for k, v := range derivations {
-		dm.Derivations[k] = v
-	}
-	if err = toml.NewEncoder(f).Encode(dm); err != nil {
-		return
-	}
-	return f.Close()
-}
-
-type derivationMap struct {
-	Location    string
-	Derivations map[string][]string
+	configFileLocation := filepath.Join(reg, hash)
+	return ioutil.WriteFile(configFileLocation, []byte(location), 0644)
 }
 
 func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeDirectoryName string, err error) {
