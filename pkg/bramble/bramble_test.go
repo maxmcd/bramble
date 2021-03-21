@@ -14,15 +14,20 @@ var (
 	TestTmpDirPrefix = "bramble-test-"
 )
 
-func tmpDir() string {
+func tmpDir(t *testing.T) string {
 	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
 	if err != nil {
 		panic(err)
 	}
+	if t != nil {
+		t.Cleanup(func() {
+			os.RemoveAll(dir)
+		})
+	}
 	return dir
 }
 
-func brambleBramble(t *testing.T) *Bramble {
+func testfilesBramble(t *testing.T) *Bramble {
 	if err := os.Chdir("./testfiles"); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +39,7 @@ func brambleBramble(t *testing.T) *Bramble {
 }
 
 func Test_parseModuleFuncArgument(t *testing.T) {
-	b := brambleBramble(t)
+	b := testfilesBramble(t)
 	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name       string
@@ -116,7 +121,7 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 }
 
 func TestBramble_resolveModule(t *testing.T) {
-	b := brambleBramble(t)
+	b := testfilesBramble(t)
 	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name        string
@@ -167,7 +172,7 @@ func TestBramble_resolveModule(t *testing.T) {
 }
 
 func TestBramble_moduleNameFromFileName(t *testing.T) {
-	b := brambleBramble(t)
+	b := testfilesBramble(t)
 	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		filename       string
