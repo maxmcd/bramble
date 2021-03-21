@@ -3,7 +3,6 @@ package bramble
 import (
 	"context"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -22,7 +21,7 @@ def ok():
 		`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_ = os.Chdir(tp.projectPath)
+	tp.Chdir()
 	if err := tp.Bramble().build(context.Background(), []string{"foo:ok"}); err != nil {
 		t.Fatal(err)
 	}
