@@ -81,14 +81,13 @@ func (tp *TestProject) Bramble() *Bramble {
 }
 func (tp *TestProject) Chdir() {
 	tp.oldWD, _ = os.Getwd()
-	os.Chdir(tp.projectPath)
-
+	_ = os.Chdir(tp.projectPath)
 }
 func (tp *TestProject) Cleanup() {
 	_ = os.RemoveAll(tp.bramblePath)
 	_ = os.RemoveAll(tp.projectPath)
 	if tp.oldWD != "" {
-		os.Chdir(tp.oldWD)
+		_ = os.Chdir(tp.oldWD)
 	}
 }
 
@@ -109,10 +108,12 @@ func NewTestProject() (*TestProject, error) {
 		return nil, err
 	}
 	os.Setenv("BRAMBLE_PATH", bramblePath)
+	wd, _ := os.Getwd()
 	_ = os.Chdir(projectPath)
 	if err := b.build(ctx, []string{":busybox"}); err != nil {
 		return nil, err
 	}
+	_ = os.Chdir(wd)
 	return &TestProject{
 		bramblePath: bramblePath,
 		projectPath: projectPath,

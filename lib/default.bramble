@@ -26,13 +26,12 @@ def zig():
 def busybox():
     b = std.fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
 
-    command_symlinks
     script = """
     set -e
     $busybox_download/busybox-x86_64 mkdir $out/bin
     $busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
     cd $out/bin
-    for command in ./busybox --list; do
+    for command in $(./busybox --list); do
         ./busybox ln -s busybox $command
     done
     """
