@@ -91,7 +91,7 @@ b = foo()
 
 func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
-	dir := tmpDir()
+	dir := tmpDir(t)
 	os.Setenv("BRAMBLE_PATH", dir)
 	defer os.RemoveAll(dir)
 

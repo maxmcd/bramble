@@ -30,9 +30,9 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	log.SetOutput(ioutil.Discard)
 	var err error
 	hshr := hasher.NewHasher()
-	dir := tmpDir()
+	dir := tmpDir(t)
 	hshr2 := hasher.NewHasher()
-	dir2 := tmpDir()
+	dir2 := tmpDir(t)
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
@@ -49,8 +49,6 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 		t.Error("content doesn't match, non deterministic", dir, dir2)
 		return
 	}
-	_ = os.RemoveAll(dir)
-	_ = os.RemoveAll(dir2)
 }
 
 func assembleModules(t *testing.T) []string {

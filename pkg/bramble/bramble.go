@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime/debug"
@@ -76,14 +77,15 @@ type Bramble struct {
 	thread      *starlark.Thread
 	predeclared starlark.StringDict
 
+	// don't use features that require root like setuid binaries
+	noRoot bool
+
 	config         Config
 	configLocation string
 	lockFile       LockFile
 	lockFileLock   sync.Mutex
 
 	derivationFn *DerivationFunction
-	// derivations that are touched by running commands
-	inputDerivations DerivationOutputs
 
 	store store.Store
 
@@ -527,7 +529,19 @@ func (b *Bramble) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
 		mounts = append(mounts, outputPath)
 	}
+	if b.noRoot {
+		cmd := exec.Cmd{
+			Path:   builderLocation,
+			Args:   append([]string{builderLocation}, drv.Args...),
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Dir:    filepath.Join(buildDir, drv.BuildContextRelativePath),
+			Env:    env,
+		}
+		return cmd.Run()
+	}
 	chrootDir, err := ioutil.TempDir("", "bramble-chroot-")
+	// TODO: don't put it in tmp, put it in ~/bramble/var
 	// chrootDir, err := b.store.TempBuildDir()
 	if err != nil {
 		return err
