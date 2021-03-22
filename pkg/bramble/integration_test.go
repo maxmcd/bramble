@@ -90,7 +90,7 @@ func assembleModules(t *testing.T) []string {
 
 func TestAllFunctions(t *testing.T) {
 	b := Bramble{}
-	if err := b.init(); err != nil {
+	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
 	err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {

@@ -32,7 +32,7 @@ func testfilesBramble(t *testing.T) *Bramble {
 		t.Fatal(err)
 	}
 	b := Bramble{}
-	if err := b.init(); err != nil {
+	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
 	return &b

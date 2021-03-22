@@ -16,42 +16,42 @@ type ConfigModule struct {
 	Name string `toml:"name"`
 }
 
-func findConfig() (c Config, lf LockFile, location string, err error) {
-	location, err = os.Getwd()
-	if err != nil {
-		return
+func findConfig(wd string) (found bool, location string) {
+	if o, _ := filepath.Abs(wd); o != "" {
+		wd = o
 	}
-	var f *os.File
 	for {
-		f, err = os.Open(filepath.Join(location, "bramble.toml"))
-		if !os.IsNotExist(err) && err != nil {
-			return
+		if fileutil.FileExists(filepath.Join(wd, "bramble.toml")) {
+			return true, wd
 		}
-		if err == nil {
-			_, err = toml.DecodeReader(f, &c)
-			_ = f.Close()
-			break
+		if wd == filepath.Join(wd, "..") {
+			return false, ""
 		}
-		if location == filepath.Join(location, "..") {
-			err = errors.New("couldn't find a bramble.toml file in this directory or any parent")
-			return
-		}
-		_ = f.Close()
-		location = filepath.Join(location, "..")
+		wd = filepath.Join(wd, "..")
 	}
+}
+
+func (b *Bramble) loadConfig(location string) (err error) {
+	bDotToml := filepath.Join(location, "bramble.toml")
+	f, err := os.Open(bDotToml)
 	if err != nil {
-		return
+		return errors.Wrapf(err, "error loading %q", bDotToml)
+	}
+	defer f.Close()
+	if _, err = toml.DecodeReader(f, &b.config); err != nil {
+		return errors.Wrapf(err, "error decoding %q", bDotToml)
 	}
 	lockFile := filepath.Join(location, "bramble.lock")
-	if fileutil.FileExists(lockFile) {
-		f, err = os.Open(lockFile)
-		if err != nil {
-			return
-		}
-		defer func() { _ = f.Close() }()
-		_, err = toml.DecodeReader(f, &lf)
+	if !fileutil.FileExists(lockFile) {
+		return
 	}
-	return
+	f, err = os.Open(lockFile)
+	if err != nil {
+		return errors.Wrapf(err, "error opening lockfile %q", lockFile)
+	}
+	defer f.Close()
+	_, err = toml.DecodeReader(f, &b.lockFile)
+	return errors.Wrapf(err, "error decoding lockfile %q", lockFile)
 }
 
 type LockFile struct {

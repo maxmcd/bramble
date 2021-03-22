@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/certifi/gocertifi"
 	git "github.com/go-git/go-git/v5"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
@@ -205,6 +204,10 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation, shell bo
 	}
 	if err != nil {
 		return
+	}
+
+	if err := os.RemoveAll(buildDir); err != nil {
+		return err
 	}
 
 	if drv.Builder == "fetch_url" {
@@ -832,23 +835,26 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	return err
 }
 
-func (b *Bramble) init() (err error) {
-	if b.configLocation != "" {
-		return errors.New("can't initialize Bramble twice")
-	}
-
+func (b *Bramble) init(wd string, expectProject bool) (err error) {
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
 	b.importGraph = NewAcyclicGraph()
 
-	if b.store, err = store.NewStore(); err != nil {
-		return err
+	if b.store.IsEmpty() {
+		if b.store, err = store.NewStore(); err != nil {
+			return err
+		}
 	}
 
-	// ensures we have a bramble.toml in the current or parent dir
-	if b.config, b.lockFile, b.configLocation, err = findConfig(); err != nil {
-		return err
+	found, loc := findConfig(wd)
+	if expectProject && !found {
+		return errors.New("couldn't find a bramble.toml file in this directory or any parent")
+	}
+	if found {
+		if err := b.loadConfig(loc); err != nil {
+			return err
+		}
 	}
 
 	b.thread = &starlark.Thread{
@@ -860,9 +866,6 @@ func (b *Bramble) init() (err error) {
 }
 
 func (b *Bramble) initPredeclared() (err error) {
-	if b.derivationFn != nil {
-		return errors.New("can't init predeclared twice")
-	}
 	// creates the derivation function and checks we have a valid bramble path and store
 	b.derivationFn, err = NewDerivationFunction(b)
 	if err != nil {
@@ -1007,7 +1010,7 @@ func (b *Bramble) starlarkExecFile(moduleName, filename string) (globals starlar
 }
 
 func (b *Bramble) repl(_ []string) (err error) {
-	if err := b.init(); err != nil {
+	if err := b.init(".", false); err != nil {
 		return err
 	}
 	repl.REPL(b.thread, b.predeclared)
@@ -1021,7 +1024,7 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 		return
 	}
 
-	if err = b.init(); err != nil {
+	if err = b.init(".", true); err != nil {
 		return
 	}
 
@@ -1112,7 +1115,7 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 }
 
 func (b *Bramble) gc(_ []string) (err error) {
-	if err = b.init(); err != nil {
+	if err = b.init(".", false); err != nil {
 		return
 	}
 	drvQueue, err := b.collectDerivationsToPreserve()
@@ -1185,11 +1188,6 @@ func (b *Bramble) gc(_ []string) (err error) {
 	return nil
 }
 
-type derivationMap struct {
-	Location    string
-	Derivations map[string][]string
-}
-
 func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]bool, err error) {
 	registryFolder := b.store.JoinBramblePath("var", "config-registry")
 	files, err := ioutil.ReadDir(registryFolder)
@@ -1199,36 +1197,28 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 
 	drvQueue = map[DerivationOutput]bool{}
 	for _, f := range files {
-		var drvMap derivationMap
 		registryLoc := filepath.Join(registryFolder, f.Name())
-		f, err := os.Open(registryLoc)
+		pathBytes, err := ioutil.ReadFile(registryLoc)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := toml.DecodeReader(f, &drvMap); err != nil {
-			return nil, err
-		}
-		_ = f.Close()
-		logger.Print("assembling derivations for", drvMap.Location)
-		// delete the config if we can't find the project any more
-		tomlLoc := filepath.Join(drvMap.Location, "bramble.toml")
-		if !fileutil.PathExists(tomlLoc) {
-			logger.Printfln("deleting cache for %q, it no longer exists", tomlLoc)
-			if err := os.Remove(registryLoc); err != nil {
-				return nil, err
-			}
+		path := string(pathBytes)
+		if !fileutil.FileExists(filepath.Join(path, "bramble.toml")) {
+			logger.Printfln("deleting cache for %q, it no longer exists", path)
+			_ = os.Remove(registryLoc)
 			continue
 		}
-		for _, list := range drvMap.Derivations {
-			// TODO: check that these global entrypoints actually still exist
-			for _, item := range list {
-				parts := strings.Split(item, ":")
-				drvQueue[DerivationOutput{
-					Filename:   parts[0],
-					OutputName: parts[1],
-				}] = true
-			}
-		}
+
+		// for _, list := range drvMap.Derivations {
+		// 	// TODO: check that these global entrypoints actually still exist
+		// 	for _, item := range list {
+		// 		parts := strings.Split(item, ":")
+		// 		drvQueue[DerivationOutput{
+		// 			Filename:   parts[0],
+		// 			OutputName: parts[1],
+		// 		}] = true
+		// 	}
+		// }
 	}
 	return
 }
