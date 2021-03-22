@@ -35,7 +35,7 @@ def ok():
 
 func TestDependency(t *testing.T) {
 	tp := cachedProj.Copy()
-	// t.Cleanup(tp.Cleanup)
+	t.Cleanup(tp.Cleanup)
 	if err := ioutil.WriteFile(
 		filepath.Join(tp.projectPath, "./dep.bramble"),
 		[]byte(`
