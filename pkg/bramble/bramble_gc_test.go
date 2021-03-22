@@ -81,4 +81,5 @@ def ok():
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
+	fmt.Println(tp)
 }
