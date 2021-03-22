@@ -896,6 +896,49 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 	return
 }
 
+func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
+	b := Bramble{}
+	if err := b.init(loc, true); err != nil {
+		return nil, err
+	}
+	if err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// TODO: ignore .git, ignore .gitignore?
+		if strings.HasSuffix(path, ".bramble") {
+			module, err := b.filepathToModuleName(path)
+			if err != nil {
+				return err
+			}
+			globals, err := b.resolveModule(module)
+			if err != nil {
+				return err
+			}
+			for name, v := range globals {
+				if fn, ok := v.(*starlark.Function); ok {
+					if fn.NumParams()+fn.NumKwonlyParams() > 0 {
+						continue
+					}
+					fn.NumParams()
+					_, err := starlark.Call(b.thread, fn, nil, nil)
+					if err != nil {
+						return errors.Wrapf(err, "calling %q in %s", name, path)
+					}
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	b.derivations.Range(func(filename string, drv *Derivation) bool {
+		derivations = append(derivations, drv)
+		return true
+	})
+	return
+}
+
 func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err error) {
 	globals, err := starlark.ExecFile(b.thread, ".bramble", script, b.predeclared)
 	if err != nil {
@@ -1034,7 +1077,6 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	if err != nil {
 		return
 	}
-
 	logger.Debug("resolving module", module)
 	// parse the module and all of its imports, return available functions
 	globals, err := b.resolveModule(module)
@@ -1209,16 +1251,20 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 			continue
 		}
 
-		// for _, list := range drvMap.Derivations {
-		// 	// TODO: check that these global entrypoints actually still exist
-		// 	for _, item := range list {
-		// 		parts := strings.Split(item, ":")
-		// 		drvQueue[DerivationOutput{
-		// 			Filename:   parts[0],
-		// 			OutputName: parts[1],
-		// 		}] = true
-		// 	}
-		// }
+		derivations, err := findAllDerivationsInProject(path)
+		if err != nil {
+			// TODO: this is heavy handed, would mean any syntax error in any
+			// project prevents a global gc, think about how to deal with this
+			return nil, errors.Wrapf(err, "error computing derivations in %q", registryLoc)
+		}
+		for _, drv := range derivations {
+			for _, name := range drv.OutputNames {
+				drvQueue[DerivationOutput{
+					Filename:   drv.filename(),
+					OutputName: name,
+				}] = true
+			}
+		}
 	}
 	return
 }
@@ -1303,10 +1349,11 @@ func (b *Bramble) filepathToModuleName(path string) (module string, err error) {
 		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, b.configLocation)
 	}
 	if strings.HasSuffix(path, "default"+BrambleExtension) {
-		rel = strings.TrimSuffix(rel, "/default"+BrambleExtension)
+		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
 	} else {
 		rel = strings.TrimSuffix(rel, BrambleExtension)
 	}
+	rel = strings.TrimSuffix(rel, "/")
 	return b.config.Module.Name + "/" + rel, nil
 }
 
@@ -1344,7 +1391,7 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	case fileWithNameExists:
 		path += BrambleExtension
 	default:
-		err = errModuleDoesNotExist(module)
+		err = errors.WithStack(errModuleDoesNotExist(module))
 		return
 	}
 

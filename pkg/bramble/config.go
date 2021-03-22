@@ -32,6 +32,7 @@ func findConfig(wd string) (found bool, location string) {
 }
 
 func (b *Bramble) loadConfig(location string) (err error) {
+	b.configLocation = location
 	bDotToml := filepath.Join(location, "bramble.toml")
 	f, err := os.Open(bDotToml)
 	if err != nil {

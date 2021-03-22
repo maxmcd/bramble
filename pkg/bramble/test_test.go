@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/starutil"
 )
 
 var (
@@ -52,7 +53,8 @@ func TestMain(m *testing.M) {
 	var err error
 	cachedProj, err = NewTestProject()
 	if err != nil {
-		panic(err)
+		fmt.Printf("%+v", err)
+		panic(starutil.AnnotateError(err))
 	}
 	exitVal := m.Run()
 	cachedProj.Cleanup()
