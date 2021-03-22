@@ -77,6 +77,7 @@ def ok():
 		}
 	}
 	if err := tp.Bramble().gc(nil); err != nil {
+		fmt.Printf("%+v", err)
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
