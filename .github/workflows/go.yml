@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Run all tests
         run: |
-          make test
+          make ci_test
       # for your debugging needs
       # - name: Setup tmate session
       #   uses: mxschmitt/action-tmate@v3

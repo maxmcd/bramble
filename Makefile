@@ -3,6 +3,15 @@
 test: go_test \
 	integration_test
 
+ci_test: go_ci_test \
+	integration_ci_test
+
+gotestsum:
+	go get gotest.tools/gotestsum
+
+go_ci_test: gotestsum
+	gotestsum -- -race -v ./...
+
 go_test: install
 	go test -race -v ./...
 
@@ -13,6 +22,9 @@ LICENSE: main.go pkg/*/*.go
 	touch LICENSE
 
 install: LICENSE
+
+integration_ci_test:
+	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./pkg/bramble/
 
 integration_test: install
 	env BRAMBLE_INTEGRATION_TEST=truthy go test -v ./pkg/bramble/
