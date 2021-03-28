@@ -10,7 +10,6 @@ require (
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/go-git/go-git/v5 v5.2.0
 	github.com/hashicorp/terraform v0.14.4
-	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
 	github.com/mholt/archiver/v3 v3.3.1-0.20200626164424-d44471c49aa7
 	github.com/moby/moby v1.13.1
@@ -24,7 +23,6 @@ require (
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/sys v0.0.0-20210305230114-8fe3ee5dd75b
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	google.golang.org/grpc v1.34.0 // indirect
 )
 
 replace (

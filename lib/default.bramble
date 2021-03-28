@@ -1,16 +1,30 @@
 load("github.com/maxmcd/bramble/lib/std")
 
 
-def busybox():
-    b = derivation(
-        name="busybox_download",
-        builder="fetch_url",
-        env={
-            "decompress": False,
-            "url": "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz",
-            "hash": "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1",
-        },
+def zig():
+    b = std.fetch_url(
+        "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz"
     )
+    return derivation(
+        builder=busybox().out + "/bin/sh",
+        env=dict(src=b, PATH=busybox().out + "/bin"),
+        args=[
+            "-c",
+            """
+            set -ex
+            cp -r $src/zig-linux-x86_64-0.8.0-dev.1431+c760532be/* $out
+            ls -lah $out/
+            #$out/zig init-lib
+            mkdir $out/bin
+            cd $out/bin
+            ln -s ../zig ./zig
+            """,
+        ],
+    )
+
+
+def busybox():
+    b = std.fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
 
     commands = """
 [, [[, acpid, add-shell, addgroup, adduser, adjtimex, arch, arp, arping, ash, awk,
