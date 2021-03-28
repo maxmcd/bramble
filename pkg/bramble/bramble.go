@@ -883,6 +883,7 @@ func (b *Bramble) initPredeclared() (err error) {
 	b.predeclared = starlark.StringDict{
 		"derivation": b.derivationFn,
 		"assert":     assertGlobals["assert"],
+		"sys":        starlarkSys,
 	}
 	return
 }
