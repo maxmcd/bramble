@@ -1,5 +1,6 @@
-package sandbox
 // +build linux
+
+package sandbox
 
 import (
 	"fmt"
