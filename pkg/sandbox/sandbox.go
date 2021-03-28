@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 )
 
@@ -71,27 +70,11 @@ func parseSerializedArg(arg string) (s Sandbox, err error) {
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
-	serialized, err := s.serializeArg()
+	cmd, err := s.runCommand()
 	if err != nil {
 		return err
 	}
-	// TODO: allow reference to self
-	// TODO: figure out what ^ means
-	path, err := runExecPath()
-	if err != nil {
-		return err
-	}
-	logger.Debugw("newSanbox", "execpath", path)
-	// interrupt will be caught be the child process and the process
-	// will exiting, causing this process to exit
 	ignoreInterrupt()
-	cmd := &exec.Cmd{
-		Path:   path,
-		Args:   runFirstArgs(),
-		Stdin:  s.Stdin,
-		Stdout: s.Stdout,
-		Stderr: s.Stderr,
-	}
 	errChan := make(chan error)
 	go func() {
 		if err := cmd.Run(); err != nil {

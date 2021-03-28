@@ -1,12 +1,36 @@
+// +build linux
+
 package sandbox
 
-// +build linux
+import (
+	"io"
+	"log"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"github.com/creack/pty"
+	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/sys/unix"
+)
 
 const (
 	newNamespaceStepArg = "newNamespace"
 	setupStepArg        = "setup"
 	setUIDExecName      = "bramble-setuid"
 )
+
+func firstArgMatchesStep() bool {
+	switch os.Args[0] {
+	case newNamespaceStepArg, setupStepArg, execStepArg:
+		return true
+	}
+	return false
+}
 
 func entrypoint() (err error) {
 	if len(os.Args) <= 1 {
@@ -27,6 +51,29 @@ func entrypoint() (err error) {
 	default:
 		return errors.New("first argument didn't match any known sandbox steps")
 	}
+}
+
+func (s Sandbox) runCommand() (*exec.Cmd, error) {
+	serialized, err := s.serializeArg()
+	if err != nil {
+		return nil, err
+	}
+	// TODO: allow reference to self
+	// TODO: figure out what ^ means
+	path, err := exec.LookPath(setUIDExecName)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugw("newSanbox", "execpath", path)
+	// interrupt will be caught be the child process and the process
+	// will exiting, causing this process to exit
+	return &exec.Cmd{
+		Path:   path,
+		Args:   []string{newNamespaceStepArg, serialized},
+		Stdin:  s.Stdin,
+		Stdout: s.Stdout,
+		Stderr: s.Stderr,
+	}, nil
 }
 
 func (s Sandbox) newNamespaceStep() (err error) {
@@ -94,13 +141,13 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	ch <- syscall.SIGWINCH // Initial resize.
 
 	// only handle stdin and set raw if it's an interactive terminal
-	if os.Stdin != nil && term.IsTerminal(os.Stdin.Fd()) {
-		oldState, err := term.MakeRaw(os.Stdin.Fd())
+	if os.Stdin != nil && terminal.IsTerminal(int(os.Stdin.Fd())) {
+		oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
 			return err
 		}
 		// restore when complete
-		defer func() { _ = term.RestoreTerminal(os.Stdin.Fd(), oldState) }()
+		defer func() { _ = terminal.Restore(int(os.Stdin.Fd()), oldState) }()
 		go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
 	}
 	_, _ = io.Copy(os.Stdout, ptmx)
@@ -162,12 +209,4 @@ func (s Sandbox) setupStep() (err error) {
 		Credential: creds,
 	}
 	return cmd.Run()
-}
-
-func runExecPath() (path string, err error) {
-	return exec.LookPath(setUIDExecName)
-}
-
-func runFirstArgs(serialized string) []string {
-	return []string{newNamespaceStepArg, serialized}
 }
