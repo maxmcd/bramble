@@ -1,13 +1,17 @@
+// +build darwin
 package sandbox
 
-import "os/exec"
+import (
+	"os/exec"
+)
 
-// +build darwin
-
-func runExecPath() (path string, err error) {
-	return exec.LookPath("sandbox-exec")
+func (s Sandbox) runCommand() (*exec.Cmd, error) {
+	return exec.Command("sandbox-exec"), nil
 }
 
-func runFirstArgs(serialized string) []string {
-	return []string{newNamespaceStepArg, serialized}
+func firstArgMatchesStep() bool {
+	return false
+}
+func entrypoint() error {
+	return nil
 }
