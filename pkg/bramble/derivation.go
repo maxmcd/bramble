@@ -10,8 +10,11 @@ import (
 	"regexp"
 	"runtime/trace"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/maxmcd/bramble/pkg/hasher"
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -78,6 +81,7 @@ func isTopLevel(thread *starlark.Thread) bool {
 
 func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	ctx, task := trace.NewTask(context.Background(), "derivation()")
+	now := time.Now()
 	defer task.End()
 	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
@@ -89,9 +93,17 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return nil, err
 	}
 
-	// TODO: this doesn't work with a wrapped derivation function
+	// TODO: this doesn't work through a function call, so we need a more
+	// reliable way to determine source file locations
+	//
 	// Make sure the location of the derivation is set using the call stack
-	drv.location = filepath.Dir(thread.CallStack().At(1).Pos.Filename())
+	pos := thread.CallStack().At(1).Pos
+	drv.location = filepath.Dir(pos.Filename())
+
+	defer func() {
+		logger.Debugf("derivation() %s %s", time.Since(now), strings.TrimPrefix(
+			fmt.Sprint(pos), f.bramble.configLocation))
+	}()
 
 	// find all source files that are used for this derivation
 	if err = f.bramble.calculateDerivationInputSources(ctx, drv); err != nil {
