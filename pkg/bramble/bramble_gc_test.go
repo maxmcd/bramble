@@ -41,9 +41,26 @@ func TestDependency(t *testing.T) {
 		[]byte(`
 load("github.com/maxmcd/bramble")
 
-def ok():
+def busy_wrap():
 	bb = bramble.busybox()
 	return derivation(
+		name="busy_wrap",
+		outputs=["out","docs"],
+		builder=bb.out + "/bin/sh",
+		env=dict(PATH=bb.out+"/bin", bb=bb.out),
+		args=["-c", """
+		set -e
+
+		cp -r $bb/bin $out/
+
+		echo "here are the docs" > $docs/doc.txt
+		"""]
+	)
+
+def ok():
+	bb = busy_wrap()
+	return derivation(
+		name="ok",
 		builder=bb.out + "/bin/sh",
 		env=dict(PATH=bb.out+"/bin", bb=bb.out),
 		args=["-c", """
@@ -63,6 +80,13 @@ def ok():
 		t.Fatal(err)
 	}
 	tp.Chdir()
+
+	if err := tp.Bramble().gc(nil); err != nil {
+		fmt.Printf("%+v", err)
+		fmt.Println(starutil.AnnotateError(err))
+		t.Fatal(err)
+	}
+
 	if err := tp.Bramble().build(context.Background(), []string{"dep:ok"}); err != nil {
 		t.Fatal(err)
 	}
