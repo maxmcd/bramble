@@ -345,6 +345,7 @@ func (drv *Derivation) SetOutput(name string, o Output) {
 			return
 		}
 	}
+	// TODO
 	panic("unable to set output with name: " + name)
 }
 

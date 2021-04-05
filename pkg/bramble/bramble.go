@@ -28,8 +28,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	"github.com/hashicorp/terraform/dag"
-	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/maxmcd/dag"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
@@ -789,7 +788,7 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		graph.Walk(func(v dag.Vertex) (_ tfdiags.Diagnostics) {
+		graph.Walk(func(v dag.Vertex) (_ error) {
 			if errored {
 				return
 			}
