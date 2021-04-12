@@ -13,27 +13,27 @@ import (
 )
 
 var (
+	scriptSh = `
+set -e
+$busybox_download/busybox-x86_64 mkdir $out/bin
+$busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
+cd $out/bin
+for command in $(./busybox --list); do
+	./busybox ln -s busybox $command
+done
+`
 	busybox = `
 def fetch_url(url):
-    return derivation(builder="fetch_url", env={"url": url})
+    return derivation(name="fetch-url", builder="fetch_url", env={"url": url})
 
 def busybox():
     b = fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
 
-    script = """
-    set -e
-    $busybox_download/busybox-x86_64 mkdir $out/bin
-    $busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
-    cd $out/bin
-    for command in $(./busybox --list); do
-		./busybox ln -s busybox $command
-    done
-    """
-
     return derivation(
         name="busybox",
         builder=b.out + "/busybox-x86_64",
-        args=["sh", "-c", script],
+        args=["sh", "./script.sh"],
+		sources=["./script.sh"],
         env={"busybox_download": b},
     )`
 	brambleToml = `
@@ -102,6 +102,11 @@ func NewTestProject() (*TestProject, error) {
 	if err := ioutil.WriteFile(
 		filepath.Join(projectPath, "./default.bramble"),
 		[]byte(busybox), 0644); err != nil {
+		return nil, err
+	}
+	if err := ioutil.WriteFile(
+		filepath.Join(projectPath, "./script.sh"),
+		[]byte(scriptSh), 0644); err != nil {
 		return nil, err
 	}
 	if err := ioutil.WriteFile(

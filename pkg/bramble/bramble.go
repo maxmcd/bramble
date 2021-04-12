@@ -94,40 +94,38 @@ type Bramble struct {
 	derivations *DerivationsMap
 }
 
-func (b *Bramble) LoadDerivation(filename string) (drv *Derivation, exists bool, err error) {
-	fileLocation := b.store.JoinStorePath(filename)
-	_, err = os.Stat(fileLocation)
-	if err != nil {
-		return nil, false, nil
-	}
-	file, err := os.Open(fileLocation)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = file.Close() }()
-	drv = &Derivation{}
-	return drv, true, json.NewDecoder(file).Decode(drv)
-}
 func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output, exists bool, err error) {
-	existingDrv, exists, err := b.LoadDerivation(filename)
+	existingDrv, exists, err := b.loadDerivation(filename)
 	// It doesn't exist if it doesn't exist
 	if !exists {
-		return nil, exists, err
+		return nil, exists, nil
 	}
 	// It doesn't exist if it doesn't have the outputs we need
 	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
 }
 
-func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (err error) {
+func (b *Bramble) populateDerivationOutputsFromStore(drv *Derivation) (exists bool, err error) {
 	filename := drv.filename()
-	outputs, exists, err := b.checkForExistingDerivation(filename)
-	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
+	var outputs []Output
+	outputs, exists, err = b.checkForExistingDerivation(filename)
 	if err != nil {
-		return err
+		return
 	}
 	if exists {
 		drv.Outputs = outputs
 		b.derivations.Set(filename, drv)
+	}
+	return
+}
+
+func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (err error) {
+	exists, err := b.populateDerivationOutputsFromStore(drv)
+	if err != nil {
+		return err
+	}
+	filename := drv.filename()
+	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
+	if exists {
 		return
 	}
 	logger.Print("Building derivation", filename)
@@ -1173,7 +1171,8 @@ func (b *Bramble) gc(_ []string) (err error) {
 		if drv, ok := drvCache[filename]; ok {
 			return drv, nil
 		}
-		drv, err = b.loadDerivation(filename)
+		drv, _, err = b.loadDerivation(filename)
+		fmt.Println(drv.prettyJSON())
 		if err == nil {
 			drvCache[filename] = drv
 		}
@@ -1215,16 +1214,17 @@ func (b *Bramble) gc(_ []string) (err error) {
 	}
 
 	// delete everything in the store that's not in the map
-	files, err := ioutil.ReadDir(b.store.StorePath)
+	files, err := os.ReadDir(b.store.StorePath)
 	if err != nil {
 		return
 	}
 	for _, file := range files {
-		if _, ok := pathsToKeep[file.Name()]; !ok {
-			logger.Print("deleting", file.Name())
-			if err = os.RemoveAll(b.store.JoinStorePath(file.Name())); err != nil {
-				return err
-			}
+		if _, ok := pathsToKeep[file.Name()]; ok {
+			continue
+		}
+		logger.Print("deleting", file.Name())
+		if err = os.RemoveAll(b.store.JoinStorePath(file.Name())); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1323,14 +1323,19 @@ func (b *Bramble) findDerivationsInputDerivationsToKeep(
 	return nil, nil
 }
 
-func (b *Bramble) loadDerivation(filename string) (drv *Derivation, err error) {
-	f, err := os.Open(b.store.JoinStorePath(filename))
+func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	loc := b.store.JoinStorePath(filename)
+	if !fileutil.FileExists(loc) {
+		return nil, false, os.ErrNotExist
+	}
+	f, err := os.Open(loc)
 	if err != nil {
 		return
 	}
 	defer func() { _ = f.Close() }()
 	drv = &Derivation{}
-	return drv, json.NewDecoder(f).Decode(&drv)
+	drv.bramble = b
+	return drv, true, json.NewDecoder(f).Decode(&drv)
 }
 
 func (b *Bramble) derivationBuild(args []string) error {

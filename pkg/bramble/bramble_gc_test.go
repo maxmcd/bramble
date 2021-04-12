@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/starutil"
 )
 
@@ -80,7 +81,11 @@ def ok():
 		t.Fatal(err)
 	}
 	tp.Chdir()
-
+	{
+		b := tp.Bramble()
+		_ = b.init(".", true)
+		spew.Dump(ioutil.ReadDir(b.store.StorePath))
+	}
 	if err := tp.Bramble().gc(nil); err != nil {
 		fmt.Printf("%+v", err)
 		fmt.Println(starutil.AnnotateError(err))

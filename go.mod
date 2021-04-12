@@ -14,7 +14,7 @@ require (
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
 	github.com/maxmcd/dag v0.0.0-20210316172417-f02e4b03c6e9
 	github.com/mholt/archiver/v3 v3.3.1-0.20200626164424-d44471c49aa7
-	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/minio/sha256-simd v1.0.0
 	github.com/morikuni/aec v1.0.0
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1

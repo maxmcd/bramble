@@ -123,6 +123,7 @@ func (f *DerivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 	drv = &Derivation{
 		OutputNames: []string{"out"},
 		Env:         map[string]string{},
+		bramble:     f.bramble,
 	}
 	var (
 		name      starlark.String
@@ -217,6 +218,7 @@ type Derivation struct {
 	// internal fields
 	sources  []string
 	location string
+	bramble  *Bramble
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
