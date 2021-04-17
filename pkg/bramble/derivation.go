@@ -44,30 +44,30 @@ var (
 	TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv):(.+?) \}\}`)
 )
 
-// DerivationFunction is the function that creates derivations
-type DerivationFunction struct {
+// derivationFunction is the function that creates derivations
+type derivationFunction struct {
 	bramble *Bramble
 }
 
 var (
-	_ starlark.Value    = new(DerivationFunction)
-	_ starlark.Callable = new(DerivationFunction)
+	_ starlark.Value    = new(derivationFunction)
+	_ starlark.Callable = new(derivationFunction)
 )
 
-func (f *DerivationFunction) Freeze()               {}
-func (f *DerivationFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("module") }
-func (f *DerivationFunction) Name() string          { return f.String() }
-func (f *DerivationFunction) String() string        { return `<built-in function derivation>` }
-func (f *DerivationFunction) Truth() starlark.Bool  { return true }
-func (f *DerivationFunction) Type() string          { return "module" }
+func (f *derivationFunction) Freeze()               {}
+func (f *derivationFunction) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("module") }
+func (f *derivationFunction) Name() string          { return f.String() }
+func (f *derivationFunction) String() string        { return `<built-in function derivation>` }
+func (f *derivationFunction) Truth() starlark.Bool  { return true }
+func (f *derivationFunction) Type() string          { return "module" }
 
-// NewDerivationFunction creates a new derivation function. When initialized this function checks if the
+// newDerivationFunction creates a new derivation function. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
-func NewDerivationFunction(bramble *Bramble) (*DerivationFunction, error) {
-	fn := &DerivationFunction{
+func newDerivationFunction(bramble *Bramble) *derivationFunction {
+	fn := &derivationFunction{
 		bramble: bramble,
 	}
-	return fn, nil
+	return fn
 }
 
 func isTopLevel(thread *starlark.Thread) bool {
@@ -79,7 +79,7 @@ func isTopLevel(thread *starlark.Thread) bool {
 	return thread.CallStack().At(1).Name == "<toplevel>"
 }
 
-func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
 	ctx, task := trace.NewTask(context.Background(), "derivation()")
 	now := time.Now()
 	defer task.End()
@@ -116,7 +116,7 @@ func (f *DerivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	return drv, nil
 }
 
-func (f *DerivationFunction) newDerivationFromArgs(ctx context.Context, args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
+func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args starlark.Tuple, kwargs []starlark.Tuple) (drv *Derivation, err error) {
 	region := trace.StartRegion(ctx, "newDerivationFromArgs")
 	defer region.End()
 

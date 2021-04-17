@@ -17,6 +17,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 )
 
@@ -93,7 +94,7 @@ func TestAllFunctions(t *testing.T) {
 	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
-	err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
+	require.NoError(t, filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -121,10 +122,7 @@ func TestAllFunctions(t *testing.T) {
 			}
 		}
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}))
 	urls := []string{}
 	b.derivations.Range(func(filename string, drv *Derivation) bool {
 		if drv.Builder == "fetch_url" {

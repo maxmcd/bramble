@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFoo(t *testing.T) {
@@ -81,28 +81,48 @@ def ok():
 		t.Fatal(err)
 	}
 	tp.Chdir()
-	{
-		b := tp.Bramble()
-		_ = b.init(".", true)
-		spew.Dump(ioutil.ReadDir(b.store.StorePath))
-	}
 	if err := tp.Bramble().gc(nil); err != nil {
 		fmt.Printf("%+v", err)
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
-
-	if err := tp.Bramble().build(context.Background(), []string{"dep:ok"}); err != nil {
-		t.Fatal(err)
-	}
-	fsys := os.DirFS(tp.bramblePath)
-	storeEntries, err := fs.ReadDir(fsys, "store")
-	if err != nil {
-		t.Error(err)
-	}
-	for _, entry := range storeEntries {
-		if strings.Contains(entry.Name(), "bramble_build_directory") {
-			t.Error("found build directory in store", entry.Name())
+	{
+		b := tp.Bramble()
+		if err := b.build(context.Background(), []string{"dep:ok"}); err != nil {
+			t.Fatal(err)
+		}
+		var drv *Derivation
+		b.derivations.Range(func(filename string, d *Derivation) bool {
+			if d.Name == "ok" {
+				drv = d
+				return false
+			}
+			return true
+		})
+		{
+			graph, err := drv.buildDependencies()
+			require.NoError(t, err)
+			graph.PrintDot()
+			fmt.Println(graph.String(), "----")
+		}
+		{
+			graph, err := drv.runtimeDependencyGraph()
+			require.NoError(t, err)
+			graph.PrintDot()
+			fmt.Println(graph.String(), "----")
+		}
+		fmt.Println(drv.inputFiles())
+		fmt.Println(drv.runtimeDependencies())
+		fmt.Println(drv.runtimeFiles("out"))
+		fsys := os.DirFS(tp.bramblePath)
+		storeEntries, err := fs.ReadDir(fsys, "store")
+		if err != nil {
+			t.Error(err)
+		}
+		for _, entry := range storeEntries {
+			if strings.Contains(entry.Name(), "bramble_build_directory") {
+				t.Error("found build directory in store", entry.Name())
+			}
 		}
 	}
 	if err := tp.Bramble().gc(nil); err != nil {

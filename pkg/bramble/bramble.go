@@ -83,13 +83,12 @@ type Bramble struct {
 	lockFile       LockFile
 	lockFileLock   sync.Mutex
 
-	derivationFn *DerivationFunction
+	derivationFn *derivationFunction
 
 	store store.Store
 
 	moduleCache   map[string]string
 	filenameCache *BiStringMap
-	importGraph   *AcyclicGraph
 
 	derivations *DerivationsMap
 }
@@ -311,7 +310,7 @@ func (b *Bramble) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, 
 	for _, do := range drv.InputDerivations {
 		storeValues = append(storeValues,
 			b.store.JoinStorePath(
-				b.derivations.Get(do.Filename).Output(do.OutputName).Path,
+				b.derivations.Load(do.Filename).Output(do.OutputName).Path,
 			),
 		)
 	}
@@ -710,7 +709,7 @@ func (b *Bramble) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer
 	// become filesystem paths
 	replacements := []string{}
 	for _, do := range outputs {
-		d := b.derivations.Get(do.Filename)
+		d := b.derivations.Load(do.Filename)
 		if d == nil {
 			return nil, errors.Errorf(
 				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
@@ -757,7 +756,7 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 	graph.Add(root)
 	var processDO func(do DerivationOutput)
 	processDO = func(do DerivationOutput) {
-		drv := b.derivations.Get(do.Filename)
+		drv := b.derivations.Load(do.Filename)
 		if drv == nil {
 			panic(do)
 		}
@@ -800,7 +799,7 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 				return
 			}
 			do := v.(DerivationOutput)
-			drv := b.derivations.Get(do.Filename)
+			drv := b.derivations.Load(do.Filename)
 			if drv.Output(do.OutputName).Path != "" {
 				return
 			}
@@ -836,7 +835,6 @@ func (b *Bramble) init(wd string, expectProject bool) (err error) {
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
-	b.importGraph = NewAcyclicGraph()
 
 	if b.store.IsEmpty() {
 		if b.store, err = store.NewStore(); err != nil {
@@ -864,10 +862,7 @@ func (b *Bramble) init(wd string, expectProject bool) (err error) {
 
 func (b *Bramble) initPredeclared() (err error) {
 	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivationFn, err = NewDerivationFunction(b)
-	if err != nil {
-		return
-	}
+	b.derivationFn = newDerivationFunction(b)
 
 	assertGlobals, err := assert.LoadAssertModule()
 	if err != nil {
@@ -886,12 +881,7 @@ func (b *Bramble) initPredeclared() (err error) {
 }
 
 func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	thisFilesModuleName, _ := b.filenameCache.Load(thread.CallFrame(0).Pos.Filename())
-	b.importGraph.Add(thisFilesModuleName)
-	b.importGraph.Add(module)
-	b.importGraph.Connect(dag.BasicEdge(module, thisFilesModuleName))
-	globals, err = b.resolveModule(module)
-	return
+	return b.resolveModule(module)
 }
 
 func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
@@ -899,6 +889,7 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 	if err := b.init(loc, true); err != nil {
 		return nil, err
 	}
+
 	if err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -919,10 +910,11 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 						continue
 					}
 					fn.NumParams()
-					_, err := starlark.Call(b.thread, fn, nil, nil)
+					value, err := starlark.Call(b.thread, fn, nil, nil)
 					if err != nil {
 						return errors.Wrapf(err, "calling %q in %s", name, path)
 					}
+					derivations = append(derivations, valuesToDerivations(value)...)
 				}
 			}
 		}
@@ -930,10 +922,6 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 	}); err != nil {
 		return nil, err
 	}
-	b.derivations.Range(func(filename string, drv *Derivation) bool {
-		derivations = append(derivations, drv)
-		return true
-	})
 	return
 }
 
@@ -1158,61 +1146,29 @@ func (b *Bramble) gc(_ []string) (err error) {
 	if err = b.init(".", false); err != nil {
 		return
 	}
-	drvQueue, err := b.collectDerivationsToPreserve()
+	derivations, err := b.collectDerivationsToPreserve()
 	if err != nil {
 		return
 	}
 	pathsToKeep := map[string]struct{}{}
 
-	// TODO: maybe this will get too big?
-	drvCache := map[string]*Derivation{}
-
-	loadDerivation := func(filename string) (drv *Derivation, err error) {
-		if drv, ok := drvCache[filename]; ok {
-			return drv, nil
-		}
-		drv, _, err = b.loadDerivation(filename)
-		fmt.Println(drv.prettyJSON())
-		if err == nil {
-			drvCache[filename] = drv
-		}
-		return drv, err
-	}
-	var do DerivationOutput
-	var runtimeDep bool
-
-	defer logger.Print(pathsToKeep)
-
-	processedDerivations := map[DerivationOutput]bool{}
-	for {
-		if len(drvQueue) == 0 {
-			break
-		}
-		// pop one off to process
-		for do, runtimeDep = range drvQueue {
-			break
-		}
-		delete(drvQueue, do)
-		pathsToKeep[do.Filename] = struct{}{}
-		toAdd, err := b.findDerivationsInputDerivationsToKeep(
-			loadDerivation,
-			pathsToKeep,
-			do, runtimeDep)
+	for _, drv := range derivations {
+		graph, err := drv.buildDependencies()
 		if err != nil {
 			return err
 		}
-		for toAddID, toAddRuntimeDep := range toAdd {
-			if thisIsRuntimeDep, ok := processedDerivations[toAddID]; !ok {
-				// if we don't have it, add it
-				drvQueue[toAddID] = toAddRuntimeDep
-			} else if !thisIsRuntimeDep && toAddRuntimeDep {
-				// if we do have it, but it's not a runtime dep, and this is, add it
-				drvQueue[toAddID] = toAddRuntimeDep
+		for _, v := range graph.Vertices() {
+			do := v.(DerivationOutput)
+			drv, _, err := b.loadDerivation(do.Filename)
+			if err != nil {
+				return err
 			}
-			// otherwise don't add it
+			for _, f := range append(drv.inputFiles(),
+				drv.runtimeFiles(do.OutputName)...) {
+				pathsToKeep[f] = struct{}{}
+			}
 		}
 	}
-
 	// delete everything in the store that's not in the map
 	files, err := os.ReadDir(b.store.StorePath)
 	if err != nil {
@@ -1230,14 +1186,13 @@ func (b *Bramble) gc(_ []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]bool, err error) {
+func (b *Bramble) collectDerivationsToPreserve() (derivations []*Derivation, err error) {
 	registryFolder := b.store.JoinBramblePath("var", "config-registry")
 	files, err := ioutil.ReadDir(registryFolder)
 	if err != nil {
 		return
 	}
 
-	drvQueue = map[DerivationOutput]bool{}
 	for _, f := range files {
 		registryLoc := filepath.Join(registryFolder, f.Name())
 		pathBytes, err := ioutil.ReadFile(registryLoc)
@@ -1251,91 +1206,35 @@ func (b *Bramble) collectDerivationsToPreserve() (drvQueue map[DerivationOutput]
 			continue
 		}
 
-		derivations, err := findAllDerivationsInProject(path)
+		drvs, err := findAllDerivationsInProject(path)
 		if err != nil {
 			// TODO: this is heavy handed, would mean any syntax error in any
 			// project prevents a global gc, think about how to deal with this
 			return nil, errors.Wrapf(err, "error computing derivations in %q", registryLoc)
 		}
-		for _, drv := range derivations {
-			for _, name := range drv.OutputNames {
-				drvQueue[DerivationOutput{
-					Filename:   drv.filename(),
-					OutputName: name,
-				}] = true
-			}
-		}
+		derivations = append(derivations, drvs...)
 	}
 	return
 }
 
-func (b *Bramble) findDerivationsInputDerivationsToKeep(
-	loadDerivation func(string) (*Derivation, error),
-	pathsToKeep map[string]struct{},
-	do DerivationOutput, runtimeDep bool) (
-	addToQueue map[DerivationOutput]bool, err error) {
-	addToQueue = map[DerivationOutput]bool{}
-
-	drv, err := loadDerivation(do.Filename)
-	if err != nil {
-		return
-	}
-
-	// keep all source paths for all derivations
-	for _, p := range drv.SourcePaths {
-		pathsToKeep[p] = struct{}{}
-	}
-
-	dependencyOutputs := map[string]bool{}
-	if runtimeDep {
-		for _, filename := range drv.Output(do.OutputName).Dependencies {
-			// keep outputs for all runtime dependencies
-			pathsToKeep[filename] = struct{}{}
-			dependencyOutputs[filename] = false
-		}
-	}
-
-	for _, inputDO := range drv.InputDerivations {
-		idDrv, err := loadDerivation(inputDO.Filename)
-		if err != nil {
-			return nil, err
-		}
-		outPath := idDrv.Output(inputDO.OutputName).Path
-		// found this derivation in an output, add it as a runtime dep
-		if _, ok := dependencyOutputs[outPath]; ok {
-			addToQueue[inputDO] = true
-			dependencyOutputs[outPath] = true
-		} else {
-			addToQueue[inputDO] = false
-		}
-		// keep all derivations
-		pathsToKeep[inputDO.Filename] = struct{}{}
-	}
-	for path, found := range dependencyOutputs {
-		if !found {
-			return nil, errors.Errorf(
-				"derivation %s has output %s which was not "+
-					"found as an output of any of its input derivations.",
-				do.Filename, path)
-		}
-	}
-
-	return nil, nil
-}
-
 func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	drv = b.derivations.Load(filename)
+	// TODO: confirm derivations can be treated as immutable if they have outputs
+	if drv != nil && !drv.MissingOutput() {
+		return drv, true, nil
+	}
 	loc := b.store.JoinStorePath(filename)
 	if !fileutil.FileExists(loc) {
-		return nil, false, os.ErrNotExist
+		return nil, false, errors.WithStack(os.ErrNotExist)
 	}
 	f, err := os.Open(loc)
 	if err != nil {
-		return
+		return nil, false, errors.WithStack(err)
 	}
 	defer func() { _ = f.Close() }()
 	drv = &Derivation{}
 	drv.bramble = b
-	return drv, true, json.NewDecoder(f).Decode(&drv)
+	return drv, true, errors.WithStack(json.NewDecoder(f).Decode(&drv))
 }
 
 func (b *Bramble) derivationBuild(args []string) error {

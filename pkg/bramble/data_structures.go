@@ -12,8 +12,8 @@ type DerivationsMap struct {
 	sync.Map
 }
 
-func (dm *DerivationsMap) Get(id string) *Derivation {
-	d, ok := dm.Load(id)
+func (dm *DerivationsMap) Load(id string) *Derivation {
+	d, ok := dm.Map.Load(id)
 	if !ok {
 		return nil
 	}
@@ -21,7 +21,7 @@ func (dm *DerivationsMap) Get(id string) *Derivation {
 }
 
 func (dm *DerivationsMap) Has(id string) bool {
-	return dm.Get(id) != nil
+	return dm.Load(id) != nil
 }
 func (dm *DerivationsMap) Set(id string, drv *Derivation) {
 	dm.Store(id, drv)
