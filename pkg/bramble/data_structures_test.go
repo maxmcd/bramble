@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform/dag"
-	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/maxmcd/dag"
 )
 
 func TestNewAcyclicGraph(t *testing.T) {
@@ -42,7 +41,7 @@ func TestNewAcyclicGraph(t *testing.T) {
 		fmt.Println(v, i)
 		return nil
 	})
-	graph.Walk(func(v dag.Vertex) tfdiags.Diagnostics {
+	graph.Walk(func(v dag.Vertex) error {
 		time.Sleep(time.Millisecond * 100)
 		fmt.Println(v, time.Now())
 		return nil

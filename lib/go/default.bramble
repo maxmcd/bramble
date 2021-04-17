@@ -3,7 +3,7 @@ load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 load("github.com/maxmcd/bramble/lib")
 
 
-def _bootstrap():
+def bootstrap():
     go1_4 = std.fetch_url("https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz")
     path = "%s/bin:%s/bin" % (nix_seed.stdenv(), lib.busybox())
     return derivation(
