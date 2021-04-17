@@ -24,7 +24,12 @@ func (drv *Derivation) buildDependencies() (graph *AcyclicGraph, err error) {
 		}
 		return nil
 	}
-	return graph, processInputDerivations(drv, DerivationOutput{Filename: drv.filename(), OutputName: "out"})
+	for _, do := range drv.DerivationOutputs() {
+		if err := processInputDerivations(drv, do); err != nil {
+			return nil, err
+		}
+	}
+	return
 }
 
 // runtimeDependencyGraph graphs the full dependency graph needed at runtime for
@@ -58,8 +63,7 @@ func (drv *Derivation) runtimeDependencyGraph() (graph *AcyclicGraph, err error)
 		}
 		return nil
 	}
-	for _, name := range drv.OutputNames {
-		do := DerivationOutput{OutputName: name, Filename: drv.filename()}
+	for _, do := range drv.DerivationOutputs() {
 		if err := processDerivationOutputs(do); err != nil {
 			return nil, err
 		}
