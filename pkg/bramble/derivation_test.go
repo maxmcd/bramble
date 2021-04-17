@@ -91,12 +91,12 @@ b = foo()
 
 func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
-	dir := tmpDir()
+	dir := tmpDir(t)
 	os.Setenv("BRAMBLE_PATH", dir)
 	defer os.RemoveAll(dir)
 
 	b := Bramble{}
-	if err = b.init(); err != nil {
+	if err = b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
 	for _, tt := range tests {
@@ -157,7 +157,7 @@ func TestJsonEncode(t *testing.T) {
 
 func TestDerivationCaching(t *testing.T) {
 	b := Bramble{}
-	if err := b.init(); err != nil {
+	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
 	script := fixUpScript(`derivation(builder="hello", sources=["."])`)

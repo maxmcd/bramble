@@ -2,13 +2,14 @@ package hasher
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/base32"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
 	"strings"
+
+	"github.com/minio/sha256-simd"
 )
 
 var ErrHashMismatch = errors.New("two hashes don't match")
