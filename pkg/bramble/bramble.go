@@ -112,7 +112,7 @@ func (b *Bramble) populateDerivationOutputsFromStore(drv *Derivation) (exists bo
 	}
 	if exists {
 		drv.Outputs = outputs
-		b.derivations.Set(filename, drv)
+		b.derivations.Store(filename, drv)
 	}
 	return
 }
@@ -1234,7 +1234,11 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool,
 	defer func() { _ = f.Close() }()
 	drv = &Derivation{}
 	drv.bramble = b
-	return drv, true, errors.WithStack(json.NewDecoder(f).Decode(&drv))
+	if err = json.NewDecoder(f).Decode(&drv); err != nil {
+		return
+	}
+	b.derivations.Store(filename, drv)
+	return drv, true, nil
 }
 
 func (b *Bramble) derivationBuild(args []string) error {

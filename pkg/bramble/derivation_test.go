@@ -39,8 +39,8 @@ func TestDerivationValueReplacement(t *testing.T) {
 
 	b := Bramble{}
 	b.derivations = &DerivationsMap{}
-	b.derivations.Set(fetchURL.filename(), &fetchURL)
-	b.derivations.Set(other.filename(), &other)
+	b.derivations.Store(fetchURL.filename(), &fetchURL)
+	b.derivations.Store(other.filename(), &other)
 	b.store = store.Store{StorePath: "/bramble/store"}
 	buildCopy, err := b.copyDerivationWithOutputValuesReplaced(&building)
 	if err != nil {
