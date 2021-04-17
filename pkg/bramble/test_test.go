@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 		panic(starutil.AnnotateError(err))
 	}
 	exitVal := m.Run()
-	// cachedProj.Cleanup()
+	cachedProj.Cleanup()
 	os.Exit(exitVal)
 }
 
