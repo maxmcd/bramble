@@ -27,8 +27,7 @@ func (err ErrUnhashable) Error() string {
 
 func AnnotateError(err error) string {
 	sb := new(strings.Builder)
-	switch err := errors.Cause(err).(type) {
-	case *starlark.EvalError:
+	if err, ok := errors.Cause(err).(*starlark.EvalError); ok {
 		if len(err.CallStack) > 0 && err.CallStack.At(0).Pos.Filename() == "assert.star" {
 			err.CallStack.Pop()
 		}
@@ -36,9 +35,9 @@ func AnnotateError(err error) string {
 		fmt.Fprintf(sb, "error: %s\n", err.Msg)
 
 		fmt.Fprint(sb, callStackString(err.CallStack))
-	default:
-		fmt.Fprintf(sb, "%+v\n", err)
+		return sb.String()
 	}
+	fmt.Fprintf(sb, "%+v\n", err)
 	return sb.String()
 }
 

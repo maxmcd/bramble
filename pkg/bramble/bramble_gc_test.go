@@ -34,8 +34,6 @@ def ok():
 	}
 }
 
-// 2puwgpqcw7fjf4vqsah6ukhvrfk235yk
-
 func TestDependency(t *testing.T) {
 	tp := cachedProj.Copy()
 	t.Cleanup(tp.Cleanup)

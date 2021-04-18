@@ -7,7 +7,6 @@ import (
 
 func (drv *Derivation) buildDependencies() (graph *AcyclicGraph, err error) {
 	graph = NewAcyclicGraph()
-
 	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
 		graph.Add(do)
@@ -25,8 +24,8 @@ func (drv *Derivation) buildDependencies() (graph *AcyclicGraph, err error) {
 		return nil
 	}
 	for _, do := range drv.DerivationOutputs() {
-		if err := processInputDerivations(drv, do); err != nil {
-			return nil, err
+		if err = processInputDerivations(drv, do); err != nil {
+			return
 		}
 	}
 	return
@@ -114,4 +113,8 @@ func (drv *Derivation) inputFiles() []string {
 
 func (drv *Derivation) runtimeFiles(outputName string) []string {
 	return []string{drv.filename(), drv.Output(outputName).Path}
+}
+
+func (drv *Derivation) hasOutputs() bool {
+	return drv.Outputs != nil
 }

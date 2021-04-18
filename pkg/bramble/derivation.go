@@ -133,8 +133,8 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 		outputs   *starlark.List
 	)
 	if err = starlark.UnpackArgs("derivation", args, kwargs,
+		"name", &name,
 		"builder", &builder,
-		"name?", &name,
 		"args?", &argsParam,
 		"sources?", &sources,
 		"env?", &env,
