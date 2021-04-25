@@ -12,19 +12,19 @@ type DerivationsMap struct {
 	sync.Map
 }
 
-func (dm *DerivationsMap) Load(id string) *Derivation {
-	d, ok := dm.Map.Load(id)
+func (dm *DerivationsMap) Load(filename string) *Derivation {
+	d, ok := dm.Map.Load(filename)
 	if !ok {
 		return nil
 	}
 	return d.(*Derivation)
 }
 
-func (dm *DerivationsMap) Has(id string) bool {
-	return dm.Load(id) != nil
+func (dm *DerivationsMap) Has(filename string) bool {
+	return dm.Load(filename) != nil
 }
-func (dm *DerivationsMap) Set(id string, drv *Derivation) {
-	dm.Store(id, drv)
+func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
+	dm.Map.Store(filename, drv)
 }
 
 // Range calls f sequentially for each key and value present in the map. If f

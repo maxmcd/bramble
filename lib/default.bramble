@@ -6,6 +6,7 @@ def zig():
         "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz"
     )
     return derivation(
+        name="zig",
         builder=busybox().out + "/bin/sh",
         env=dict(src=b, PATH=busybox().out + "/bin"),
         args=[
