@@ -1,6 +1,7 @@
 package bramble
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -24,6 +25,7 @@ func findConfig(wd string) (found bool, location string) {
 		if fileutil.FileExists(filepath.Join(wd, "bramble.toml")) {
 			return true, wd
 		}
+		fmt.Println(wd, filepath.Join(wd, ".."))
 		if wd == filepath.Join(wd, "..") {
 			return false, ""
 		}

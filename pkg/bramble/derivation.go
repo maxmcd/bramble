@@ -111,8 +111,7 @@ func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	}
 
 	filename := drv.filename()
-	f.bramble.derivations.Set(filename, drv)
-
+	f.bramble.derivations.Store(filename, drv)
 	return drv, nil
 }
 
@@ -134,8 +133,8 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 		outputs   *starlark.List
 	)
 	if err = starlark.UnpackArgs("derivation", args, kwargs,
+		"name", &name,
 		"builder", &builder,
-		"name?", &name,
 		"args?", &argsParam,
 		"sources?", &sources,
 		"env?", &env,
@@ -250,10 +249,18 @@ func (do DerivationOutput) templateString() string {
 
 type DerivationOutputs []DerivationOutput
 
-func (a DerivationOutputs) Len() int      { return len(a) }
-func (a DerivationOutputs) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a DerivationOutputs) Less(i, j int) bool {
-	return a[i].Filename+a[i].OutputName < a[j].Filename+a[j].OutputName
+func (dos DerivationOutputs) Len() int      { return len(dos) }
+func (dos DerivationOutputs) Swap(i, j int) { dos[i], dos[j] = dos[j], dos[i] }
+func (dos DerivationOutputs) Less(i, j int) bool {
+	return dos[i].Filename+dos[i].OutputName < dos[j].Filename+dos[j].OutputName
+}
+
+func (drv *Derivation) DerivationOutputs() (dos DerivationOutputs) {
+	filename := drv.filename()
+	for _, name := range drv.OutputNames {
+		dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
+	}
+	return
 }
 
 func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {

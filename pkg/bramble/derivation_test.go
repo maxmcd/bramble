@@ -39,8 +39,8 @@ func TestDerivationValueReplacement(t *testing.T) {
 
 	b := Bramble{}
 	b.derivations = &DerivationsMap{}
-	b.derivations.Set(fetchURL.filename(), &fetchURL)
-	b.derivations.Set(other.filename(), &other)
+	b.derivations.Store(fetchURL.filename(), &fetchURL)
+	b.derivations.Store(other.filename(), &other)
 	b.store = store.Store{StorePath: "/bramble/store"}
 	buildCopy, err := b.copyDerivationWithOutputValuesReplaced(&building)
 	if err != nil {
@@ -77,11 +77,11 @@ func TestDerivationCreation(t *testing.T) {
 def foo():
   derivation()
 foo()`,
-			errContains: "missing argument for builder"},
+			errContains: "missing argument for name"},
 		{script: `
 def foo():
-	d = derivation(builder="fetch_url", env={"url":1});
-	return derivation(builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)})
+	d = derivation("", builder="fetch_url", env={"url":1});
+	return derivation("", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)})
 b = foo()
 `,
 			respContains: `{{ tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv:out }}`},
@@ -160,7 +160,7 @@ func TestDerivationCaching(t *testing.T) {
 	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
-	script := fixUpScript(`derivation(builder="hello", sources=["."])`)
+	script := fixUpScript(`derivation("", builder="hello", sources=["."])`)
 
 	v, err := b.execTestFileContents(script)
 	if err != nil {

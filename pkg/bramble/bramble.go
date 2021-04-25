@@ -112,7 +112,7 @@ func (b *Bramble) populateDerivationOutputsFromStore(drv *Derivation) (exists bo
 	}
 	if exists {
 		drv.Outputs = outputs
-		b.derivations.Set(filename, drv)
+		b.derivations.Store(filename, drv)
 	}
 	return
 }
@@ -1155,11 +1155,16 @@ func (b *Bramble) gc(_ []string) (err error) {
 	for _, drv := range derivations {
 		graph, err := drv.buildDependencies()
 		if err != nil {
-			return err
+			// if we can't fetch the full graph then it likely hasn't been built
+			// and we want to skip it. TODO: we might be skipping important things here?
+			continue
 		}
 		for _, v := range graph.Vertices() {
 			do := v.(DerivationOutput)
-			drv, _, err := b.loadDerivation(do.Filename)
+			drv, exists, err := b.loadDerivation(do.Filename)
+			if !exists {
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -1218,6 +1223,7 @@ func (b *Bramble) collectDerivationsToPreserve() (derivations []*Derivation, err
 }
 
 func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool, err error) {
+	defer logger.Debug("loadDerivation ", filename, " ", exists)
 	drv = b.derivations.Load(filename)
 	// TODO: confirm derivations can be treated as immutable if they have outputs
 	if drv != nil && !drv.MissingOutput() {
@@ -1229,12 +1235,16 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool,
 	}
 	f, err := os.Open(loc)
 	if err != nil {
-		return nil, false, errors.WithStack(err)
+		return nil, true, errors.WithStack(err)
 	}
 	defer func() { _ = f.Close() }()
 	drv = &Derivation{}
 	drv.bramble = b
-	return drv, true, errors.WithStack(json.NewDecoder(f).Decode(&drv))
+	if err = json.NewDecoder(f).Decode(&drv); err != nil {
+		return
+	}
+	b.derivations.Store(filename, drv)
+	return drv, true, nil
 }
 
 func (b *Bramble) derivationBuild(args []string) error {
