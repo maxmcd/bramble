@@ -7,12 +7,14 @@ load("github.com/maxmcd/bramble/lib")
 stdenv = nix_seed.stdenv
 
 
-def std_derivation(**kwargs):
+def std_derivation(name, builder, **kwargs):
     nix = nix_seed.stdenv()
     bb = lib.busybox()
 
     PATH = "{}/bin:{}/bin".format(nix.out, bb.out)
     return derivation(
+        name,
+        builder,
         env=dict(PATH=PATH, bash=nix.out, stdenv=nix.out, busybox=bb.out),
         **kwargs,
     )

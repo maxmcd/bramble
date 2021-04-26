@@ -876,6 +876,7 @@ func (b *Bramble) initPredeclared() (err error) {
 		"derivation": b.derivationFn,
 		"assert":     assertGlobals["assert"],
 		"sys":        starlarkSys,
+		"files":      starlark.NewBuiltin("files", b.filesBuiltin),
 	}
 	return
 }
