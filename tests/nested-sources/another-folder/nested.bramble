@@ -11,7 +11,7 @@ def _nested1(bb):
         name="nested",
         env={"PATH": "%s/bin" % bb.out},
         builder="%s/bin/sh" % bb.out,
-        sources=files(["../"]),
+        sources=files(["../"], include_directories=True),
         args=["../script.sh"],
     )
 
