@@ -643,12 +643,6 @@ func (b *Bramble) downloadFile(ctx context.Context, url string, hash string) (pa
 }
 
 func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Derivation) (err error) {
-	defer func() {
-		if err != nil {
-			panic(err)
-		}
-	}()
-
 	region := trace.StartRegion(ctx, "calculateDerivationInputSources")
 	defer region.End()
 
