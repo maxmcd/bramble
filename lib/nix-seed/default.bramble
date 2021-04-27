@@ -14,6 +14,6 @@ def stdenv():
         "stdenv",
         builder=lib.busybox().out + "/bin/sh",
         args=["./build_stdenv.sh"],
-        sources=["./build_stdenv.sh"],
+        sources=files(["./build_stdenv.sh"]),
         env=dict(src=src, patchelf=static_patchelf.patchelf(), busybox=lib.busybox()),
     )

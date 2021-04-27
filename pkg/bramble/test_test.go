@@ -33,7 +33,7 @@ def busybox():
         name="busybox",
         builder=b.out + "/busybox-x86_64",
         args=["sh", "./script.sh"],
-		sources=["./script.sh"],
+		sources=files(["./script.sh"]),
         env={"busybox_download": b},
     )`
 	brambleToml = `
