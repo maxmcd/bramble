@@ -643,10 +643,16 @@ func (b *Bramble) downloadFile(ctx context.Context, url string, hash string) (pa
 }
 
 func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Derivation) (err error) {
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	region := trace.StartRegion(ctx, "calculateDerivationInputSources")
 	defer region.End()
 
-	if len(drv.sources) == 0 {
+	if len(drv.sources.files) == 0 {
 		return
 	}
 
@@ -658,22 +664,22 @@ func (b *Bramble) calculateDerivationInputSources(ctx context.Context, drv *Deri
 	}
 
 	sources := drv.sources
-	drv.sources = []string{}
-	absDir, err := filepath.Abs(drv.location)
-	if err != nil {
-		return
-	}
-	// get absolute paths for all sources
-	for i, src := range sources {
-		sources[i] = filepath.Join(absDir, src)
-	}
-	prefix := fileutil.CommonFilepathPrefix(append(sources, absDir))
-	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
+	drv.sources.files = []string{}
+	absDir, err := filepath.Abs(drv.sources.location)
 	if err != nil {
 		return
 	}
 
-	if err = fileutil.CopyFilesByPath(prefix, sources, tmpDir); err != nil {
+	// get absolute paths for all sources
+	for i, src := range sources.files {
+		sources.files[i] = filepath.Join(b.configLocation, src)
+	}
+	prefix := fileutil.CommonFilepathPrefix(append(sources.files, absDir))
+	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
+	if err != nil {
+		return
+	}
+	if err = fileutil.CopyFilesByPath(prefix, sources.files, tmpDir); err != nil {
 		return
 	}
 	// sometimes the location the derivation runs from is not present
@@ -735,7 +741,6 @@ func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy 
 	}
 	replacedJSON := replacer.Replace(string(drv.JSON()))
 	err = json.Unmarshal([]byte(replacedJSON), &copy)
-	copy.location = drv.location
 	return copy, err
 }
 

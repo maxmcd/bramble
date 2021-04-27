@@ -10,7 +10,7 @@ def bootstrap():
         name="go-1.4",
         builder=lib.busybox().out + "/bin/sh",
         args=["./build.sh"],
-        sources=["./build.sh"],
+        sources=files(["./build.sh"]),
         env=dict(
             go1_4=go1_4, stdenv=nix_seed.stdenv(), busybox=lib.busybox(), PATH=path
         ),

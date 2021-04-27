@@ -184,6 +184,15 @@ func TestIntegrationSimple(t *testing.T) {
 	})
 }
 
+func TestIntegrationTutorial(t *testing.T) {
+	initIntegrationTest(t)
+	runTwiceAndCheck(t, func(t *testing.T) {
+		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/tutorial:step_1"}); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
+
 func TestIntegrationNixSeed(t *testing.T) {
 	initIntegrationTest(t)
 	runTwiceAndCheck(t, func(t *testing.T) {

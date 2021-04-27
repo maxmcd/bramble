@@ -8,10 +8,12 @@ def fetch_a_url():
 
 
 def step_1():
+    bash = "%s/bin/bash" % stdenv.stdenv()
     return stdenv.std_derivation(
         "step_1",
-        builder="%s/bin/bash" % stdenv.stdenv(),
-        sources=["./step1.sh"],
+        builder=bash,
+        env=dict(bash=bash),
+        sources=files(["./step1.sh"]),
         args=["./step1.sh"],
     )
 
