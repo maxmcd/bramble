@@ -3,11 +3,13 @@ package bramble
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkjson"
 )
@@ -51,10 +53,10 @@ func TestDerivationValueReplacement(t *testing.T) {
 }
 
 type scriptTest struct {
-	name         string
-	script       string
-	errContains  string
-	respContains string
+	name, script      string
+	errContains       string
+	respContains      string
+	respDoesntContain string
 }
 
 func fixUpScript(script string) string {
@@ -93,17 +95,23 @@ func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
 	dir := tmpDir(t)
 	os.Setenv("BRAMBLE_PATH", dir)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
 
 	b := Bramble{}
 	if err = b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
+	wd, err := os.Getwd()
+	require.NoError(t, err)
 	for _, tt := range tests {
-		t.Run(tt.script, func(t *testing.T) {
+		name := tt.script
+		if tt.name != "" {
+			name = tt.name
+		}
+		t.Run(name, func(t *testing.T) {
 			thread := &starlark.Thread{Name: "main"}
 			globals, err := starlark.ExecFile(
-				thread, tt.name+".bramble",
+				thread, filepath.Join(wd, "foo.bramble"),
 				tt.script, b.predeclared,
 			)
 			processExecResp(t, tt, globals["b"], err)
@@ -117,22 +125,27 @@ func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 			t.Error("error is nil")
 			return
 		}
-		assert.Contains(t, err.Error(), tt.errContains)
+		assert.Contains(t, err.Error(), tt.errContains, tt)
 		if tt.errContains == "" {
 			t.Error(err, tt.script)
 			return
 		}
 	}
-	if tt.respContains == "" {
+	if tt.respContains == "" && tt.respDoesntContain == "" {
 		return
 	}
 
 	if drv, ok := b.(*Derivation); ok {
 		assert.Contains(t, drv.prettyJSON(), tt.respContains)
+		if tt.respDoesntContain != "" {
+			assert.NotContains(t, drv.prettyJSON(), tt.respDoesntContain)
+		}
 		return
 	}
-
 	assert.Contains(t, b.String(), tt.respContains)
+	if tt.respDoesntContain != "" {
+		assert.NotContains(t, b.String(), tt.respDoesntContain)
+	}
 }
 
 func TestJsonEncode(t *testing.T) {
@@ -160,7 +173,7 @@ func TestDerivationCaching(t *testing.T) {
 	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
-	script := fixUpScript(`derivation("", builder="hello", sources=["."])`)
+	script := fixUpScript(`derivation("", builder="hello", sources=files(["*"]))`)
 
 	v, err := b.execTestFileContents(script)
 	if err != nil {

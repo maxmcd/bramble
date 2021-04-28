@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"path/filepath"
 	"regexp"
 	"runtime/trace"
 	"sort"
@@ -93,16 +92,9 @@ func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return nil, err
 	}
 
-	// TODO: this doesn't work through a function call, so we need a more
-	// reliable way to determine source file locations
-	//
-	// Make sure the location of the derivation is set using the call stack
-	pos := thread.CallStack().At(1).Pos
-	drv.location = filepath.Dir(pos.Filename())
-
 	defer func() {
 		logger.Debugf("derivation() %s %s", time.Since(now), strings.TrimPrefix(
-			fmt.Sprint(pos), f.bramble.configLocation))
+			drv.sources.location, f.bramble.configLocation))
 	}()
 
 	// find all source files that are used for this derivation
@@ -128,7 +120,7 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 		name      starlark.String
 		builder   starlark.Value = starlark.None
 		argsParam *starlark.List
-		sources   *starlark.List
+		sources   filesList
 		env       *starlark.Dict
 		outputs   *starlark.List
 	)
@@ -150,11 +142,7 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 			return
 		}
 	}
-	if sources != nil {
-		if drv.sources, err = starutil.IterableToGoList(sources); err != nil {
-			return
-		}
-	}
+	drv.sources = sources
 
 	if env != nil {
 		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
@@ -215,9 +203,8 @@ type Derivation struct {
 	SourcePaths []string
 
 	// internal fields
-	sources  []string
-	location string
-	bramble  *Bramble
+	sources filesList
+	bramble *Bramble
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

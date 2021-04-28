@@ -11,7 +11,7 @@ def _nested1(bb):
         name="nested",
         env={"PATH": "%s/bin" % bb.out},
         builder="%s/bin/sh" % bb.out,
-        sources=["../"],
+        sources=files(["../"], include_directories=True),
         args=["../script.sh"],
     )
 
@@ -21,7 +21,7 @@ def _nested2(bb):
         name="nested2",
         builder="%s/bin/sh" % bb.out,
         env={"PATH": "%s/bin" % bb.out},
-        sources=["../file.txt", "../script.sh"],
+        sources=files(["../file.txt", "../script.sh"]),
         args=["../script.sh"],
     )
 
@@ -31,6 +31,6 @@ def _nested3(bb):
         name="nested3",
         builder="%s/bin/sh" % bb.out,
         env={"PATH": "%s/bin" % bb.out},
-        sources=["../script2.sh"],
+        sources=files(["../script2.sh"]),
         args=["../script2.sh"],
     )
