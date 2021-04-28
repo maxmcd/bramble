@@ -926,7 +926,8 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 }
 
 func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err error) {
-	globals, err := starlark.ExecFile(b.thread, ".bramble", script, b.predeclared)
+	wd, _ := os.Getwd()
+	globals, err := starlark.ExecFile(b.thread, filepath.Join(wd, "foo.bramble"), script, b.predeclared)
 	if err != nil {
 		return nil, err
 	}

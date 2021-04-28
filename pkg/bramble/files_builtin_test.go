@@ -18,6 +18,8 @@ func TestBramble_filesBuiltin(t *testing.T) {
 			errContains: "absolute"},
 		{script: `b = files([1])`,
 			errContains: "not a string"},
+		{script: `b = files(["."], include_directories=True)`,
+			respContains: "pkg/bramble"},
 		{script: `b = files(["*.go"])`,
 			respContains: "bramble.go"},
 		{script: `b = files(["*.go"], ["*_test.go"])`,
