@@ -125,7 +125,7 @@ func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 			t.Error("error is nil")
 			return
 		}
-		assert.Contains(t, err.Error(), tt.errContains)
+		assert.Contains(t, err.Error(), tt.errContains, tt)
 		if tt.errContains == "" {
 			t.Error(err, tt.script)
 			return
@@ -173,7 +173,7 @@ func TestDerivationCaching(t *testing.T) {
 	if err := b.init(".", true); err != nil {
 		t.Fatal(err)
 	}
-	script := fixUpScript(`derivation("", builder="hello", sources=files(["."]))`)
+	script := fixUpScript(`derivation("", builder="hello", sources=files(["*"]))`)
 
 	v, err := b.execTestFileContents(script)
 	if err != nil {
