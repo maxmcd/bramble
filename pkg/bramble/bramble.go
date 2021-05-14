@@ -71,6 +71,8 @@ var (
 	BrambleExtension string = ".bramble"
 )
 
+// Bramble is the main bramble client. It has various caches and metadata
+// associated with running bramble.
 type Bramble struct {
 	thread      *starlark.Thread
 	predeclared starlark.StringDict
@@ -836,14 +838,26 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	return err
 }
 
+// Option can be used to set various options when initializing bramble
+type Option func(*Bramble)
+
+// OptionNoRoot ensures bramble don't use features that require root like setuid binaries
+func OptionNoRoot(b *Bramble) {
+	b.noRoot = true
+}
+
 // NewBramble creates a new bramble instance. If the working directory passed is
 // within a bramble project that projects configuration will be laoded
-func NewBramble(wd string) (b *Bramble, err error) {
+func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
 	b = &Bramble{}
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
 	b.wd = wd
+
+	for _, opt := range opts {
+		opt(b)
+	}
 
 	// Make b.wd absolute
 	if !filepath.IsAbs(b.wd) {
