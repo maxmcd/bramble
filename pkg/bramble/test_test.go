@@ -44,7 +44,6 @@ name = "github.com/maxmcd/bramble"`
 type TestProject struct {
 	bramblePath string
 	projectPath string
-	oldWD       string
 }
 
 var cachedProj *TestProject
@@ -66,8 +65,6 @@ func (tp *TestProject) Copy() TestProject {
 		bramblePath: tmpDir(nil),
 		projectPath: tmpDir(nil),
 	}
-	fmt.Println(tp.bramblePath, out.bramblePath)
-	fmt.Println(tp.projectPath, out.projectPath)
 	if err := fileutil.CopyDirectory(tp.bramblePath, out.bramblePath); err != nil {
 		panic(err)
 	}
@@ -77,28 +74,23 @@ func (tp *TestProject) Copy() TestProject {
 	return out
 }
 func (tp *TestProject) Bramble() *Bramble {
-	b := &Bramble{}
+	b, err := NewBramble(tp.projectPath, true)
+	if err != nil {
+		panic(err)
+	}
 	b.noRoot = true
 	return b
 }
-func (tp *TestProject) Chdir() {
-	tp.oldWD, _ = os.Getwd()
-	_ = os.Chdir(tp.projectPath)
-}
+
 func (tp *TestProject) Cleanup() {
 	_ = os.RemoveAll(tp.bramblePath)
 	_ = os.RemoveAll(tp.projectPath)
-	if tp.oldWD != "" {
-		_ = os.Chdir(tp.oldWD)
-	}
 }
 
 func NewTestProject() (*TestProject, error) {
-	b := Bramble{}
-	b.noRoot = true
+	// Write files
 	bramblePath := tmpDir(nil)
 	projectPath := tmpDir(nil)
-	ctx := context.Background()
 	if err := ioutil.WriteFile(
 		filepath.Join(projectPath, "./default.bramble"),
 		[]byte(busybox), 0644); err != nil {
@@ -115,12 +107,17 @@ func NewTestProject() (*TestProject, error) {
 		return nil, err
 	}
 	os.Setenv("BRAMBLE_PATH", bramblePath)
-	wd, _ := os.Getwd()
-	_ = os.Chdir(projectPath)
+
+	// Init bramble
+	b, err := NewBramble(projectPath, true)
+	if err != nil {
+		return nil, err
+	}
+	b.noRoot = true
+	ctx := context.Background()
 	if err := b.build(ctx, []string{":busybox"}); err != nil {
 		return nil, err
 	}
-	_ = os.Chdir(wd)
 	return &TestProject{
 		bramblePath: bramblePath,
 		projectPath: projectPath,

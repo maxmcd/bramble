@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -90,8 +89,8 @@ func assembleModules(t *testing.T) []string {
 }
 
 func TestAllFunctions(t *testing.T) {
-	b := Bramble{}
-	if err := b.init(".", true); err != nil {
+	b, err := NewBramble(".", true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	require.NoError(t, filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
@@ -133,7 +132,6 @@ func TestAllFunctions(t *testing.T) {
 		}
 		return true
 	})
-	spew.Dump(urls)
 }
 
 func runBrambleRun(args []string) error {

@@ -836,7 +836,8 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	return err
 }
 
-func (b *Bramble) init(wd string, expectProject bool) (err error) {
+func NewBramble(wd string, expectProject bool) (b *Bramble, err error) {
+	b = &Bramble{}
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
@@ -850,17 +851,17 @@ func (b *Bramble) init(wd string, expectProject bool) (err error) {
 
 	if b.store.IsEmpty() {
 		if b.store, err = store.NewStore(); err != nil {
-			return err
+			return
 		}
 	}
 
 	found, loc := findConfig(b.wd)
 	if expectProject && !found {
-		return errors.New("couldn't find a bramble.toml file in this directory or any parent")
+		return nil, errors.New("couldn't find a bramble.toml file in this directory or any parent")
 	}
 	if found {
 		if err := b.loadConfig(loc); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -869,7 +870,7 @@ func (b *Bramble) init(wd string, expectProject bool) (err error) {
 		Load: b.load,
 	}
 
-	return b.initPredeclared()
+	return b, b.initPredeclared()
 }
 
 func (b *Bramble) initPredeclared() (err error) {
@@ -898,8 +899,8 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 }
 
 func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-	b := Bramble{}
-	if err := b.init(loc, true); err != nil {
+	b, err := NewBramble(loc, true)
+	if err != nil {
 		return nil, err
 	}
 
@@ -939,8 +940,7 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 }
 
 func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err error) {
-	wd, _ := os.Getwd()
-	globals, err := starlark.ExecFile(b.thread, filepath.Join(wd, "foo.bramble"), script, b.predeclared)
+	globals, err := starlark.ExecFile(b.thread, filepath.Join(b.wd, "foo.bramble"), script, b.predeclared)
 	if err != nil {
 		return nil, err
 	}
@@ -1053,9 +1053,6 @@ func (b *Bramble) starlarkExecFile(moduleName, filename string) (globals starlar
 }
 
 func (b *Bramble) repl(_ []string) (err error) {
-	if err := b.init(".", false); err != nil {
-		return err
-	}
 	repl.REPL(b.thread, b.predeclared)
 	return nil
 }
@@ -1064,10 +1061,6 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
-		return
-	}
-
-	if err = b.init(".", true); err != nil {
 		return
 	}
 
@@ -1157,9 +1150,6 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 }
 
 func (b *Bramble) gc(_ []string) (err error) {
-	if err = b.init(".", false); err != nil {
-		return
-	}
 	derivations, err := b.collectDerivationsToPreserve()
 	if err != nil {
 		return

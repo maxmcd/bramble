@@ -28,7 +28,6 @@ def ok():
 		`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	tp.Chdir()
 	if err := tp.Bramble().build(context.Background(), []string{"foo:ok"}); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +79,6 @@ def ok():
 		`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	tp.Chdir()
 	if err := tp.Bramble().gc(nil); err != nil {
 		fmt.Printf("%+v", err)
 		fmt.Println(starutil.AnnotateError(err))
