@@ -142,7 +142,10 @@ func runBrambleRun(args []string) error {
 	if !strings.Contains(path, gobin) {
 		os.Setenv("PATH", path+":"+gobin)
 	}
-	b := Bramble{}
+	b, err := NewBramble(".", true)
+	if err != nil {
+		return err
+	}
 	return b.build(context.Background(), args)
 }
 
