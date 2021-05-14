@@ -40,7 +40,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		ShortUsage: "bramble build [options] [module]:<function> [args...]",
 		ShortHelp:  "Build a function",
 		LongHelp:   "Build a function",
-		Exec:       func(ctx context.Context, args []string) error { return b.build(ctx, args) },
+		Exec:       func(ctx context.Context, args []string) error { return b.Build(ctx, args) },
 	}
 
 	shell = &ffcli.Command{
@@ -48,7 +48,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 		ShortHelp:  "Open a shell from a derivation",
 		LongHelp:   "Open a shell from a derivation",
-		Exec:       func(ctx context.Context, args []string) error { return b.shell(ctx, args) },
+		Exec:       func(ctx context.Context, args []string) error { return b.Shell(ctx, args) },
 	}
 
 	repl = &ffcli.Command{
@@ -69,7 +69,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 	build inputs that are no longer needed to run resulting programs.
 	`,
 		Exec: func(ctx context.Context, args []string) error {
-			return b.gc(args)
+			return b.GC(args)
 		},
 	}
 
@@ -79,7 +79,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		ShortHelp:  "",
 		LongHelp:   "",
 		Exec: func(ctx context.Context, args []string) error {
-			return b.gc(args)
+			return b.GC(args)
 		},
 	}
 

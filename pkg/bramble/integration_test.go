@@ -57,6 +57,9 @@ func assembleModules(t *testing.T) []string {
 		if err != nil {
 			return err
 		}
+		if fi.IsDir() && fi.Name() == "testdata" {
+			return filepath.SkipDir
+		}
 		if strings.HasSuffix(fi.Name(), ".bramble") {
 			f, err := os.Open(path)
 			if err != nil {
@@ -89,7 +92,7 @@ func assembleModules(t *testing.T) []string {
 }
 
 func TestAllFunctions(t *testing.T) {
-	b, err := NewBramble(".", true)
+	b, err := NewBramble(".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +145,11 @@ func runBrambleRun(args []string) error {
 	if !strings.Contains(path, gobin) {
 		os.Setenv("PATH", path+":"+gobin)
 	}
-	b, err := NewBramble(".", true)
+	b, err := NewBramble(".")
 	if err != nil {
 		return err
 	}
-	return b.build(context.Background(), args)
+	return b.Build(context.Background(), args)
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {

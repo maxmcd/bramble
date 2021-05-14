@@ -28,7 +28,7 @@ func tmpDir(t *testing.T) string {
 }
 
 func testfilesBramble(t *testing.T) *Bramble {
-	b, err := NewBramble("./testfiles", true)
+	b, err := NewBramble("./testfiles")
 	if err != nil {
 		t.Fatal(err)
 	}

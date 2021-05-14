@@ -836,7 +836,9 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	return err
 }
 
-func NewBramble(wd string, expectProject bool) (b *Bramble, err error) {
+// NewBramble creates a new bramble instance. If the working directory passed is
+// within a bramble project that projects configuration will be laoded
+func NewBramble(wd string) (b *Bramble, err error) {
 	b = &Bramble{}
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
@@ -856,9 +858,6 @@ func NewBramble(wd string, expectProject bool) (b *Bramble, err error) {
 	}
 
 	found, loc := findConfig(b.wd)
-	if expectProject && !found {
-		return nil, errors.New("couldn't find a bramble.toml file in this directory or any parent")
-	}
 	if found {
 		if err := b.loadConfig(loc); err != nil {
 			return nil, err
@@ -899,7 +898,7 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 }
 
 func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-	b, err := NewBramble(loc, true)
+	b, err := NewBramble(loc)
 	if err != nil {
 		return nil, err
 	}
@@ -1095,7 +1094,10 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	return
 }
 
-func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
+func (b *Bramble) Shell(ctx context.Context, args []string) (err error) {
+	if !b.withinProject() {
+		return ErrNotInProject
+	}
 	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
@@ -1121,7 +1123,14 @@ func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) build(ctx context.Context, args []string) (err error) {
+func (b *Bramble) withinProject() bool {
+	return b.configLocation != ""
+}
+
+func (b *Bramble) Build(ctx context.Context, args []string) (err error) {
+	if !b.withinProject() {
+		return ErrNotInProject
+	}
 	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
@@ -1149,7 +1158,7 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 	return
 }
 
-func (b *Bramble) gc(_ []string) (err error) {
+func (b *Bramble) GC(_ []string) (err error) {
 	derivations, err := b.collectDerivationsToPreserve()
 	if err != nil {
 		return
