@@ -28,11 +28,8 @@ func tmpDir(t *testing.T) string {
 }
 
 func testfilesBramble(t *testing.T) *Bramble {
-	if err := os.Chdir("./testfiles"); err != nil {
-		t.Fatal(err)
-	}
 	b := Bramble{}
-	if err := b.init(".", true); err != nil {
+	if err := b.init("./testfiles", true); err != nil {
 		t.Fatal(err)
 	}
 	return &b
@@ -40,7 +37,6 @@ func testfilesBramble(t *testing.T) *Bramble {
 
 func Test_parseModuleFuncArgument(t *testing.T) {
 	b := testfilesBramble(t)
-	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name       string
 		args       []string
@@ -173,7 +169,6 @@ func TestBramble_resolveModule(t *testing.T) {
 
 func TestBramble_moduleNameFromFileName(t *testing.T) {
 	b := testfilesBramble(t)
-	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		filename       string
 		module         string
