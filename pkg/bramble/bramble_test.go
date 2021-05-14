@@ -28,11 +28,11 @@ func tmpDir(t *testing.T) string {
 }
 
 func testfilesBramble(t *testing.T) *Bramble {
-	b := Bramble{}
-	if err := b.init("./testfiles", true); err != nil {
+	b, err := NewBramble("./testfiles", true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return &b
+	return b
 }
 
 func Test_parseModuleFuncArgument(t *testing.T) {
