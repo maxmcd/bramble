@@ -2,7 +2,7 @@ Nix handles early cutoff with fixed output derivations. These must be manually k
 
 Because the dependency graph in Bramble is (currently) constructed using the hash of input derivations any change to build input will result in a full rebuild.
 
-I think it's important when thinking about a solution here to remember that all build inputs are either filesystem files or `fetch` derivations, so don't get too creative about storing build state.
+When thinking about solutions here remember that all build inputs are either filesystem files or `fetch` derivations, so don't get too creative about storing build state.
 
 ### Always use the build output as the derivation hash
 
