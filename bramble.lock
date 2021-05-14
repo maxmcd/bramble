@@ -3,5 +3,5 @@
   "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1"
   "https://brmbl.s3.amazonaws.com/patchelf.tar.gz" = "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960"
   "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz" = "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52"
-  "https://maxmcd.com/" = "b17315f3eac25dc23a59cc0ec2820c78a0b9890f7fea5a44deaef5a3c6cd9e59"
+  "https://maxmcd.com/" = "c0c11d3923e78f8c103985e2035df7b146e9946bf7eabcd38d71459d94063a7a"
   "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz" = "22e83ec5f2483bb0d9a861346c883b4b2f7f572595f3453d1131b31898e98a33"
