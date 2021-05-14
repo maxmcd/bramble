@@ -118,7 +118,6 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 
 func TestBramble_resolveModule(t *testing.T) {
 	b := testfilesBramble(t)
-	defer func() { _ = os.Chdir("..") }()
 	tests := []struct {
 		name        string
 		module      string
