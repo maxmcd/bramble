@@ -1,6 +1,7 @@
 def fetch_url(url):
     return derivation(name="fetch-url", builder="fetch_url", env={"url": url})
 
+
 def busybox():
     b = fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
 
@@ -8,6 +9,6 @@ def busybox():
         name="busybox",
         builder=b.out + "/busybox-x86_64",
         args=["sh", "./script.sh"],
-		sources=files(["./script.sh"]),
+        sources=files(["./script.sh"]),
         env={"busybox_download": b},
     )

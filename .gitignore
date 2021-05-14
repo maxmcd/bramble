@@ -1,6 +1,7 @@
 brambles
 *.gz
-.vscode
+.vscode/*
+!.vscode/settings.json
 .idea
 *.prof
 trace.out
