@@ -13,10 +13,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 )
 
-var (
-	TestTmpDirPrefix = "bramble-test-"
-)
-
 type TestProject struct {
 	bramblePath string
 	projectPath string
@@ -24,18 +20,6 @@ type TestProject struct {
 
 var cachedProj *TestProject
 
-func tmpDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
-	if err != nil {
-		panic(err)
-	}
-	if t != nil {
-		t.Cleanup(func() {
-			os.RemoveAll(dir)
-		})
-	}
-	return dir
-}
 func TestMain(m *testing.M) {
 	var err error
 	cachedProj, err = NewTestProject()
@@ -50,8 +34,8 @@ func TestMain(m *testing.M) {
 
 func (tp *TestProject) Copy() TestProject {
 	out := TestProject{
-		bramblePath: tmpDir(nil),
-		projectPath: tmpDir(nil),
+		bramblePath: fileutil.TestTmpDir(nil),
+		projectPath: fileutil.TestTmpDir(nil),
 	}
 	if err := fileutil.CopyDirectory(tp.bramblePath, out.bramblePath); err != nil {
 		panic(err)
@@ -77,8 +61,8 @@ func (tp *TestProject) Cleanup() {
 
 func NewTestProject() (*TestProject, error) {
 	// Write files
-	bramblePath := tmpDir(nil)
-	projectPath := tmpDir(nil)
+	bramblePath := fileutil.TestTmpDir(nil)
+	projectPath := fileutil.TestTmpDir(nil)
 
 	if err := fileutil.CopyDirectory("./testdata", projectPath); err != nil {
 		return nil, err
