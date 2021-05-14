@@ -71,6 +71,8 @@ var (
 	BrambleExtension string = ".bramble"
 )
 
+// Bramble is the main bramble client. It has various caches and metadata
+// associated with running bramble.
 type Bramble struct {
 	thread      *starlark.Thread
 	predeclared starlark.StringDict
@@ -82,6 +84,9 @@ type Bramble struct {
 	configLocation string
 	lockFile       LockFile
 	lockFileLock   sync.Mutex
+
+	// working directory
+	wd string
 
 	derivationFn *derivationFunction
 
@@ -381,6 +386,9 @@ func (b *Bramble) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, 
 }
 
 func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, err error) {
+	if !filepath.IsAbs(filename) {
+		filename = filepath.Join(b.wd, filename)
+	}
 	filename, err = filepath.Abs(filename)
 	if err != nil {
 		return "", err
@@ -830,24 +838,43 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 	return err
 }
 
-func (b *Bramble) init(wd string, expectProject bool) (err error) {
+// Option can be used to set various options when initializing bramble
+type Option func(*Bramble)
+
+// OptionNoRoot ensures bramble don't use features that require root like setuid binaries
+func OptionNoRoot(b *Bramble) {
+	b.noRoot = true
+}
+
+// NewBramble creates a new bramble instance. If the working directory passed is
+// within a bramble project that projects configuration will be laoded
+func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
+	b = &Bramble{}
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
 	b.derivations = &DerivationsMap{}
+	b.wd = wd
+
+	for _, opt := range opts {
+		opt(b)
+	}
+
+	// Make b.wd absolute
+	if !filepath.IsAbs(b.wd) {
+		wd, _ := os.Getwd()
+		b.wd = filepath.Join(wd, b.wd)
+	}
 
 	if b.store.IsEmpty() {
 		if b.store, err = store.NewStore(); err != nil {
-			return err
+			return
 		}
 	}
 
-	found, loc := findConfig(wd)
-	if expectProject && !found {
-		return errors.New("couldn't find a bramble.toml file in this directory or any parent")
-	}
+	found, loc := findConfig(b.wd)
 	if found {
 		if err := b.loadConfig(loc); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -856,7 +883,7 @@ func (b *Bramble) init(wd string, expectProject bool) (err error) {
 		Load: b.load,
 	}
 
-	return b.initPredeclared()
+	return b, b.initPredeclared()
 }
 
 func (b *Bramble) initPredeclared() (err error) {
@@ -885,8 +912,8 @@ func (b *Bramble) load(thread *starlark.Thread, module string) (globals starlark
 }
 
 func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-	b := Bramble{}
-	if err := b.init(loc, true); err != nil {
+	b, err := NewBramble(loc)
+	if err != nil {
 		return nil, err
 	}
 
@@ -926,8 +953,7 @@ func findAllDerivationsInProject(loc string) (derivations []*Derivation, err err
 }
 
 func (b *Bramble) execTestFileContents(script string) (v starlark.Value, err error) {
-	wd, _ := os.Getwd()
-	globals, err := starlark.ExecFile(b.thread, filepath.Join(wd, "foo.bramble"), script, b.predeclared)
+	globals, err := starlark.ExecFile(b.thread, filepath.Join(b.wd, "foo.bramble"), script, b.predeclared)
 	if err != nil {
 		return nil, err
 	}
@@ -1040,9 +1066,6 @@ func (b *Bramble) starlarkExecFile(moduleName, filename string) (globals starlar
 }
 
 func (b *Bramble) repl(_ []string) (err error) {
-	if err := b.init(".", false); err != nil {
-		return err
-	}
 	repl.REPL(b.thread, b.predeclared)
 	return nil
 }
@@ -1051,10 +1074,6 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
-		return
-	}
-
-	if err = b.init(".", true); err != nil {
 		return
 	}
 
@@ -1089,7 +1108,10 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	return
 }
 
-func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
+func (b *Bramble) Shell(ctx context.Context, args []string) (err error) {
+	if !b.withinProject() {
+		return ErrNotInProject
+	}
 	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
@@ -1115,7 +1137,14 @@ func (b *Bramble) shell(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func (b *Bramble) build(ctx context.Context, args []string) (err error) {
+func (b *Bramble) withinProject() bool {
+	return b.configLocation != ""
+}
+
+func (b *Bramble) Build(ctx context.Context, args []string) (err error) {
+	if !b.withinProject() {
+		return ErrNotInProject
+	}
 	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
 		return err
@@ -1143,10 +1172,7 @@ func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
 	return
 }
 
-func (b *Bramble) gc(_ []string) (err error) {
-	if err = b.init(".", false); err != nil {
-		return
-	}
+func (b *Bramble) GC(_ []string) (err error) {
 	derivations, err := b.collectDerivationsToPreserve()
 	if err != nil {
 		return
@@ -1313,11 +1339,8 @@ func (b *Bramble) resolveModule(module string) (globals starlark.StringDict, err
 	return b.starlarkExecFile(module, path)
 }
 
-func (b *Bramble) moduleFromPath(path string) (module string, err error) {
-	module = (b.config.Module.Name + "/" + b.relativePathFromConfig())
-	if path == "" {
-		return
-	}
+func (b *Bramble) moduleFromPath(path string) (thisModule string, err error) {
+	thisModule = (b.config.Module.Name + "/" + b.relativePathFromConfig())
 
 	// See if this path is actually the name of a module, for now we just
 	// support one module.
@@ -1327,29 +1350,28 @@ func (b *Bramble) moduleFromPath(path string) (module string, err error) {
 	}
 
 	// if the relative path is nothing, we've already added the slash above
-	if !strings.HasSuffix(module, "/") {
-		module += "/"
+	if !strings.HasSuffix(thisModule, "/") {
+		thisModule += "/"
 	}
 
 	// support things like bar/main.bramble:foo
-	if strings.HasSuffix(path, BrambleExtension) && fileutil.FileExists(path) {
-		return module + path[:len(path)-len(BrambleExtension)], nil
+	if strings.HasSuffix(path, BrambleExtension) && fileutil.FileExists(filepath.Join(b.wd, path)) {
+		return thisModule + path[:len(path)-len(BrambleExtension)], nil
 	}
 
 	fullName := path + BrambleExtension
-	if !fileutil.FileExists(fullName) {
-		if !fileutil.FileExists(path + "/default.bramble") {
+	if !fileutil.FileExists(filepath.Join(b.wd, fullName)) {
+		if !fileutil.FileExists(filepath.Join(b.wd, path+"/default.bramble")) {
 			return "", errors.Errorf("%q: no such file or directory", path)
 		}
 	}
 	// we found it, return
-	module += filepath.Join(path)
-	return
+	thisModule += filepath.Join(path)
+	return strings.TrimSuffix(thisModule, "/"), nil
 }
 
 func (b *Bramble) relativePathFromConfig() string {
-	wd, _ := os.Getwd()
-	relativePath, _ := filepath.Rel(b.configLocation, wd)
+	relativePath, _ := filepath.Rel(b.configLocation, b.wd)
 	if relativePath == "." {
 		// don't add a dot to the path
 		return ""
@@ -1371,5 +1393,6 @@ func (b *Bramble) parseModuleFuncArgument(args []string) (module, function strin
 	}
 	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
 	module, err = b.moduleFromPath(path)
+	fmt.Println(module, err)
 	return
 }

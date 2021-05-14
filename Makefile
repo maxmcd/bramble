@@ -9,7 +9,7 @@ ci_test: go_ci_test \
 gotestsum:
 	go get gotest.tools/gotestsum
 
-go_ci_test: gotestsum
+go_ci_test: install gotestsum
 	gotestsum -- -race -v ./...
 
 go_test:
