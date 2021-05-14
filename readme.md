@@ -138,3 +138,11 @@ If I set `$BRAMBLE_PATH` to `/tmp/bramble` it creates the following store path:
 Both are 49 characters long.
 
 You can read more about [Strategies for Binary Relocation In Functional Build Systems](https://maxmcd.com/posts/strategies-for-binary-relocation/)
+
+
+
+
+
+
+
+

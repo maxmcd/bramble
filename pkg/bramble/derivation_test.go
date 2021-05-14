@@ -97,7 +97,7 @@ func runDerivationTest(t *testing.T, tests []scriptTest) {
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	b, err := NewBramble(".", true)
+	b, err := NewBramble(".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestJsonEncode(t *testing.T) {
 }
 
 func TestDerivationCaching(t *testing.T) {
-	b, err := NewBramble(".", true)
+	b, err := NewBramble(".")
 	if err != nil {
 		t.Fatal(err)
 	}
