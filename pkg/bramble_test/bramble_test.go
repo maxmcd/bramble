@@ -62,7 +62,7 @@ func (tp *TestProject) Copy() TestProject {
 	return out
 }
 func (tp *TestProject) Bramble() *bramble.Bramble {
-	b, err := bramble.NewBramble(tp.projectPath)
+	b, err := bramble.NewBramble(tp.projectPath, bramble.OptionNoRoot)
 	if err != nil {
 		panic(err)
 	}
@@ -80,11 +80,13 @@ func NewTestProject() (*TestProject, error) {
 	bramblePath := tmpDir(nil)
 	projectPath := tmpDir(nil)
 
-	fileutil.CopyDirectory("./testdata", projectPath)
+	if err := fileutil.CopyDirectory("./testdata", projectPath); err != nil {
+		return nil, err
+	}
 	os.Setenv("BRAMBLE_PATH", bramblePath)
 
 	// Init bramble
-	b, err := bramble.NewBramble(projectPath)
+	b, err := bramble.NewBramble(projectPath, bramble.OptionNoRoot)
 	if err != nil {
 		return nil, err
 	}
