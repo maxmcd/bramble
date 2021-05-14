@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,12 +94,12 @@ b = foo()
 
 func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
-	dir := tmpDir(t)
+	dir := fileutil.TestTmpDir(t)
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	b := Bramble{}
-	if err = b.init(".", true); err != nil {
+	b, err := NewBramble(".")
+	if err != nil {
 		t.Fatal(err)
 	}
 	wd, err := os.Getwd()
@@ -169,8 +170,8 @@ func TestJsonEncode(t *testing.T) {
 }
 
 func TestDerivationCaching(t *testing.T) {
-	b := Bramble{}
-	if err := b.init(".", true); err != nil {
+	b, err := NewBramble(".")
+	if err != nil {
 		t.Fatal(err)
 	}
 	script := fixUpScript(`derivation("", builder="hello", sources=files(["*"]))`)

@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	errQuiet = errors.New("")
+	errQuiet        = errors.New("")
+	ErrNotInProject = errors.New("couldn't find a bramble.toml file in this directory or any parent")
 )
 
 type errModuleDoesNotExist string
