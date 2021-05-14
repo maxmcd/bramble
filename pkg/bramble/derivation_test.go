@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,7 +94,7 @@ b = foo()
 
 func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
-	dir := tmpDir(t)
+	dir := fileutil.TestTmpDir(t)
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir) })
 

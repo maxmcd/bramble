@@ -1,31 +1,12 @@
 package bramble
 
 import (
-	"io/ioutil"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-var (
-	TestTmpDirPrefix = "bramble-test-"
-)
-
-func tmpDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("/tmp", TestTmpDirPrefix)
-	if err != nil {
-		panic(err)
-	}
-	if t != nil {
-		t.Cleanup(func() {
-			os.RemoveAll(dir)
-		})
-	}
-	return dir
-}
 
 func testfilesBramble(t *testing.T) *Bramble {
 	b, err := NewBramble("./testfiles")

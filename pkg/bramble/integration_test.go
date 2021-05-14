@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -30,9 +31,9 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	log.SetOutput(ioutil.Discard)
 	var err error
 	hshr := hasher.NewHasher()
-	dir := tmpDir(t)
+	dir := fileutil.TestTmpDir(t)
 	hshr2 := hasher.NewHasher()
-	dir2 := tmpDir(t)
+	dir2 := fileutil.TestTmpDir(t)
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
