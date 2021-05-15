@@ -108,37 +108,24 @@ func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output,
 	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
 }
 
-func (b *Bramble) populateDerivationOutputsFromStore(drv *Derivation) (exists bool, err error) {
-	filename := drv.filename()
-	var outputs []Output
-	outputs, exists, err = b.checkForExistingDerivation(filename)
+func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
+	exists, err := drv.populateOutputsFromStore()
 	if err != nil {
-		return
-	}
-	if exists {
-		drv.Outputs = outputs
-		b.derivations.Store(filename, drv)
-	}
-	return
-}
-
-func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (err error) {
-	exists, err := b.populateDerivationOutputsFromStore(drv)
-	if err != nil {
-		return err
+		return false, err
 	}
 	filename := drv.filename()
 	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
 	if exists {
-		return
+		return false, nil
 	}
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.prettyJSON())
 
 	if err = b.buildDerivation(ctx, drv, false); err != nil {
-		return errors.Wrap(err, "error building "+filename)
+		return false, errors.Wrap(err, "error building "+filename)
 	}
-	return b.writeDerivation(drv)
+	// TODO: lock store on write
+	return true, b.writeDerivation(drv)
 }
 
 func (b *Bramble) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outputPath string) (err error) {
@@ -781,14 +768,20 @@ func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *Acyc
 	return graph
 }
 
-func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutputs, skipDerivation *Derivation) (err error) {
+type BuildResult struct {
+	Derivation *Derivation
+	DidBuild   bool
+}
+
+func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutputs, skipDerivation *Derivation) (
+	result []BuildResult, err error) {
 	graph := b.assembleDerivationDependencyGraph(dos)
 	var wg sync.WaitGroup
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 1)
 	var errored bool
 	if err = graph.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
@@ -797,9 +790,7 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 				return
 			}
 			semaphore <- struct{}{}
-			defer func() {
-				<-semaphore
-			}()
+			defer func() { <-semaphore }()
 			// serial for now
 
 			if root, ok := v.(string); ok && root == "root" {
@@ -814,7 +805,8 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 				return
 			}
 			wg.Add(1)
-			if err := b.buildDerivationIfNew(ctx, drv); err != nil {
+			didBuild, err := b.buildDerivationIfNew(ctx, drv)
+			if err != nil {
 				// Passing the error might block, so we need an explicit Done
 				// call here.
 				wg.Done()
@@ -823,6 +815,7 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 				errChan <- err
 				return
 			}
+			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
 			wg.Done()
 			return
 		})
@@ -835,7 +828,7 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 		// are running.
 		wg.Wait()
 	}
-	return err
+	return result, err
 }
 
 // Option can be used to set various options when initializing bramble
@@ -1108,52 +1101,52 @@ func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations [
 	return
 }
 
-func (b *Bramble) Shell(ctx context.Context, args []string) (err error) {
+func (b *Bramble) Shell(ctx context.Context, args []string) (result []BuildResult, err error) {
 	if !b.withinProject() {
-		return ErrNotInProject
+		return nil, ErrNotInProject
 	}
 	derivations, err := b.parseAndCallBuildArg("build", args)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(derivations) > 1 {
-		return errors.New(`cannot run "bramble shell" with a function that returns multiple derivations`)
+		return nil, errors.New(`cannot run "bramble shell" with a function that returns multiple derivations`)
 	}
 	shellDerivation := derivations[0]
 
-	if err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), shellDerivation); err != nil {
+	if result, err = b.buildDerivationOutputs(ctx,
+		b.derivationsToDerivationOutputs(derivations), shellDerivation); err != nil {
 		return
 	}
 
 	if err := b.writeConfigMetadata(); err != nil {
-		return err
+		return nil, err
 	}
 	filename := shellDerivation.filename()
 	logger.Print("Launching shell for derivation", filename)
 	logger.Debugw(shellDerivation.prettyJSON())
 	if err = b.buildDerivation(ctx, shellDerivation, true); err != nil {
-		return errors.Wrap(err, "error spawning "+filename)
+		return nil, errors.Wrap(err, "error spawning "+filename)
 	}
-	return nil
+	return result, nil
 }
 
 func (b *Bramble) withinProject() bool {
 	return b.configLocation != ""
 }
 
-func (b *Bramble) Build(ctx context.Context, args []string) (err error) {
+func (b *Bramble) Build(ctx context.Context, args []string) (derivations []*Derivation, buildResult []BuildResult, err error) {
 	if !b.withinProject() {
-		return ErrNotInProject
+		return nil, nil, ErrNotInProject
 	}
-	derivations, err := b.parseAndCallBuildArg("build", args)
-	if err != nil {
-		return err
+	if derivations, err = b.parseAndCallBuildArg("build", args); err != nil {
+		return nil, nil, err
 	}
-	if err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), nil); err != nil {
+	if buildResult, err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), nil); err != nil {
 		return
 	}
 
-	return b.writeConfigMetadata()
+	return derivations, buildResult, b.writeConfigMetadata()
 }
 
 func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
@@ -1180,7 +1173,7 @@ func (b *Bramble) GC(_ []string) (err error) {
 	pathsToKeep := map[string]struct{}{}
 
 	for _, drv := range derivations {
-		graph, err := drv.buildDependencies()
+		graph, err := drv.BuildDependencies()
 		if err != nil {
 			// if we can't fetch the full graph then it likely hasn't been built
 			// and we want to skip it. TODO: we might be skipping important things here?

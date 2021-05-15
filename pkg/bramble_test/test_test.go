@@ -74,7 +74,7 @@ func NewTestProject() (*TestProject, error) {
 	}
 	// b.noRoot = true
 	ctx := context.Background()
-	if err := b.Build(ctx, []string{":busybox"}); err != nil {
+	if _, _, err := b.Build(ctx, []string{":busybox"}); err != nil {
 		return nil, err
 	}
 	return &TestProject{

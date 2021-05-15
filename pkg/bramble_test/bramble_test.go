@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFoo(t *testing.T) {
@@ -24,9 +26,11 @@ def ok():
 		`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := tp.Bramble().Build(context.Background(), []string{"foo:ok"}); err != nil {
+	_, result, err := tp.Bramble().Build(context.Background(), []string{"foo:ok"})
+	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println(result)
 }
 
 func TestDependency(t *testing.T) {
@@ -37,11 +41,49 @@ func TestDependency(t *testing.T) {
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
+	b := tp.Bramble()
+	drvs, result, err := b.Build(context.Background(), []string{"dep:hello_world"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, build := range result {
+		switch build.Derivation.Name {
+		case "fetch-url", "busybox":
+			assert.Equal(t, build.DidBuild, false)
+		default:
+			assert.Equal(t, build.DidBuild, true)
+		}
+	}
+	drv := drvs[0]
+	{
+		graph, err := drv.BuildDependencies()
+		require.NoError(t, err)
+		graph.PrintDot()
+	}
+
+	{
+		graph, err := drv.RuntimeDependencyGraph()
+		require.NoError(t, err)
+		graph.PrintDot()
+	}
+	{
+		if err := tp.Bramble().GC(nil); err != nil {
+			fmt.Printf("%+v", err)
+			fmt.Println(starutil.AnnotateError(err))
+			t.Fatal(err)
+		}
+		b := tp.Bramble()
+		_, result, err := b.Build(context.Background(), []string{"dep:hello_world"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, build := range result {
+			// shouldn't need to rebuild anything after a GC calls
+			assert.False(t, build.DidBuild)
+		}
+	}
+
 	// {
-	// 	b := tp.Bramble()
-	// 	if err := b.Build(context.Background(), []string{"dep:ok"}); err != nil {
-	// 		t.Fatal(err)
-	// 	}
 	// 	var drv *bramble.Derivation
 	// 	b.derivations.Range(func(filename string, d *bramble.Derivation) bool {
 	// 		if d.Name == "ok" {
