@@ -348,6 +348,7 @@ func (drv *Derivation) SetOutput(name string, o Output) {
 func (drv *Derivation) templateString(output string) string {
 	outputPath := drv.Output(output).Path
 	if drv.Output(output).Path != "" {
+		panic("huh")
 		return outputPath
 	}
 	fn := drv.filename()
