@@ -101,6 +101,9 @@ func TestAllFunctions(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if fi.IsDir() && fi.Name() == "testdata" {
+			return filepath.SkipDir
+		}
 		// TODO: ignore .git, ignore .gitignore?
 		if strings.HasSuffix(path, ".bramble") {
 			module, err := b.filepathToModuleName(path)
