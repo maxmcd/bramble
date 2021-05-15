@@ -12,3 +12,20 @@ def busybox():
         sources=files(["./script.sh"]),
         env={"busybox_download": b},
     )
+
+
+def script_derivation(name, script, **kwargs):
+    bb = busybox()
+
+    PATH = "{}/bin".format(bb.out)
+    env = kwargs.get("env", {})
+    if kwargs.get("env"):
+        kwargs.pop("env")
+    env.update(dict(PATH=PATH, busybox=bb.out))
+    return derivation(
+        name,
+        builder=bb.out + "/bin/sh",
+        env=env,
+        args=["-c", script],
+        **kwargs,
+    )

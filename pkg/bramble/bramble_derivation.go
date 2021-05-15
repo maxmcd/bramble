@@ -5,7 +5,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (drv *Derivation) buildDependencies() (graph *AcyclicGraph, err error) {
+func (drv *Derivation) BuildDependencies() (graph *AcyclicGraph, err error) {
 	graph = NewAcyclicGraph()
 	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
@@ -31,9 +31,9 @@ func (drv *Derivation) buildDependencies() (graph *AcyclicGraph, err error) {
 	return
 }
 
-// runtimeDependencyGraph graphs the full dependency graph needed at runtime for
+// RuntimeDependencyGraph graphs the full dependency graph needed at runtime for
 // all outputs. Includes all immediate dependencies and their dependencies
-func (drv *Derivation) runtimeDependencyGraph() (graph *AcyclicGraph, err error) {
+func (drv *Derivation) RuntimeDependencyGraph() (graph *AcyclicGraph, err error) {
 	graph = NewAcyclicGraph()
 	noOutput := errors.New("outputs missing on derivation when searching for runtime dependencies")
 	if drv.MissingOutput() {
@@ -117,4 +117,18 @@ func (drv *Derivation) runtimeFiles(outputName string) []string {
 
 func (drv *Derivation) hasOutputs() bool {
 	return drv.Outputs != nil
+}
+
+func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
+	filename := drv.filename()
+	var outputs []Output
+	outputs, exists, err = drv.bramble.checkForExistingDerivation(filename)
+	if err != nil {
+		return
+	}
+	if exists {
+		drv.Outputs = outputs
+		drv.bramble.derivations.Store(filename, drv)
+	}
+	return
 }

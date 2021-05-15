@@ -153,7 +153,8 @@ func runBrambleRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	return b.Build(context.Background(), args)
+	_, _, err = b.Build(context.Background(), args)
+	return err
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
