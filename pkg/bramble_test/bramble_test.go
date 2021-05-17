@@ -12,9 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFoo(t *testing.T) {
+func NewTestProject(t *testing.T) *TestProject {
 	tp := cachedProj.Copy()
 	t.Cleanup(tp.Cleanup)
+	return tp
+}
+
+func TestFoo(t *testing.T) {
+	tp := NewTestProject(t)
 
 	if err := ioutil.WriteFile(
 		filepath.Join(tp.projectPath, "./foo.bramble"),
@@ -33,9 +38,20 @@ def ok():
 	fmt.Println(result)
 }
 
+func TestOneByOne(t *testing.T) {
+	tp := NewTestProject(t)
+	drvs, result, err := tp.Bramble().Build(context.Background(), []string{":fetch_busybox"})
+	require.NoError(t, err)
+	fmt.Println(drvs, result)
+	{
+		drvs, result, err := tp.Bramble().Build(context.Background(), []string{":busybox"})
+		require.NoError(t, err)
+		fmt.Println(drvs[0].PrettyJSON(), result)
+	}
+}
+
 func TestDependency(t *testing.T) {
-	tp := cachedProj.Copy()
-	t.Cleanup(tp.Cleanup)
+	tp := NewTestProject(t)
 	if err := tp.Bramble().GC(nil); err != nil {
 		fmt.Printf("%+v", err)
 		fmt.Println(starutil.AnnotateError(err))
@@ -55,8 +71,9 @@ func TestDependency(t *testing.T) {
 		}
 	}
 	drv := drvs[0]
+	fmt.Println(drv.PrettyJSON())
 	{
-		graph, err := drv.BuildDependencies()
+		graph, err := drv.BuildDependencyGraph()
 		require.NoError(t, err)
 		graph.PrintDot()
 	}

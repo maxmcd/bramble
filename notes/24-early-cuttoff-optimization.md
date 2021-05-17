@@ -14,3 +14,19 @@ I think this is what the steps would look like with this approach:
 2. Find the first derivation that needs to be built. Build it, replace all the child derivations derivation hashes with the output hash. Continue building.
 
 What's the cost here? We wouldn't know the derivations we're going to build without building them, this only means that we don't know in advance which things we're going to have to build. This seems fine (and I think is mandatory for this feature).
+
+
+-----
+
+I think this means we can't trust the derivation name any more, it is subject to change. Every time we build a derivation we must patch all of its references everywhere. This includes derivation inputs and caches and template strings.
+
+So after we've built a derivation, we could freeze the tree and patch all dependent derivations. We know that none of them will be building since they rely on the derivation that's being built. During the patch phase we'll need to hold a lock and then update:
+- All references to child derivation names
+- All references in derivation outputs
+- All text references of derivations in dependent derivtions
+
+When building from scratch we'll need to do this a bit. We'll also need to re-fetch derivations from disk/cache when new names are computed.
+
+----
+
+Shouldn't check to see if a derivation exists on disk until all of it's build inputs have build outputs.

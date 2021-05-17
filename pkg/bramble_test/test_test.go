@@ -20,7 +20,7 @@ var cachedProj *TestProject
 
 func TestMain(m *testing.M) {
 	var err error
-	cachedProj, err = NewTestProject()
+	cachedProj, err = newTestProject()
 	if err != nil {
 		fmt.Printf("%+v", err)
 		panic(starutil.AnnotateError(err))
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	os.Exit(exitVal)
 }
 
-func (tp *TestProject) Copy() TestProject {
+func (tp *TestProject) Copy() *TestProject {
 	out := TestProject{
 		bramblePath: fileutil.TestTmpDir(nil),
 		projectPath: fileutil.TestTmpDir(nil),
@@ -41,7 +41,7 @@ func (tp *TestProject) Copy() TestProject {
 	if err := fileutil.CopyDirectory(tp.projectPath, out.projectPath); err != nil {
 		panic(err)
 	}
-	return out
+	return &out
 }
 func (tp *TestProject) Bramble() *bramble.Bramble {
 	b, err := bramble.NewBramble(tp.projectPath, bramble.OptionNoRoot)
@@ -57,7 +57,7 @@ func (tp *TestProject) Cleanup() {
 	_ = os.RemoveAll(tp.projectPath)
 }
 
-func NewTestProject() (*TestProject, error) {
+func newTestProject() (*TestProject, error) {
 	// Write files
 	bramblePath := fileutil.TestTmpDir(nil)
 	projectPath := fileutil.TestTmpDir(nil)
@@ -72,9 +72,8 @@ func NewTestProject() (*TestProject, error) {
 	if err != nil {
 		return nil, err
 	}
-	// b.noRoot = true
 	ctx := context.Background()
-	if _, _, err := b.Build(ctx, []string{":busybox"}); err != nil {
+	if _, _, err := b.Build(ctx, []string{":fetch_busybox"}); err != nil {
 		return nil, err
 	}
 	return &TestProject{

@@ -11,12 +11,12 @@ def busy_wrap():
         args=[
             "-c",
             """
-		set -e
+        set -e
 
-		cp -r $bb/bin $out/
+        cp -r $bb/bin $out/
 
-		echo "here are the docs" > $docs/doc.txt
-		""",
+        echo "here are the docs" > $docs/doc.txt
+        """,
         ],
     )
 
@@ -25,17 +25,17 @@ def say_world():
     return bramble.script_derivation(
         "say_world",
         script="""
-		set -e
+        set -e
 
-		mkdir -p $out/bin
-		touch $out/bin/say-world
-		chmod +x $out/bin/say-world
+        mkdir -p $out/bin
+        touch $out/bin/say-world
+        chmod +x $out/bin/say-world
 
-		echo "#!$busybox/bin/sh" > $out/bin/say-world
-		echo "$busybox/bin/echo world" >> $out/bin/say-world
+        echo "#!$busybox/bin/sh" > $out/bin/say-world
+        echo "$busybox/bin/echo world" >> $out/bin/say-world
 
-		$out/bin/say-world
-		""",
+        $out/bin/say-world
+        """,
     )
 
 
@@ -43,17 +43,17 @@ def say_hello():
     return bramble.script_derivation(
         "say_hello",
         script="""
-		set -e
+        set -e
 
-		mkdir -p $out/bin
-		touch $out/bin/say-hello
-		chmod +x $out/bin/say-hello
+        mkdir -p $out/bin
+        touch $out/bin/say-hello
+        chmod +x $out/bin/say-hello
 
-		echo "#!$busybox/bin/sh" > $out/bin/say-hello
-		echo "$busybox/bin/echo hello" >> $out/bin/say-hello
+        echo "#!$busybox/bin/sh" > $out/bin/say-hello
+        echo "$busybox/bin/echo hello" >> $out/bin/say-hello
 
-		$out/bin/say-hello
-		""",
+        $out/bin/say-hello
+        """,
     )
 
 
@@ -61,17 +61,17 @@ def hello_world():
     return bramble.script_derivation(
         "hello_world",
         script="""
-		set -e
+        set -e
 
-		mkdir -p $out/bin
-		touch $out/bin/hello_world
-		chmod +x $out/bin/hello_world
+        mkdir -p $out/bin
+        touch $out/bin/hello_world
+        chmod +x $out/bin/hello_world
 
-		echo "#!$busybox/bin/sh" > $out/bin/hello_world
-		echo "$hello/bin/say-hello" >> $out/bin/hello_world
+        echo "#!$busybox/bin/sh" > $out/bin/hello_world
+        echo "$hello/bin/say-hello" >> $out/bin/hello_world
         echo "$world/bin/say-world" >> $out/bin/hello_world
 
-		$out/bin/hello_world
-		""",
+        $out/bin/hello_world
+        """,
         env=dict(hello=say_hello().out, world=say_world().out),
     )
