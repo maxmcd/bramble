@@ -1,11 +1,15 @@
 package bramble
 
 import (
+	"encoding/json"
+	"strings"
+
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )
 
-func (drv *Derivation) BuildDependencies() (graph *AcyclicGraph, err error) {
+func (drv *Derivation) BuildDependencyGraph() (graph *AcyclicGraph, err error) {
 	graph = NewAcyclicGraph()
 	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
@@ -131,4 +135,26 @@ func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
 		drv.bramble.derivations.Store(filename, drv)
 	}
 	return
+}
+
+func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
+	var dummyDrv Derivation
+	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(drv.JSON()), old, new)), &dummyDrv); err != nil {
+		return err
+	}
+	drv.Args = dummyDrv.Args
+	drv.Env = dummyDrv.Env
+	drv.Builder = dummyDrv.Builder
+	return nil
+}
+
+func (drv *Derivation) copyWithOutputValuesReplaced() (copy *Derivation, err error) {
+	s := string(drv.JSON())
+	for _, match := range BuiltTemplateStringRegexp.FindAllStringSubmatch(s, -1) {
+		storePath := drv.bramble.store.JoinStorePath(match[1])
+		if fileutil.FileExists(storePath) {
+			s = strings.ReplaceAll(s, match[0], storePath)
+		}
+	}
+	return copy, json.Unmarshal([]byte(s), &copy)
 }

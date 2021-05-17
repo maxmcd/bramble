@@ -108,6 +108,10 @@ func (b *Bramble) checkForExistingDerivation(filename string) (outputs []Output,
 	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
 }
 
+func (b *Bramble) storeDerivation(drv *Derivation) {
+	b.derivations.Store(drv.filename(), drv)
+}
+
 func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
 	exists, err := drv.populateOutputsFromStore()
 	if err != nil {
@@ -119,7 +123,7 @@ func (b *Bramble) buildDerivationIfNew(ctx context.Context, drv *Derivation) (di
 		return false, nil
 	}
 	logger.Print("Building derivation", filename)
-	logger.Debugw(drv.prettyJSON())
+	logger.Debugw(drv.PrettyJSON())
 
 	if err = b.buildDerivation(ctx, drv, false); err != nil {
 		return false, errors.Wrap(err, "error building "+filename)
@@ -393,18 +397,6 @@ func (b *Bramble) moduleNameFromFileName(filename string) (moduleName string, er
 	moduleName = filepath.Join("github.com/maxmcd/bramble", relativeWorkspacePath)
 	moduleName = strings.TrimSuffix(moduleName, "/default"+BrambleExtension)
 	moduleName = strings.TrimSuffix(moduleName, BrambleExtension)
-	return
-}
-
-// setDerivationBuilder is used during instantiation to set various attributes on the
-// derivation for a specific builder
-func (b *Bramble) setDerivationBuilder(drv *Derivation, builder starlark.Value) (err error) {
-	switch v := builder.(type) {
-	case starlark.String:
-		drv.Builder = v.GoString()
-	default:
-		return errors.Errorf("no builder for %q", builder.Type())
-	}
 	return
 }
 
@@ -722,7 +714,7 @@ func (b *Bramble) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer
 
 func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *Derivation, err error) {
 	// Find all derivation output template strings within the derivation
-	outputs := drv.searchForDerivationOutputs()
+	outputs := drv.InputDerivations
 
 	replacer, err := b.stringsReplacerForOutputs(outputs)
 	if err != nil {
@@ -775,6 +767,8 @@ type BuildResult struct {
 
 func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutputs, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
+	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
+	// derivation and then just merge the graphs with a fake root
 	graph := b.assembleDerivationDependencyGraph(dos)
 	var wg sync.WaitGroup
 	errChan := make(chan error)
@@ -793,12 +787,15 @@ func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutp
 			defer func() { <-semaphore }()
 			// serial for now
 
+			// Skip the rake root
 			if root, ok := v.(string); ok && root == "root" {
 				return
 			}
 			do := v.(DerivationOutput)
 			drv := b.derivations.Load(do.Filename)
+			// Skip building if it already has an output
 			if drv.Output(do.OutputName).Path != "" {
+				result = append(result, BuildResult{Derivation: drv, DidBuild: false})
 				return
 			}
 			if skipDerivation != nil && skipDerivation.filename() == drv.filename() {
@@ -1124,7 +1121,7 @@ func (b *Bramble) Shell(ctx context.Context, args []string) (result []BuildResul
 	}
 	filename := shellDerivation.filename()
 	logger.Print("Launching shell for derivation", filename)
-	logger.Debugw(shellDerivation.prettyJSON())
+	logger.Debugw(shellDerivation.PrettyJSON())
 	if err = b.buildDerivation(ctx, shellDerivation, true); err != nil {
 		return nil, errors.Wrap(err, "error spawning "+filename)
 	}
@@ -1173,7 +1170,7 @@ func (b *Bramble) GC(_ []string) (err error) {
 	pathsToKeep := map[string]struct{}{}
 
 	for _, drv := range derivations {
-		graph, err := drv.BuildDependencies()
+		graph, err := drv.BuildDependencyGraph()
 		if err != nil {
 			// if we can't fetch the full graph then it likely hasn't been built
 			// and we want to skip it. TODO: we might be skipping important things here?
@@ -1251,6 +1248,10 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool,
 	}
 	loc := b.store.JoinStorePath(filename)
 	if !fileutil.FileExists(loc) {
+		// If we have the derivation in memory just return it
+		if drv != nil {
+			return drv, false, nil
+		}
 		return nil, false, errors.WithStack(os.ErrNotExist)
 	}
 	f, err := os.Open(loc)
