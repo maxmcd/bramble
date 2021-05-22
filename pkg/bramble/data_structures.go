@@ -35,6 +35,12 @@ func (dm *DerivationsMap) Range(f func(filename string, drv *Derivation) bool) {
 	})
 }
 
+// FakeDAGRoot is used when we have multiple build outputs, or "roots" in our
+// graph so we need to tie them to a single fake root so that we still have a
+// value DAG.
+const FakeDAGRoot = "fakeDAGRoot"
+
+// AcyclicGraph
 type AcyclicGraph struct {
 	dag.AcyclicGraph
 }
@@ -46,6 +52,46 @@ func NewAcyclicGraph() *AcyclicGraph {
 func (ag AcyclicGraph) PrintDot() {
 	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
 	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
+}
+
+func mergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
+	if len(graphs) == 0 {
+		return nil
+	}
+	if len(graphs) == 1 {
+		return graphs[0]
+	}
+	out := graphs[0]
+	for _, graph := range graphs[1:] {
+		// Add all vertices and edges to the output graph
+		for _, vertex := range graph.Vertices() {
+			out.Add(vertex)
+		}
+		for _, edge := range graph.Edges() {
+			out.Connect(edge)
+		}
+	}
+
+	roots := graphRoots(out)
+	if len(roots) != 1 {
+		out.Add(FakeDAGRoot)
+		for _, root := range roots {
+			if root != FakeDAGRoot {
+				out.Connect(dag.BasicEdge(FakeDAGRoot, root))
+			}
+		}
+	}
+	return out
+}
+
+func graphRoots(g *AcyclicGraph) []dag.Vertex {
+	roots := make([]dag.Vertex, 0, 1)
+	for _, v := range g.Vertices() {
+		if g.UpEdges(v).Len() == 0 {
+			roots = append(roots, v)
+		}
+	}
+	return roots
 }
 
 type BiStringMap struct {
