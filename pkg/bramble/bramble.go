@@ -1177,6 +1177,9 @@ func (b *Bramble) GC(_ []string) (err error) {
 			continue
 		}
 		for _, v := range graph.Vertices() {
+			if v == FakeDAGRoot {
+				continue
+			}
 			do := v.(DerivationOutput)
 			drv, exists, err := b.loadDerivation(do.Filename)
 			if !exists {
