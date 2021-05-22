@@ -10,6 +10,7 @@ import (
 	"runtime/trace"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maxmcd/bramble/pkg/hasher"
@@ -206,6 +207,7 @@ type Derivation struct {
 	// internal fields
 	sources filesList
 	bramble *Bramble
+	lock    sync.Mutex
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

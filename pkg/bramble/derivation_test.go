@@ -61,6 +61,8 @@ func TestDerivationOutputChange(t *testing.T) {
 		}
 		do := v.(DerivationOutput)
 		drv := b.derivations.Load(do.Filename)
+		drv.lock.Lock()
+		defer drv.lock.Unlock()
 
 		// We construct the template value using the DerivationOutput which
 		// uses the initial value
