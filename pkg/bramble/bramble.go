@@ -762,7 +762,7 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 			// serial for now
 
 			// Skip the rake root
-			if root, ok := v.(string); ok && root == "root" {
+			if v == FakeDAGRoot {
 				return
 			}
 			do := v.(DerivationOutput)
