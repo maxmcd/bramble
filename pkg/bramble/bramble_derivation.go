@@ -27,7 +27,17 @@ func (drv *Derivation) BuildDependencyGraph() (graph *AcyclicGraph, err error) {
 		}
 		return nil
 	}
-	for _, do := range drv.DerivationOutputs() {
+	dos := drv.DerivationOutputs()
+
+	// If there are multiple build outputs we'll need to create a fake root and
+	// connect all of the build outputs to our fake root.
+	if len(dos) > 1 {
+		graph.Add(FakeDAGRoot)
+		for _, do := range dos {
+			graph.Connect(dag.BasicEdge(FakeDAGRoot, do))
+		}
+	}
+	for _, do := range dos {
 		if err = processInputDerivations(drv, do); err != nil {
 			return
 		}

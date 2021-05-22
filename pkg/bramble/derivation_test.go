@@ -42,22 +42,23 @@ func TestDerivationOutputChange(t *testing.T) {
 	third := &Derivation{
 		bramble:     b,
 		Name:        "scrip2",
-		OutputNames: []string{"out"},
+		OutputNames: []string{"out", "foo"},
 		Builder:     fmt.Sprintf("%s/sh", second.String()),
 		Args:        []string{"build_it2"},
 	}
 	third.populateUnbuiltInputDerivations()
 	b.storeDerivation(third)
 
-	// drvFilenameMap := map[string]string{}
-
 	graph, err := third.BuildDependencyGraph()
 	require.NoError(t, err)
-	// We presend to build
+	require.NoError(t, graph.Validate())
 
+	// We pretend to build
 	counter := 1
 	graph.Walk(func(v dag.Vertex) error {
-		fmt.Println("---------- ")
+		if v == FakeDAGRoot {
+			return nil
+		}
 		do := v.(DerivationOutput)
 		drv := b.derivations.Load(do.Filename)
 
@@ -86,6 +87,9 @@ func TestDerivationOutputChange(t *testing.T) {
 		newTemplateName := drv.String()
 		fmt.Println(do.Filename, oldTemplateName, newTemplateName)
 		for _, edge := range graph.EdgesTo(v) {
+			if edge.Source() == FakeDAGRoot {
+				continue
+			}
 			childDO := edge.Source().(DerivationOutput)
 			drv := b.derivations.Load(childDO.Filename)
 			fmt.Println(drv.PrettyJSON())
@@ -101,7 +105,6 @@ func TestDerivationOutputChange(t *testing.T) {
 		counter++
 		return nil
 	})
-
 }
 
 func TestDerivationValueReplacement(t *testing.T) {
