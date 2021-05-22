@@ -725,51 +725,25 @@ func (b *Bramble) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy 
 	return copy, err
 }
 
-func (b *Bramble) derivationsToDerivationOutputs(drvs []*Derivation) (dos DerivationOutputs) {
-	for _, drv := range drvs {
-		filename := drv.filename()
-		for _, name := range drv.OutputNames {
-			dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
-		}
-	}
-	return dos
-}
-
-func (b *Bramble) assembleDerivationDependencyGraph(dos DerivationOutputs) *AcyclicGraph {
-	graph := NewAcyclicGraph()
-	_ = graph
-	root := "root"
-	graph.Add(root)
-	var processDO func(do DerivationOutput)
-	processDO = func(do DerivationOutput) {
-		drv := b.derivations.Load(do.Filename)
-		if drv == nil {
-			panic(do)
-		}
-		for _, inputDO := range drv.InputDerivations {
-			graph.Add(inputDO)
-			graph.Connect(dag.BasicEdge(do, inputDO))
-			processDO(inputDO) // TODO, not recursive
-		}
-	}
-	for _, do := range dos {
-		graph.Add(do)
-		graph.Connect(dag.BasicEdge(root, do))
-		processDO(do)
-	}
-	return graph
-}
-
 type BuildResult struct {
 	Derivation *Derivation
 	DidBuild   bool
 }
 
-func (b *Bramble) buildDerivationOutputs(ctx context.Context, dos DerivationOutputs, skipDerivation *Derivation) (
+func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
 	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
 	// derivation and then just merge the graphs with a fake root
-	graph := b.assembleDerivationDependencyGraph(dos)
+
+	graphs := []*AcyclicGraph{}
+	for _, drv := range derivations {
+		graph, err := drv.BuildDependencyGraph()
+		if err != nil {
+			return nil, err
+		}
+		graphs = append(graphs, graph)
+	}
+	graph := mergeGraphs(graphs...)
 	var wg sync.WaitGroup
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 1)
@@ -1111,8 +1085,8 @@ func (b *Bramble) Shell(ctx context.Context, args []string) (result []BuildResul
 	}
 	shellDerivation := derivations[0]
 
-	if result, err = b.buildDerivationOutputs(ctx,
-		b.derivationsToDerivationOutputs(derivations), shellDerivation); err != nil {
+	if result, err = b.buildDerivations(ctx,
+		derivations, shellDerivation); err != nil {
 		return
 	}
 
@@ -1139,7 +1113,7 @@ func (b *Bramble) Build(ctx context.Context, args []string) (derivations []*Deri
 	if derivations, err = b.parseAndCallBuildArg("build", args); err != nil {
 		return nil, nil, err
 	}
-	if buildResult, err = b.buildDerivationOutputs(ctx, b.derivationsToDerivationOutputs(derivations), nil); err != nil {
+	if buildResult, err = b.buildDerivations(ctx, derivations, nil); err != nil {
 		return
 	}
 
