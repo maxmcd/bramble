@@ -807,7 +807,6 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 						panic(err)
 					}
 				}
-
 			}
 
 			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
@@ -840,7 +839,9 @@ func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
 	b = &Bramble{}
 	b.moduleCache = map[string]string{}
 	b.filenameCache = NewBiStringMap()
-	b.derivations = &DerivationsMap{}
+	b.derivations = &DerivationsMap{
+		d: map[string]*Derivation{},
+	}
 	b.wd = wd
 
 	for _, opt := range opts {
@@ -1166,32 +1167,53 @@ func (b *Bramble) GC(_ []string) (err error) {
 		return
 	}
 	pathsToKeep := map[string]struct{}{}
-
+	graphs := []*AcyclicGraph{}
 	for _, drv := range derivations {
 		graph, err := drv.BuildDependencyGraph()
 		if err != nil {
-			// if we can't fetch the full graph then it likely hasn't been built
-			// and we want to skip it. TODO: we might be skipping important things here?
-			continue
+			return err
 		}
-		for _, v := range graph.Vertices() {
-			if v == FakeDAGRoot {
-				continue
-			}
-			do := v.(DerivationOutput)
-			drv, exists, err := b.loadDerivation(do.Filename)
-			if !exists {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			for _, f := range append(drv.inputFiles(),
-				drv.runtimeFiles(do.OutputName)...) {
-				pathsToKeep[f] = struct{}{}
-			}
-		}
+		graphs = append(graphs, graph)
 	}
+	graph := mergeGraphs(graphs...)
+
+	errors := graph.Walk(func(v dag.Vertex) error {
+		if v == FakeDAGRoot {
+			return nil
+		}
+		do := v.(DerivationOutput)
+		drv, _, err := b.loadDerivation(do.Filename)
+		if drv == nil {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, f := range append(drv.inputFiles(), drv.runtimeFiles(do.OutputName)...) {
+			pathsToKeep[f] = struct{}{}
+		}
+
+		oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
+		newTemplateName := drv.String()
+		for _, edge := range graph.EdgesTo(v) {
+			if edge.Source() == FakeDAGRoot {
+				continue
+			}
+			childDO := edge.Source().(DerivationOutput)
+			drv := b.derivations.Load(childDO.Filename)
+			if drv == nil {
+				continue
+			}
+			if err := drv.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
+				panic(err)
+			}
+		}
+		return nil
+	})
+	if len(errors) != 0 {
+		panic(errors)
+	}
+
 	// delete everything in the store that's not in the map
 	files, err := os.ReadDir(b.store.StorePath)
 	if err != nil {
@@ -1235,6 +1257,18 @@ func (b *Bramble) collectDerivationsToPreserve() (derivations []*Derivation, err
 			// project prevents a global gc, think about how to deal with this
 			return nil, errors.Wrapf(err, "error computing derivations in %q", registryLoc)
 		}
+
+		if len(drvs) == 0 {
+			continue
+		}
+		// Grab derivation cache from other projects and add to ours
+		drvs[0].bramble.derivations.Range(func(m map[string]*Derivation) {
+			for filename, drv := range m {
+				// Replace bramble with our bramble
+				drv.bramble = b
+				b.derivations.Store(filename, drv)
+			}
+		})
 		derivations = append(derivations, drvs...)
 	}
 	return
@@ -1249,6 +1283,7 @@ func (b *Bramble) loadDerivation(filename string) (drv *Derivation, exists bool,
 	}
 	loc := b.store.JoinStorePath(filename)
 	if !fileutil.FileExists(loc) {
+		// TODO: this is unintuitive and annoying, replace it
 		// If we have the derivation in memory just return it
 		if drv != nil {
 			return drv, false, nil

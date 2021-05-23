@@ -129,10 +129,6 @@ func (drv *Derivation) runtimeFiles(outputName string) []string {
 	return []string{drv.filename(), drv.Output(outputName).Path}
 }
 
-func (drv *Derivation) hasOutputs() bool {
-	return drv.Outputs != nil
-}
-
 func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
 	filename := drv.filename()
 	var outputs []Output

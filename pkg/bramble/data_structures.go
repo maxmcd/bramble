@@ -9,30 +9,29 @@ import (
 )
 
 type DerivationsMap struct {
-	sync.Map
+	d    map[string]*Derivation
+	lock sync.RWMutex
 }
 
 func (dm *DerivationsMap) Load(filename string) *Derivation {
-	d, ok := dm.Map.Load(filename)
-	if !ok {
-		return nil
-	}
-	return d.(*Derivation)
+	dm.lock.RLock()
+	defer dm.lock.RUnlock()
+	return dm.d[filename]
 }
 
 func (dm *DerivationsMap) Has(filename string) bool {
 	return dm.Load(filename) != nil
 }
 func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
-	dm.Map.Store(filename, drv)
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	dm.d[filename] = drv
 }
 
-// Range calls f sequentially for each key and value present in the map. If f
-// returns false, range stops the iteration.
-func (dm *DerivationsMap) Range(f func(filename string, drv *Derivation) bool) {
-	dm.Map.Range(func(key, value interface{}) bool {
-		return f(key.(string), value.(*Derivation))
-	})
+func (dm *DerivationsMap) Range(cb func(map[string]*Derivation)) {
+	dm.lock.Lock()
+	cb(dm.d)
+	dm.lock.Unlock()
 }
 
 // FakeDAGRoot is used when we have multiple build outputs, or "roots" in our
@@ -56,7 +55,7 @@ func (ag AcyclicGraph) PrintDot() {
 
 func mergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
 	if len(graphs) == 0 {
-		return nil
+		return NewAcyclicGraph()
 	}
 	if len(graphs) == 1 {
 		return graphs[0]
