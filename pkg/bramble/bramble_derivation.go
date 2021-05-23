@@ -162,7 +162,7 @@ func (drv *Derivation) copyWithOutputValuesReplaced() (copy *Derivation, err err
 	s := string(drv.JSON())
 	for _, match := range BuiltTemplateStringRegexp.FindAllStringSubmatch(s, -1) {
 		storePath := drv.bramble.store.JoinStorePath(match[1])
-		if fileutil.FileExists(storePath) {
+		if fileutil.PathExists(storePath) {
 			s = strings.ReplaceAll(s, match[0], storePath)
 		}
 	}

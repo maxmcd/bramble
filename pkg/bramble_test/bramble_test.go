@@ -14,7 +14,7 @@ import (
 
 func NewTestProject(t *testing.T) *TestProject {
 	tp := cachedProj.Copy()
-	t.Cleanup(tp.Cleanup)
+	// t.Cleanup(tp.Cleanup)
 	return tp
 }
 
@@ -57,14 +57,16 @@ func TestDependency(t *testing.T) {
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
+	// spew.Dump(ioutil.ReadDir(tp.bramblePath + "/store"))
 	b := tp.Bramble()
 	drvs, result, err := b.Build(context.Background(), []string{"dep:hello_world"})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, build := range result {
 		switch build.Derivation.Name {
-		case "fetch-url", "busybox":
+		case "fetch-url":
 			assert.Equal(t, build.DidBuild, false)
 		default:
 			assert.Equal(t, build.DidBuild, true)

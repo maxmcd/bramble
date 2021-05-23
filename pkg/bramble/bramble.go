@@ -177,7 +177,7 @@ func (b *Bramble) buildDerivation(ctx context.Context, drv *Derivation, shell bo
 			return
 		}
 	}
-	drvCopy, err := b.copyDerivationWithOutputValuesReplaced(drv)
+	drvCopy, err := drv.copyWithOutputValuesReplaced()
 	if err != nil {
 		return
 	}
@@ -767,12 +767,11 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 			}
 			do := v.(DerivationOutput)
 			drv := b.derivations.Load(do.Filename)
-			// Skip building if it already has an output
-			if drv.Output(do.OutputName).Path != "" {
-				result = append(result, BuildResult{Derivation: drv, DidBuild: false})
-				return
-			}
-			if skipDerivation != nil && skipDerivation.filename() == drv.filename() {
+			drv.lock.Lock()
+			defer drv.lock.Unlock()
+
+			if skipDerivation != nil && skipDerivation == drv {
+				// Is this enough of an equality check?
 				return
 			}
 			wg.Add(1)
@@ -786,6 +785,28 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 				errChan <- err
 				return
 			}
+
+			// Post build processing of dependencies template values:
+			{
+				// We construct the template value using the DerivationOutput which
+				// uses the initial derivation output value
+				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
+
+				newTemplateName := drv.String()
+
+				for _, edge := range graph.EdgesTo(v) {
+					if edge.Source() == FakeDAGRoot {
+						continue
+					}
+					childDO := edge.Source().(DerivationOutput)
+					drv := b.derivations.Load(childDO.Filename)
+					if err := drv.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
+						panic(err)
+					}
+				}
+
+			}
+
 			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
 			wg.Done()
 			return

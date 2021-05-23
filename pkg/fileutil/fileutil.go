@@ -271,6 +271,7 @@ func CopySymLink(source, dest string) error {
 	return os.Symlink(link, dest)
 }
 
+// FileExists will only return true if the path is a file, not a directory
 func FileExists(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
