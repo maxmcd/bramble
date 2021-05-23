@@ -744,6 +744,9 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 		graphs = append(graphs, graph)
 	}
 	graph := mergeGraphs(graphs...)
+	if graph == nil {
+		return
+	}
 	var wg sync.WaitGroup
 	errChan := make(chan error)
 	semaphore := make(chan struct{}, 1)
