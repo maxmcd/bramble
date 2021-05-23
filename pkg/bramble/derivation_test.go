@@ -81,7 +81,7 @@ func TestDerivationOutputChange(t *testing.T) {
 			// Fake build
 			drv.Outputs = []Output{{Path: strings.Repeat(fmt.Sprint(counter), 32)}}
 
-			// Replace outputs with correct output path (hint: will be easy)
+			// Replace outputs with correct output path
 			_, err = drv.copyWithOutputValuesReplaced()
 			require.NoError(t, err)
 		}

@@ -130,15 +130,15 @@ func TestAllFunctions(t *testing.T) {
 		return nil
 	}))
 	urls := []string{}
-	b.derivations.Range(func(filename string, drv *Derivation) bool {
+	for _, drv := range b.derivations.d {
 		if drv.Builder == "fetch_url" {
 			url, ok := drv.Env["url"]
 			if ok {
 				urls = append(urls, url)
 			}
 		}
-		return true
-	})
+	}
+	fmt.Println(urls)
 }
 
 func runBrambleRun(args []string) error {
