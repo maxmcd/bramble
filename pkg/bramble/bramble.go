@@ -1179,8 +1179,10 @@ func (b *Bramble) GC(_ []string) (err error) {
 		graphs = append(graphs, graph)
 	}
 	graph := mergeGraphs(graphs...)
-
+	var lock sync.Mutex
 	errors := graph.Walk(func(v dag.Vertex) error {
+		lock.Lock() // Serialize
+		defer lock.Unlock()
 		if v == FakeDAGRoot {
 			return nil
 		}
