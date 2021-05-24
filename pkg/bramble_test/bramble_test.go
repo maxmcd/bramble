@@ -61,7 +61,7 @@ func TestDependency(t *testing.T) {
 	b := tp.Bramble()
 	drvs, result, err := b.Build(context.Background(), []string{"dep:hello_world"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal(err, starutil.AnnotateError(err))
 	}
 
 	for _, build := range result {
@@ -73,7 +73,6 @@ func TestDependency(t *testing.T) {
 		}
 	}
 	drv := drvs[0]
-	fmt.Println(drv.PrettyJSON())
 	{
 		graph, err := drv.BuildDependencyGraph()
 		require.NoError(t, err)
@@ -96,6 +95,7 @@ func TestDependency(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		fmt.Println(result)
 		for _, build := range result {
 			// shouldn't need to rebuild anything after a GC calls
 			assert.False(t, build.DidBuild)
