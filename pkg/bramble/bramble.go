@@ -747,7 +747,11 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 		graphs = append(graphs, graph)
 	}
 	graph := mergeGraphs(graphs...)
-	if graph == nil {
+	if graph == nil || len(graph.Vertices()) == 0 {
+		return
+	}
+	if err = graph.Validate(); err != nil {
+		err = errors.WithStack(err)
 		return
 	}
 	var wg sync.WaitGroup

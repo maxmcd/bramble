@@ -64,6 +64,8 @@ func TestDependency(t *testing.T) {
 		t.Fatal(err, starutil.AnnotateError(err))
 	}
 
+	fmt.Println(result)
+
 	for _, build := range result {
 		switch build.Derivation.Name {
 		case "fetch-url":
