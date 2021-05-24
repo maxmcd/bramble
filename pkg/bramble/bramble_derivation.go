@@ -15,7 +15,7 @@ func (drv *Derivation) BuildDependencyGraph() (graph *AcyclicGraph, err error) {
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
 		graph.Add(do)
 		for _, id := range drv.InputDerivations {
-			inputDrv, _, err := drv.bramble.loadDerivation(id.Filename)
+			inputDrv, err := drv.bramble.loadDerivation(id.Filename)
 			if err != nil {
 				return err
 			}
@@ -55,7 +55,7 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *AcyclicGraph, err error)
 	}
 	var processDerivationOutputs func(do DerivationOutput) error
 	processDerivationOutputs = func(do DerivationOutput) error {
-		drv, _, err := drv.bramble.loadDerivation(do.Filename)
+		drv, err := drv.bramble.loadDerivation(do.Filename)
 		if err != nil {
 			return err
 		}
@@ -112,7 +112,7 @@ func (drv *Derivation) runtimeDependencies() (dependencies map[string][]Derivati
 func (drv *Derivation) inputDerivations() (inputDerivations map[DerivationOutput]*Derivation, err error) {
 	inputDerivations = make(map[DerivationOutput]*Derivation)
 	for _, do := range drv.InputDerivations {
-		inputDrv, _, err := drv.bramble.loadDerivation(do.Filename)
+		inputDrv, err := drv.bramble.loadDerivation(do.Filename)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,7 @@ func (drv *Derivation) runtimeFiles(outputName string) []string {
 func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
 	filename := drv.filename()
 	var outputs []Output
-	outputs, exists, err = drv.bramble.checkForExistingDerivation(filename)
+	outputs, exists, err = drv.bramble.checkForBuiltDerivationOutputs(filename)
 	if err != nil {
 		return
 	}
