@@ -57,7 +57,6 @@ func TestDependency(t *testing.T) {
 		fmt.Println(starutil.AnnotateError(err))
 		t.Fatal(err)
 	}
-	// spew.Dump(ioutil.ReadDir(tp.bramblePath + "/store"))
 	b := tp.Bramble()
 	drvs, result, err := b.Build(context.Background(), []string{"dep:hello_world"})
 	if err != nil {
@@ -69,9 +68,9 @@ func TestDependency(t *testing.T) {
 	for _, build := range result {
 		switch build.Derivation.Name {
 		case "fetch-url":
-			assert.Equal(t, build.DidBuild, false)
+			assert.Equal(t, build.DidBuild, false, build.Derivation.Name)
 		default:
-			assert.Equal(t, build.DidBuild, true)
+			assert.Equal(t, build.DidBuild, true, build.Derivation.Name)
 		}
 	}
 	drv := drvs[0]
@@ -103,46 +102,4 @@ func TestDependency(t *testing.T) {
 			assert.False(t, build.DidBuild)
 		}
 	}
-
-	// {
-	// 	var drv *bramble.Derivation
-	// 	b.derivations.Range(func(filename string, d *bramble.Derivation) bool {
-	// 		if d.Name == "ok" {
-	// 			drv = d
-	// 			return false
-	// 		}
-	// 		return true
-	// 	})
-	// 	{
-	// 		graph, err := drv.buildDependencies()
-	// 		require.NoError(t, err)
-	// 		graph.PrintDot()
-	// 		fmt.Println(graph.String(), "----")
-	// 	}
-	// 	{
-	// 		graph, err := drv.runtimeDependencyGraph()
-	// 		require.NoError(t, err)
-	// 		graph.PrintDot()
-	// 		fmt.Println(graph.String(), "----")
-	// 	}
-	// 	fmt.Println(drv.inputFiles())
-	// 	fmt.Println(drv.runtimeDependencies())
-	// 	fmt.Println(drv.runtimeFiles("out"))
-	// 	fsys := os.DirFS(tp.bramblePath)
-	// 	storeEntries, err := fs.ReadDir(fsys, "store")
-	// 	if err != nil {
-	// 		t.Error(err)
-	// 	}
-	// 	for _, entry := range storeEntries {
-	// 		if strings.Contains(entry.Name(), "bramble_build_directory") {
-	// 			t.Error("found build directory in store", entry.Name())
-	// 		}
-	// 	}
-	// }
-	// if err := tp.Bramble().gc(nil); err != nil {
-	// 	fmt.Printf("%+v", err)
-	// 	fmt.Println(starutil.AnnotateError(err))
-	// 	t.Fatal(err)
-	// }
-	// fmt.Println(tp)
 }

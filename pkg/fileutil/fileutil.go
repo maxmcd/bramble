@@ -49,6 +49,17 @@ func CommonFilepathPrefix(paths []string) string {
 	return string(c)
 }
 
+func LS(wd string) {
+	entries, err := os.ReadDir(wd)
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, entry := range entries {
+		fi, _ := entry.Info()
+		fmt.Printf("%s %d %s %s\n", fi.Mode(), fi.Size(), fi.ModTime(), entry.Name())
+	}
+}
+
 func CP(wd string, paths ...string) (err error) {
 	if len(paths) == 1 {
 		return errors.New("copy takes at least two arguments")
@@ -111,7 +122,7 @@ func CopyDirectory(scrDir, dest string) error {
 		sourcePath := filepath.Join(scrDir, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
 
-		fileInfo, err := os.Stat(sourcePath)
+		fileInfo, err := os.Lstat(sourcePath)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -121,17 +132,16 @@ func CopyDirectory(scrDir, dest string) error {
 		if !ok {
 			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
 		}
-
 		switch fileInfo.Mode() & os.ModeType {
+		case os.ModeSymlink:
+			if err := CopySymLink(sourcePath, destPath); err != nil {
+				return errors.WithStack(err)
+			}
 		case os.ModeDir:
 			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
 			if err := CopyDirectory(sourcePath, destPath); err != nil {
-				return errors.WithStack(err)
-			}
-		case os.ModeSymlink:
-			if err := CopySymLink(sourcePath, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		default:

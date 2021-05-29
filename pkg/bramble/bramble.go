@@ -86,7 +86,8 @@ type Bramble struct {
 	lockFileLock   sync.Mutex
 
 	// working directory
-	wd string
+	wd          string
+	bramblePath string
 
 	derivationFn *derivationFunction
 
@@ -840,6 +841,13 @@ func OptionNoRoot(b *Bramble) {
 	b.noRoot = true
 }
 
+// OptionBramblePath allows the bramble path to be overridden
+func OptionBramblePath(bramblePath string) Option {
+	return func(b *Bramble) {
+		b.bramblePath = bramblePath
+	}
+}
+
 // NewBramble creates a new bramble instance. If the working directory passed is
 // within a bramble project that projects configuration will be laoded
 func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
@@ -862,7 +870,11 @@ func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
 	}
 
 	if b.store.IsEmpty() {
-		if b.store, err = store.NewStore(); err != nil {
+		bramblePath := os.Getenv("BRAMBLE_PATH")
+		if b.bramblePath != "" {
+			bramblePath = b.bramblePath
+		}
+		if b.store, err = store.NewStore(bramblePath); err != nil {
 			return
 		}
 	}

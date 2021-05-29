@@ -44,7 +44,9 @@ func (tp *TestProject) Copy() *TestProject {
 	return &out
 }
 func (tp *TestProject) Bramble() *bramble.Bramble {
-	b, err := bramble.NewBramble(tp.projectPath, bramble.OptionNoRoot)
+	b, err := bramble.NewBramble(tp.projectPath,
+		bramble.OptionNoRoot,
+		bramble.OptionBramblePath(tp.bramblePath))
 	if err != nil {
 		panic(err)
 	}
@@ -65,15 +67,16 @@ func newTestProject() (*TestProject, error) {
 	if err := fileutil.CopyDirectory("./testdata", projectPath); err != nil {
 		return nil, err
 	}
-	os.Setenv("BRAMBLE_PATH", bramblePath)
 
 	// Init bramble
-	b, err := bramble.NewBramble(projectPath, bramble.OptionNoRoot)
+	b, err := bramble.NewBramble(projectPath,
+		bramble.OptionNoRoot,
+		bramble.OptionBramblePath(bramblePath))
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.Background()
-	if _, _, err := b.Build(ctx, []string{":fetch_busybox"}); err != nil {
+	if _, _, err = b.Build(ctx, []string{":fetch_busybox"}); err != nil {
 		return nil, err
 	}
 	return &TestProject{

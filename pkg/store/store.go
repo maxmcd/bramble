@@ -20,9 +20,9 @@ var (
 	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
 
-func NewStore() (Store, error) {
+func NewStore(bramblePath string) (Store, error) {
 	s := Store{}
-	return s, ensureBramblePath(&s)
+	return s, ensureBramblePath(&s, bramblePath)
 }
 
 type Store struct {
@@ -46,12 +46,8 @@ func (s Store) TempBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir(filepath.Join(s.BramblePath, "var/builds"), "build-")
 }
 
-func ensureBramblePath(s *Store) (err error) {
-	var exists bool
-	// Prefer BRAMBLE_PATH if it's set. Otherwise use the folder "bramble" in
-	// the user's home directory.
-	s.BramblePath, exists = os.LookupEnv("BRAMBLE_PATH")
-	if !exists {
+func ensureBramblePath(s *Store, bramblePath string) (err error) {
+	if bramblePath == "" {
 		var home string
 		home, err = os.UserHomeDir()
 		if err != nil {
@@ -60,7 +56,7 @@ func ensureBramblePath(s *Store) (err error) {
 		s.BramblePath = filepath.Join(home, "bramble")
 	} else {
 		// Ensure we clean the path so that our padding calculation is consistent.
-		s.BramblePath = filepath.Clean(s.BramblePath)
+		s.BramblePath = filepath.Clean(bramblePath)
 	}
 
 	// No support for relative bramble paths.
