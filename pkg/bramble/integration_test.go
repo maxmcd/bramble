@@ -101,6 +101,9 @@ func TestAllFunctions(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if fi.IsDir() && fi.Name() == "testdata" {
+			return filepath.SkipDir
+		}
 		// TODO: ignore .git, ignore .gitignore?
 		if strings.HasSuffix(path, ".bramble") {
 			module, err := b.filepathToModuleName(path)
@@ -127,15 +130,15 @@ func TestAllFunctions(t *testing.T) {
 		return nil
 	}))
 	urls := []string{}
-	b.derivations.Range(func(filename string, drv *Derivation) bool {
+	for _, drv := range b.derivations.d {
 		if drv.Builder == "fetch_url" {
 			url, ok := drv.Env["url"]
 			if ok {
 				urls = append(urls, url)
 			}
 		}
-		return true
-	})
+	}
+	fmt.Println(urls)
 }
 
 func runBrambleRun(args []string) error {
@@ -150,7 +153,8 @@ func runBrambleRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	return b.Build(context.Background(), args)
+	_, _, err = b.Build(context.Background(), args)
+	return err
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {

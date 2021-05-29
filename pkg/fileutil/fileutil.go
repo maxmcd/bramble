@@ -49,6 +49,21 @@ func CommonFilepathPrefix(paths []string) string {
 	return string(c)
 }
 
+// LS is a silly debugging function, don't use it
+func LS(wd string) {
+	entries, err := os.ReadDir(wd)
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, entry := range entries {
+		fi, _ := entry.Info()
+		fmt.Printf("%s %d %s %s\n", fi.Mode(), fi.Size(), fi.ModTime(), entry.Name())
+	}
+	if err != nil {
+		panic(err)
+	}
+}
+
 func CP(wd string, paths ...string) (err error) {
 	if len(paths) == 1 {
 		return errors.New("copy takes at least two arguments")
@@ -81,6 +96,7 @@ func CP(wd string, paths ...string) (err error) {
 
 	// otherwise copy each listed file into a directory with the given name
 	for i, path := range toCopy {
+		// TODO: this should be Lstat
 		fi, err := os.Stat(path)
 		if err != nil {
 			return errors.Errorf("%q doesn't exist", paths[i])
@@ -101,6 +117,23 @@ func CP(wd string, paths ...string) (err error) {
 	return nil
 }
 
+func ReplaceAll(filepath, old, new string) (err error) {
+	f, err := os.Stat(filepath)
+	if err != nil {
+		return err
+	}
+	input, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(
+		filepath,
+		[]byte(strings.ReplaceAll(string(input), old, new)),
+		f.Mode(),
+	)
+}
+
 // copy directory will copy all of the contents of one directory into another directory
 func CopyDirectory(scrDir, dest string) error {
 	entries, err := ioutil.ReadDir(scrDir)
@@ -111,7 +144,7 @@ func CopyDirectory(scrDir, dest string) error {
 		sourcePath := filepath.Join(scrDir, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
 
-		fileInfo, err := os.Stat(sourcePath)
+		fileInfo, err := os.Lstat(sourcePath)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -121,17 +154,16 @@ func CopyDirectory(scrDir, dest string) error {
 		if !ok {
 			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
 		}
-
 		switch fileInfo.Mode() & os.ModeType {
+		case os.ModeSymlink:
+			if err := CopySymLink(sourcePath, destPath); err != nil {
+				return errors.WithStack(err)
+			}
 		case os.ModeDir:
 			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
 			if err := CopyDirectory(sourcePath, destPath); err != nil {
-				return errors.WithStack(err)
-			}
-		case os.ModeSymlink:
-			if err := CopySymLink(sourcePath, destPath); err != nil {
 				return errors.WithStack(err)
 			}
 		default:
@@ -168,7 +200,7 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 	sort.Slice(files, func(i, j int) bool { return len(files[i]) < len(files[j]) })
 	for _, file := range files {
 		destPath := filepath.Join(dest, strings.TrimPrefix(file, prefix))
-		fileInfo, err := os.Stat(file)
+		fileInfo, err := os.Lstat(file)
 		if err != nil {
 			return errors.Wrap(err, "error finding source file")
 		}
@@ -271,6 +303,7 @@ func CopySymLink(source, dest string) error {
 	return os.Symlink(link, dest)
 }
 
+// FileExists will only return true if the path is a file, not a directory
 func FileExists(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
