@@ -14,7 +14,7 @@ Bramble is my attempt at taking it one step further. Here are some if the ideas 
 - **Project based**: Every project has a `bramble.toml` and `bramble.lock` file that track dependencies and other metadata needed to build the project reliably.
 - **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break.
 - **Sandboxed**: All builds are sandboxed, running software with Bramble will attempt to be sandboxed by default. Builds also take as little input as possible (no args, no environment variables, no network). Some of these might be relaxed as the project evolves, but things will hopefully stay very locked down.
-- **Dependencies are repositories**: Dependencies are stored in repositories. You might reference them with `load("github.com/maxmcd/bramble")` in a builf file or `bramble build github.com/maxmcd/foo:foo` from the command line. Dependencies are project specific.
+- **Dependencies are repositories**: Dependencies are stored in repositories. You might reference them with `load("github.com/maxmcd/bramble")` in a build file or `bramble build github.com/maxmcd/foo:foo` from the command line. Dependencies are project specific.
 - **Content-addressible store**: Build outputs and build inputs are stored in directories that are named with the hash of their contents.
 - **Store content relocation**: Build outputs naturally contain references to other build outputs. These locations are usually specific to the system that originally built the software. Build references are rewritten so that outputs can be shared with different systems. These values are also replaced with a known default when hashing so that there is consistency between different build environments.
 - **Remote build**: Support for various remote build options, build clusters, and potentially more exotic things like P2P build cache sharing, bittorrent support, etc..
@@ -26,13 +26,13 @@ Many things are broken, would not expect this to work or be useful yet. Things a
 
 ### Feature Status
 
-- [ ] Basic Build Functionality
-- [ ] Store Content Relocation
+- [x] Basic Build Functionality
+- [x] Store Content Relocation
 - [ ] Sandboxing
-    - [ ] Linux
+    - [x] Linux
     - [ ] OSX
 - [ ] "Fetch" Build Rules
-    - [ ] Fetch URL
+    - [x] Fetch URL
     - [ ] Fetch Git Repo
 - [ ] Remote Dependencies
 - [ ] Remote Builds
