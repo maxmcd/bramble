@@ -16,14 +16,14 @@ Docker felt like a hint of a solution. At least now if I want something to run s
 
 Nix was exciting to discover. All of your dependencies are assembled in a graph. Every dependency lives in a folder that is assigned a hash. Many different versions of software can exist on the same system and you can compose them into whatever combination you want. You can define a build, send it off to someone, and more often than not, it'll work for them too.
 
-Bramble is my attempt at taking it one step further. Here are some if the ideas behind it:
+Bramble is my attempt at taking it one step further. Bramble is a functional build system that intends to be a user-frendly, robust, and reliable way to build software. Here are some if the ideas behind it:
 
 - **Project Based**: Every project has a `bramble.toml` and `bramble.lock` file that track dependencies and other metadata needed to build the project reliably.
-- **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break.
+- **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break things.
 - **Sandboxed**: All builds are sandboxed, running software with Bramble will attempt to be sandboxed by default. Builds also take as little input as possible (no args, no environment variables, no network). Some of these might be relaxed as the project evolves, but things will hopefully stay very locked down.
 - **Dependencies**: Dependencies are stored in repositories. You might reference them with `load("github.com/maxmcd/bramble")` in a build file or `bramble build bitbucket.org/maxm/foo:foo` from the command line. Dependencies are project specific.
 - **Content-Addressible Store**: Build outputs and build inputs are stored in directories that are named with the hash of their contents.
-- **Store Content Relocation**: Build outputs naturally contain references to other build outputs. These locations are usually specific to the system that originally built the software. Build references are rewritten so that outputs can be shared with different systems. These values are also replaced with a known default when hashing so that there is consistency between different build environments.
+- **Store Content Relocation**: Build outputs naturally contain references to other build outputs. These locations are usually specific to the system that originally built the software. Build references are rewritten so that outputs can be shared with different systems. These values are also replaced with a known default when hashing so that there is consistency between different build environments when possible.
 - **Remote Build**: Support for various remote build options, build clusters, and potentially more exotic things like P2P build cache sharing, bittorrent support, etc..
 - **Starlark**: The configuration language [starlark](https://github.com/google/starlark-go) is used to define builds.
 - **Diverse Build Environment Support**: First class support for all major operating systems and potentially even support for the browser and FAAS. (Bramble is Linux-only at the moment).
