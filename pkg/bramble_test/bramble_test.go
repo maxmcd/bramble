@@ -7,14 +7,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/bramble"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func NewTestProject(t *testing.T) *TestProject {
 	tp := cachedProj.Copy()
-	// t.Cleanup(tp.Cleanup)
+	t.Cleanup(tp.Cleanup)
 	return tp
 }
 
@@ -36,6 +37,60 @@ def ok():
 		t.Fatal(err)
 	}
 	fmt.Println(result)
+}
+
+func ensureResult(t *testing.T, result []bramble.BuildResult, v map[string]bool) {
+	if len(result) != len(v) {
+		t.Error("result and map have different lengths", result, v)
+		return
+	}
+	for _, r := range result {
+		br, ok := v[r.Derivation.Name]
+		if !ok {
+			t.Errorf("%q present in result but not in values", r.Derivation.Name)
+			return
+		}
+		if br != r.DidBuild {
+			t.Errorf("derivcation %q DidBuild was supposed to be %t but it was %t", r.Derivation.Name, br, r.DidBuild)
+		}
+	}
+}
+
+func TestEarlyCutoff(t *testing.T) {
+	tp := NewTestProject(t)
+	{
+		_, result, err := tp.Bramble().Build(context.Background(), []string{"dep:hello_world"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ensureResult(t, result, map[string]bool{
+			"fetch-url":   false,
+			"busybox":     true,
+			"say_world":   true,
+			"say_hello":   true,
+			"hello_world": true,
+		})
+	}
+
+	// Change the file contents with a comment
+	err := fileutil.ReplaceAll(tp.projectPath+"/dep.bramble",
+		"touch $out/bin/say-world",
+		"touch $out/bin/say-world\n# random random random")
+	require.NoError(t, err)
+
+	{
+		_, result, err := tp.Bramble().Build(context.Background(), []string{"dep:hello_world"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ensureResult(t, result, map[string]bool{
+			"fetch-url":   false,
+			"busybox":     false,
+			"say_world":   true, // only the changed drv should rebuild
+			"say_hello":   false,
+			"hello_world": false,
+		})
+	}
 }
 
 func TestOneByOne(t *testing.T) {
@@ -63,16 +118,14 @@ func TestDependency(t *testing.T) {
 		t.Fatal(err, starutil.AnnotateError(err))
 	}
 
-	fmt.Println(result)
+	ensureResult(t, result, map[string]bool{
+		"fetch-url":   false,
+		"busybox":     true,
+		"say_world":   true,
+		"say_hello":   true,
+		"hello_world": true,
+	})
 
-	for _, build := range result {
-		switch build.Derivation.Name {
-		case "fetch-url":
-			assert.Equal(t, build.DidBuild, false, build.Derivation.Name)
-		default:
-			assert.Equal(t, build.DidBuild, true, build.Derivation.Name)
-		}
-	}
 	drv := drvs[0]
 	{
 		graph, err := drv.BuildDependencyGraph()
@@ -96,10 +149,12 @@ func TestDependency(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println(result)
-		for _, build := range result {
-			// shouldn't need to rebuild anything after a GC calls
-			assert.False(t, build.DidBuild)
-		}
+		ensureResult(t, result, map[string]bool{
+			"fetch-url":   false,
+			"busybox":     false,
+			"say_world":   false,
+			"say_hello":   false,
+			"hello_world": false,
+		})
 	}
 }

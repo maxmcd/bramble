@@ -85,7 +85,7 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *AcyclicGraph, err error)
 }
 
 func (drv *Derivation) runtimeDependencies() (dependencies map[string][]DerivationOutput, err error) {
-	inputDerivations, err := drv.inputDerivations()
+	inputDerivations, err := drv.loadInputDerivations()
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (drv *Derivation) runtimeDependencies() (dependencies map[string][]Derivati
 	return dependencies, err
 }
 
-func (drv *Derivation) inputDerivations() (inputDerivations map[DerivationOutput]*Derivation, err error) {
+func (drv *Derivation) loadInputDerivations() (inputDerivations map[DerivationOutput]*Derivation, err error) {
 	inputDerivations = make(map[DerivationOutput]*Derivation)
 	for _, do := range drv.InputDerivations {
 		inputDrv, err := drv.bramble.loadDerivation(do.Filename)

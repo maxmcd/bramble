@@ -734,6 +734,10 @@ type BuildResult struct {
 	DidBuild   bool
 }
 
+func (br BuildResult) String() string {
+	return fmt.Sprintf("{%s %s DidBuild: %t}", br.Derivation.Name, br.Derivation.filename(), br.DidBuild)
+}
+
 func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
 	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
@@ -803,15 +807,21 @@ func (b *Bramble) buildDerivations(ctx context.Context, derivations []*Derivatio
 				// uses the initial derivation output value
 				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
 
-				newTemplateName := drv.String()
+				newTemplateName := drv.templateString(do.OutputName)
 
 				for _, edge := range graph.EdgesTo(v) {
 					if edge.Source() == FakeDAGRoot {
 						continue
 					}
 					childDO := edge.Source().(DerivationOutput)
-					drv := b.derivations.Load(childDO.Filename)
-					if err := drv.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
+					childDRV := b.derivations.Load(childDO.Filename)
+					for i, input := range childDRV.InputDerivations {
+						// Add the output to the derivation input
+						if input.Filename == do.Filename && input.OutputName == do.OutputName {
+							childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
+						}
+					}
+					if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
 						panic(err)
 					}
 				}
@@ -1228,11 +1238,17 @@ func (b *Bramble) GC(_ []string) (err error) {
 				continue
 			}
 			childDO := edge.Source().(DerivationOutput)
-			drv := b.derivations.Load(childDO.Filename)
-			if drv == nil {
+			childDRV := b.derivations.Load(childDO.Filename)
+			if childDRV == nil {
 				continue
 			}
-			if err := drv.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
+			for i, input := range childDRV.InputDerivations {
+				// Add the output to the derivation input
+				if input.Filename == do.Filename && input.OutputName == do.OutputName {
+					childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
+				}
+			}
+			if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
 				panic(err)
 			}
 		}
@@ -1241,7 +1257,6 @@ func (b *Bramble) GC(_ []string) (err error) {
 	if len(errors) != 0 {
 		panic(errors)
 	}
-	fmt.Println(pathsToKeep)
 
 	// delete everything in the store that's not in the map
 	files, err := os.ReadDir(b.store.StorePath)
@@ -1452,6 +1467,5 @@ func (b *Bramble) parseModuleFuncArgument(args []string) (module, function strin
 	}
 	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
 	module, err = b.moduleFromPath(path)
-	fmt.Println(module, err)
 	return
 }

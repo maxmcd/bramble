@@ -231,6 +231,7 @@ func (o Output) Empty() bool {
 type DerivationOutput struct {
 	Filename   string
 	OutputName string
+	Output     string
 }
 
 func (do DerivationOutput) templateString() string {
@@ -433,12 +434,26 @@ func (drv *Derivation) JSON() []byte {
 	return b
 }
 
+func (drv *Derivation) copy() *Derivation {
+	out := &Derivation{}
+	if err := json.Unmarshal(drv.JSON(), &out); err != nil {
+		panic(err)
+	}
+	return out
+}
 func (drv *Derivation) filename() (filename string) {
 	// Content is hashed without derivation outputs.
-	outputs := drv.Outputs
-	drv.Outputs = nil
-	jsonBytesForHashing := drv.JSON()
-	drv.Outputs = outputs
+
+	drv.copyWithOutputValuesReplaced()
+	copy := drv.copy()
+	copy.Outputs = nil
+	for i, input := range copy.InputDerivations {
+		// Only use the output name and value when hashing and the output is available
+		if input.Output != "" {
+			copy.InputDerivations[i].Filename = ""
+		}
+	}
+	jsonBytesForHashing := copy.JSON()
 
 	fileName := fmt.Sprintf("%s.drv", drv.Name)
 	_, filename, err := hasher.HashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))

@@ -87,18 +87,15 @@ func TestDerivationOutputChange(t *testing.T) {
 		}
 
 		newTemplateName := drv.String()
-		fmt.Println(do.Filename, oldTemplateName, newTemplateName)
 		for _, edge := range graph.EdgesTo(v) {
 			if edge.Source() == FakeDAGRoot {
 				continue
 			}
 			childDO := edge.Source().(DerivationOutput)
 			drv := b.derivations.Load(childDO.Filename)
-			fmt.Println(drv.PrettyJSON())
 			if err := drv.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
 				panic(err)
 			}
-			fmt.Println(drv.PrettyJSON())
 		}
 		// Left to do
 		// re-store derivations in store
