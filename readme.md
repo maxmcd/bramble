@@ -1,5 +1,11 @@
 # Bramble
 
+* [Intro](#bramble)
+* [Project Status](#project-status)
+* [Hello World](#hello-world)
+
+----
+
 Bramble is work-in-progress a functional build system inspired by [nix](https://nixos.org/).
 
 
@@ -43,7 +49,7 @@ Many things are broken, would not expect this to work or be useful yet. Things a
 - [ ] [Running Build Outputs](https://github.com/maxmcd/bramble/issues/25)
 - [ ] Docker/OCI Container Build Output
 
-## Show Me What It's Like To Use It
+## Hello World
 
 Here's an example project that downloads busybox and uses it to create a script that says "Hello world!".
 
