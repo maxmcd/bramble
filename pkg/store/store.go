@@ -65,6 +65,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	}
 
 	if !fileutil.PathExists(s.BramblePath) {
+		// TODO: use logger
 		fmt.Println("bramble path directory doesn't exist, creating")
 		if err = os.Mkdir(s.BramblePath, 0755); err != nil {
 			return err
@@ -136,7 +137,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	}
 
 	// otherwise, check if the exact store path we need exists
-	if _, err = os.Stat(s.StorePath); err != nil {
+	if !fileutil.PathExists(s.StorePath) {
 		return ErrStoreDoesNotExist
 	}
 
