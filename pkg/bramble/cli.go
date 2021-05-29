@@ -40,7 +40,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		ShortUsage: "bramble build [options] [module]:<function> [args...]",
 		ShortHelp:  "Build a function",
 		LongHelp:   "Build a function",
-		Exec:       func(ctx context.Context, args []string) error { return b.Build(ctx, args) },
+		Exec:       func(ctx context.Context, args []string) error { _, _, err := b.Build(ctx, args); return err },
 	}
 
 	shell = &ffcli.Command{
@@ -48,7 +48,7 @@ func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
 		ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 		ShortHelp:  "Open a shell from a derivation",
 		LongHelp:   "Open a shell from a derivation",
-		Exec:       func(ctx context.Context, args []string) error { return b.Shell(ctx, args) },
+		Exec:       func(ctx context.Context, args []string) error { _, err := b.Shell(ctx, args); return err },
 	}
 
 	repl = &ffcli.Command{
@@ -142,7 +142,6 @@ func RunCLI() {
 	sandbox.Entrypoint()
 
 	log.SetOutput(ioutil.Discard)
-	b := &Bramble{}
 	handleErr := func(err error) {
 		if err == errQuiet {
 			os.Exit(1)
@@ -154,6 +153,11 @@ func RunCLI() {
 		os.Exit(1)
 	}
 
+	b, err := NewBramble(".")
+	// TODO: no wd for certain commands
+	if err != nil {
+		handleErr(err)
+	}
 	command, err := b.createAndParseCLI(os.Args[1:])
 	if err != nil {
 		handleErr(err)

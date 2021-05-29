@@ -9,7 +9,7 @@ import (
 )
 
 func Test_ensureBramblePath(t *testing.T) {
-	s, err := NewStore()
+	s, err := NewStore("")
 	if err != nil {
 		t.Error(err)
 	}
