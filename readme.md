@@ -45,7 +45,7 @@ Many things are broken, would not expect this to work or be useful yet. Things a
 
 ## Show Me What It's Like To Use It
 
-Here's an example project that downloads busybox and uses it to create a script that says hello world.
+Here's an example project that downloads busybox and uses it to create a script that says "Hello world!".
 
 **bramble.toml**
 ```toml
@@ -110,6 +110,17 @@ def hello_world():
         """,
         ],
     )
+```
+
+**script.sh**
+```bash
+set -e
+$busybox_download/busybox-x86_64 mkdir $out/bin
+$busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
+cd $out/bin
+for command in $(./busybox --list); do
+	./busybox ln -s busybox $command
+done
 ```
 
 Build it like so:
