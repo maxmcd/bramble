@@ -1,7 +1,7 @@
 def fetch_url(url):
     """
-    fetch_url is a handy wrapper around the built-in fetch_url builder. Just takes
-    the url you want to fetch.
+    fetch_url is a handy wrapper around the built-in fetch_url builder. It just
+    takes the url you want to fetch.
     """
     return derivation(name="fetch-url", builder="fetch_url", env={"url": url})
 

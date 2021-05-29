@@ -8,6 +8,7 @@
 
 Bramble is work-in-progress a functional build system inspired by [nix](https://nixos.org/).
 
+*Some background...*
 
 Shell scripting has frustrated me for some time. While I don't think I'll ever really get the handle of control flow and all the various tricks I think the real issue is the uncertainty. What programs are on this system, what features do they have, how can I use them, etc. I think this is the "works on my machine" problem. If I have something working I still don't know how to get it working elsewhere.
 
@@ -53,24 +54,24 @@ Many things are broken, would not expect this to work or be useful yet. Things a
 
 Here's an example project that downloads busybox and uses it to create a script that says "Hello world!".
 
-**bramble.toml**
+**./bramble.toml**
 ```toml
 [module]
 name = "github.com/maxmcd/bramble"
 ```
 
-**bramble.lock**
+**./bramble.lock**
 ```toml
 [URLHashes]
   "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1"
 ```
 
-**default.bramble**
+**./default.bramble**
 ```python
 def fetch_url(url):
     """
-    fetch_url is a handy wrapper around the built-in fetch_url builder. Just takes
-    the url you want to fetch.
+    fetch_url is a handy wrapper around the built-in fetch_url builder. It just
+    takes the url you want to fetch.
     """
     return derivation(name="fetch-url", builder="fetch_url", env={"url": url})
 
@@ -118,7 +119,7 @@ def hello_world():
     )
 ```
 
-**script.sh**
+**./script.sh**
 ```bash
 set -e
 $busybox_download/busybox-x86_64 mkdir $out/bin
@@ -129,7 +130,7 @@ for command in $(./busybox --list); do
 done
 ```
 
-Build it like so:
+If you copy these files into a directory you can build it like so:
 ```
 $ bramble build default:hello_world
 bramble path directory doesn't exist, creating
