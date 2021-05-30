@@ -1,18 +1,19 @@
+![](./notes/bramble.svg)
+
 # Bramble
 
 * [Intro](#bramble)
 * [Project Status](#project-status)
 * [Hello World](#hello-world)
 
-----
+<hr>
 
 Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
 
-![](./notes/bramble.svg)
 
-*Some background...*
+*First, some background...*
 
-Shell scripting has frustrated me for some time. While I don't think I'll ever really get the handle of control flow and all the various tricks I think the real issue is the uncertainty. What programs are on this system, what features do they have, how can I use them, etc. I think this is the "works on my machine" problem. If I have something working I still don't know how to get it working elsewhere.
+Shell scripting has frustrated me for some time. While I don't think I'll ever really get the handle of all the various tricks I think the real issue is the uncertainty. What programs are on this system, what features do they have, how can I use them, etc. I think this is the "works on my machine" problem. If I have something working I still don't know how to get it working elsewhere.
 
 Docker felt like a hint of a solution. At least now if I want something to run somewhere else I can pack it up into a Docker image. This isn't a general purpose solution though, and unless you're using complicated tools the docker build process is not reproducible.
 
@@ -151,3 +152,5 @@ And run the script:
 $ /home/maxm/bramble/bramble_store_padding/bramble_/okrlinp5whzqkbmhkrddol5jvdzgftp3/bin/say-hello-world
 Hello World!
 ```
+
+That's it! Your first bramble build.
