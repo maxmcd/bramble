@@ -6,7 +6,9 @@
 
 ----
 
-Bramble is work-in-progress a functional build system inspired by [nix](https://nixos.org/).
+Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
+
+![](./notes/bramble.svg)
 
 *Some background...*
 
