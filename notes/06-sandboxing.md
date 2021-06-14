@@ -31,3 +31,7 @@ Support docker as an option, would work only for linux or just for running thing
 - Default mounts: https://github.com/opencontainers/runtime-tools/blob/a7974a4078764ec41acf5feaa05f07854af44aa6/generate/generate.go#L174-L211
 - Create dev/null https://www.commandlinefu.com/commands/view/24199/create-devnull-if-accidentally-deleted-or-for-a-chroot
 - container linux with mknod examples https://github.com/cloudify-incubator/cloudify-rest-go-client/blob/f8139d8e38b0909fae3e4212eb05497483c0e5b8/container/container_linux.go
+
+## Darwin
+
+- https://github.com/LnL7/nix-darwin/blob/1464d9efd3930dafecb45668e6c58349041ea830/modules/security/sandbox/default.nix

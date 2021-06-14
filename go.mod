@@ -23,6 +23,8 @@ require (
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
 	go.starlark.net v0.0.0-20200901195727-6e684ef5eeee
 	go.uber.org/zap v1.10.0
+	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/sys v0.0.0-20210305230114-8fe3ee5dd75b
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
 	golang.org/x/sys v0.0.0-20210324051608-47abb6519492
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e

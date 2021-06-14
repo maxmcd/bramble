@@ -1,8 +1,11 @@
+// +build linux
+
 package sandbox
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -143,4 +146,23 @@ func (chr *chroot) Cleanup() (err error) {
 		}
 	}
 	return nil
+}
+
+func (s Sandbox) runExecStep() {
+	cmd := exec.Cmd{
+		Path: s.Path,
+		Dir:  s.Dir,
+		Args: append([]string{s.Path}, s.Args...),
+		Env:  os.Environ(),
+
+		// We don't use the passed sandbox stdio because
+		// it's been passed to the very first run command
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}
+	if err := cmd.Run(); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 }
