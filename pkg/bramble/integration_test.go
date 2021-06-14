@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -31,9 +31,9 @@ func runTwiceAndCheck(t *testing.T, cb func(t *testing.T)) {
 	log.SetOutput(ioutil.Discard)
 	var err error
 	hshr := hasher.NewHasher()
-	dir := tmpDir(t)
+	dir := fileutil.TestTmpDir(t)
 	hshr2 := hasher.NewHasher()
-	dir2 := tmpDir(t)
+	dir2 := fileutil.TestTmpDir(t)
 
 	// set a unique bramble store for these tests
 	os.Setenv("BRAMBLE_PATH", dir+"/")
@@ -57,6 +57,9 @@ func assembleModules(t *testing.T) []string {
 	if err := filepath.Walk("../..", func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if fi.IsDir() && fi.Name() == "testdata" {
+			return filepath.SkipDir
 		}
 		if strings.HasSuffix(fi.Name(), ".bramble") {
 			f, err := os.Open(path)
@@ -90,13 +93,16 @@ func assembleModules(t *testing.T) []string {
 }
 
 func TestAllFunctions(t *testing.T) {
-	b := Bramble{}
-	if err := b.init(".", true); err != nil {
+	b, err := NewBramble(".")
+	if err != nil {
 		t.Fatal(err)
 	}
 	require.NoError(t, filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if fi.IsDir() && fi.Name() == "testdata" {
+			return filepath.SkipDir
 		}
 		// TODO: ignore .git, ignore .gitignore?
 		if strings.HasSuffix(path, ".bramble") {
@@ -124,16 +130,15 @@ func TestAllFunctions(t *testing.T) {
 		return nil
 	}))
 	urls := []string{}
-	b.derivations.Range(func(filename string, drv *Derivation) bool {
+	for _, drv := range b.derivations.d {
 		if drv.Builder == "fetch_url" {
 			url, ok := drv.Env["url"]
 			if ok {
 				urls = append(urls, url)
 			}
 		}
-		return true
-	})
-	spew.Dump(urls)
+	}
+	fmt.Println(urls)
 }
 
 func runBrambleRun(args []string) error {
@@ -144,8 +149,12 @@ func runBrambleRun(args []string) error {
 	if !strings.Contains(path, gobin) {
 		os.Setenv("PATH", path+":"+gobin)
 	}
-	b := Bramble{}
-	return b.build(context.Background(), args)
+	b, err := NewBramble(".")
+	if err != nil {
+		return err
+	}
+	_, _, err = b.Build(context.Background(), args)
+	return err
 }
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
@@ -179,6 +188,15 @@ func TestIntegrationSimple(t *testing.T) {
 	initIntegrationTest(t)
 	runTwiceAndCheck(t, func(t *testing.T) {
 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
+
+func TestIntegrationTutorial(t *testing.T) {
+	initIntegrationTest(t)
+	runTwiceAndCheck(t, func(t *testing.T) {
+		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/tutorial:step_1"}); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
 		}
 	})

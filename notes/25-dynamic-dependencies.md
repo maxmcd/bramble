@@ -1,6 +1,6 @@
 ## Dynamic Dependencies
 
-Nix and Bazel don't allow dynamic dependencies. I think there is an argument to be made that this is the reason their ergonomics are so poor. Nix libs that are intended to build arbitrary projects in a given language rely heavily on code generation. Arguably this is a type of dynamic dependencies.
+Nix and Bazel don't allow dynamic dependencies. I think there is an argument to be made that this is the reason their ergonomics are so tricky. Nix libs that are intended to build arbitrary projects in a given language rely heavily on code generation. Arguably this is a type of dynamic dependencies.
 
 I think it would be interesting to explore first class support for dynamic dependencies in Bramble. Maybe if they are easy to use and set up we can limit the amount of derivations that need network access. If you can generate arbitrary calls to `fetch_url` within a derivation, then maybe you can get away with just that.
 

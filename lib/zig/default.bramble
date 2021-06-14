@@ -3,6 +3,7 @@ load("github.com/maxmcd/bramble/lib")
 
 def hello():
     return derivation(
+        name="zig",
         builder=lib.busybox().out + "/bin/sh",
         args=[
             "-c",
@@ -12,6 +13,6 @@ def hello():
             ./hello
         """,
         ],
-        sources=["./hello.zig"],
+        sources=files(["./hello.zig"]),
         env=dict(PATH=lib.busybox().out + "/bin:" + lib.zig().out + "/bin"),
     )
