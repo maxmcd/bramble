@@ -8,16 +8,19 @@ def fetch_a_url():
 
 
 def step_1():
-    return derivation(
-        builder="%s/bin/bash" % stdenv.stdenv(),
-        env=dict(PATH="{}/bin/:{}/bin".format(stdenv.stdenv(), lib.busybox())),
-        sources=["./step1.sh"],
+    bash = "%s/bin/bash" % stdenv.stdenv()
+    return stdenv.std_derivation(
+        "step_1",
+        builder=bash,
+        env=dict(bash=bash),
+        sources=files(["./step1.sh"]),
         args=["./step1.sh"],
     )
 
 
 # def step_2():
 #     return derivation(
+#         "step_2",
 #         builder="%s/bin/bash" % stdenv.stdenv(),
 #         env=dict(PATH="{}/bin/:{}/bin".format(stdenv.stdenv(), lib.busybox())),
 #         sources=["./step1.sh"],

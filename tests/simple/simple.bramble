@@ -7,5 +7,5 @@ def simple():
         builder=nix_seed.stdenv().out + "/bin/bash",
         env={"stdenv": nix_seed.stdenv()},
         args=["./simple_builder.sh"],
-        sources=["./simple.c", "simple_builder.sh"],
+        sources=files(["./simple.c", "simple_builder.sh"]),
     )

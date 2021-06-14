@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"path/filepath"
 	"regexp"
 	"runtime/trace"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maxmcd/bramble/pkg/hasher"
@@ -28,20 +28,20 @@ var (
 	// different location
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
 
-	// DerivationOutputTemplate is the template string we use to write
+	// UnbuiltDerivationOutputTemplate is the template string we use to write
 	// derivation outputs into other derivations.
-	DerivationOutputTemplate = "{{ %s:%s }}"
+	UnbuiltDerivationOutputTemplate = "{{ %s:%s }}"
+	BuiltDerivationOutputTemplate   = "{{ %s }}"
 
-	// TemplateStringRegexp is the regular expression that matches template strings
+	// UnbuiltTemplateStringRegexp is the regular expression that matches template strings
 	// in our derivations. I assume the ".*" parts won't run away too much because
 	// of the earlier match on "{{ [0-9a-z]{32}" but might be worth further
 	// investigation.
 	//
-	// TODO: should we limit the content of the derivation name? would at least
-	// be limited by filesystem rules. If we're not eager about warning about this
-	// we risk having derivation names only work on certain systems through that
-	// limitation alone. Maybe this is ok?
-	TemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv):(.+?) \}\}`)
+	// TODO: should we limit the content of the derivation name? non-latin would
+	// be good for users but bad for filesystems. What's a sensible limiation
+	UnbuiltTemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv):(.+?) \}\}`)
+	BuiltTemplateStringRegexp   *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}) \}\}`)
 )
 
 // derivationFunction is the function that creates derivations
@@ -80,6 +80,9 @@ func isTopLevel(thread *starlark.Thread) bool {
 }
 
 func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (v starlark.Value, err error) {
+	// TODO: we should be able to cache derivation builds using some kind of hash
+	// of the input values
+
 	ctx, task := trace.NewTask(context.Background(), "derivation()")
 	now := time.Now()
 	defer task.End()
@@ -93,16 +96,9 @@ func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return nil, err
 	}
 
-	// TODO: this doesn't work through a function call, so we need a more
-	// reliable way to determine source file locations
-	//
-	// Make sure the location of the derivation is set using the call stack
-	pos := thread.CallStack().At(1).Pos
-	drv.location = filepath.Dir(pos.Filename())
-
 	defer func() {
 		logger.Debugf("derivation() %s %s", time.Since(now), strings.TrimPrefix(
-			fmt.Sprint(pos), f.bramble.configLocation))
+			drv.sources.location, f.bramble.configLocation))
 	}()
 
 	// find all source files that are used for this derivation
@@ -110,9 +106,8 @@ func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark
 		return
 	}
 
-	filename := drv.filename()
-	f.bramble.derivations.Set(filename, drv)
-
+	// Add this derivation to our internal store
+	f.bramble.storeDerivation(drv)
 	return drv, nil
 }
 
@@ -127,15 +122,15 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 	}
 	var (
 		name      starlark.String
-		builder   starlark.Value = starlark.None
+		builder   starlark.String
 		argsParam *starlark.List
-		sources   *starlark.List
+		sources   filesList
 		env       *starlark.Dict
 		outputs   *starlark.List
 	)
 	if err = starlark.UnpackArgs("derivation", args, kwargs,
+		"name", &name,
 		"builder", &builder,
-		"name?", &name,
 		"args?", &argsParam,
 		"sources?", &sources,
 		"env?", &env,
@@ -151,11 +146,7 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 			return
 		}
 	}
-	if sources != nil {
-		if drv.sources, err = starutil.IterableToGoList(sources); err != nil {
-			return
-		}
-	}
+	drv.sources = sources
 
 	if env != nil {
 		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
@@ -172,11 +163,9 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 		drv.OutputNames = outputsList
 	}
 
-	if err = f.bramble.setDerivationBuilder(drv, builder); err != nil {
-		return
-	}
+	drv.Builder = builder.GoString()
 
-	drv.InputDerivations = drv.searchForDerivationOutputs()
+	drv.populateUnbuiltInputDerivations()
 
 	return drv, nil
 }
@@ -216,9 +205,9 @@ type Derivation struct {
 	SourcePaths []string
 
 	// internal fields
-	sources  []string
-	location string
-	bramble  *Bramble
+	sources filesList
+	bramble *Bramble
+	lock    sync.Mutex
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
@@ -242,18 +231,27 @@ func (o Output) Empty() bool {
 type DerivationOutput struct {
 	Filename   string
 	OutputName string
+	Output     string
 }
 
 func (do DerivationOutput) templateString() string {
-	return fmt.Sprintf(DerivationOutputTemplate, do.Filename, do.OutputName)
+	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
 }
 
 type DerivationOutputs []DerivationOutput
 
-func (a DerivationOutputs) Len() int      { return len(a) }
-func (a DerivationOutputs) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a DerivationOutputs) Less(i, j int) bool {
-	return a[i].Filename+a[i].OutputName < a[j].Filename+a[j].OutputName
+func (dos DerivationOutputs) Len() int      { return len(dos) }
+func (dos DerivationOutputs) Swap(i, j int) { dos[i], dos[j] = dos[j], dos[i] }
+func (dos DerivationOutputs) Less(i, j int) bool {
+	return dos[i].Filename+dos[i].OutputName < dos[j].Filename+dos[j].OutputName
+}
+
+func (drv *Derivation) DerivationOutputs() (dos DerivationOutputs) {
+	filename := drv.filename()
+	for _, name := range drv.OutputNames {
+		dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
+	}
+	return
 }
 
 func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
@@ -354,10 +352,10 @@ func (drv *Derivation) SetOutput(name string, o Output) {
 func (drv *Derivation) templateString(output string) string {
 	outputPath := drv.Output(output).Path
 	if drv.Output(output).Path != "" {
-		return outputPath
+		return fmt.Sprintf(BuiltDerivationOutputTemplate, outputPath)
 	}
 	fn := drv.filename()
-	return fmt.Sprintf(DerivationOutputTemplate, fn, output)
+	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, fn, output)
 }
 
 func (drv *Derivation) mainOutput() string {
@@ -374,25 +372,36 @@ func (drv *Derivation) env() (env []string) {
 	return
 }
 
-func (drv *Derivation) prettyJSON() string {
+func (drv *Derivation) PrettyJSON() string {
 	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
 
-func (drv *Derivation) searchForDerivationOutputs() DerivationOutputs {
-	return searchForDerivationOutputs(string(drv.JSON()))
+// populateUnbuiltInputDerivations matches on the derivation input template and
+// adds those candidates to the inputderivations
+func (drv *Derivation) populateUnbuiltInputDerivations() {
+	drv.InputDerivations = drv._matchedUnbuiltDerivationInputs()
 }
 
-func searchForDerivationOutputs(s string) DerivationOutputs {
+func (drv *Derivation) _matchedUnbuiltDerivationInputs() DerivationOutputs {
+	s := string(drv.JSON())
 	out := DerivationOutputs{}
-	for _, match := range TemplateStringRegexp.FindAllStringSubmatch(s, -1) {
-		out = append(out, DerivationOutput{
-			Filename:   match[1],
-			OutputName: match[2],
-		})
+	for _, match := range UnbuiltTemplateStringRegexp.FindAllStringSubmatch(s, -1) {
+		// We must validate that the derivation exists and this isn't just an
+		// errant template string
+		if drv.bramble.derivations.Load(match[1]) != nil {
+			out = append(out, DerivationOutput{
+				Filename:   match[1],
+				OutputName: match[2],
+			})
+		}
 	}
 	return sortAndUniqueInputDerivations(out)
+}
+
+func (drv *Derivation) containsUnbuiltDerivationTemplateStrings() bool {
+	return len(drv._matchedUnbuiltDerivationInputs()) > 0
 }
 
 func (drv *Derivation) makeConsistentNullJSONValues() {
@@ -418,25 +427,38 @@ func (drv *Derivation) makeConsistentNullJSONValues() {
 
 func (drv *Derivation) JSON() []byte {
 	drv.makeConsistentNullJSONValues()
-	// This seems safe to ignore since we won't be updating the type signature
-	// of Derivation. Is it?
-	b, _ := json.Marshal(drv)
+	b, err := json.Marshal(drv)
+	if err != nil {
+		panic(err) // Shouldn't ever happen
+	}
 	return b
 }
 
+func (drv *Derivation) copy() *Derivation {
+	out := &Derivation{}
+	if err := json.Unmarshal(drv.JSON(), &out); err != nil {
+		panic(err)
+	}
+	return out
+}
 func (drv *Derivation) filename() (filename string) {
 	// Content is hashed without derivation outputs.
-	outputs := drv.Outputs
-	drv.Outputs = nil
 
-	jsonBytesForHashing := drv.JSON()
-
-	drv.Outputs = outputs
+	drv.copyWithOutputValuesReplaced()
+	copy := drv.copy()
+	copy.Outputs = nil
+	for i, input := range copy.InputDerivations {
+		// Only use the output name and value when hashing and the output is available
+		if input.Output != "" {
+			copy.InputDerivations[i].Filename = ""
+		}
+	}
+	jsonBytesForHashing := copy.JSON()
 
 	fileName := fmt.Sprintf("%s.drv", drv.Name)
-
-	// We ignore this error, the errors would result from bad writes and all reads/writes are
-	// in memory. Is this safe?
-	_, filename, _ = hasher.HashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
+	_, filename, err := hasher.HashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
+	if err != nil {
+		panic(err) // shouldn't ever happen
+	}
 	return
 }
