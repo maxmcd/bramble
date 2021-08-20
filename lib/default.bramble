@@ -1,6 +1,25 @@
 load("github.com/maxmcd/bramble/lib/std")
 
 
+def git():
+    b = std.fetch_url("http://s.minos.io/archive/bifrost/x86_64/git-2.7.2-2.tar.gz")
+    return derivation(
+        name="git",
+        builder=busybox().out + "/bin/sh",
+        env=dict(src=b, PATH=busybox().out + "/bin"),
+        args=[
+            "-c",
+            """
+            set -ex
+            cp -r $src/usr/* $out
+            mkdir test
+            cd test
+            $out/bin/git --version
+            """,
+        ],
+    )
+
+
 def zig():
     b = std.fetch_url(
         "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz"
