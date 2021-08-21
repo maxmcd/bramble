@@ -1,14 +1,17 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 )
 
@@ -20,21 +23,25 @@ var (
 	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
 )
 
-func NewStore(bramblePath string) (Store, error) {
-	s := Store{}
-	return s, ensureBramblePath(&s, bramblePath)
+func NewStore(bramblePath string) (*Store, error) {
+	s := &Store{derivations: &DerivationsMap{
+		d: map[string]*Derivation{},
+	}}
+	return s, ensureBramblePath(s, bramblePath)
 }
 
 type Store struct {
 	BramblePath string
 	StorePath   string
+
+	derivations *DerivationsMap
 }
 
-func (s Store) IsEmpty() bool {
+func (s *Store) IsEmpty() bool {
 	return s.BramblePath == "" || s.StorePath == ""
 }
 
-func (s Store) TempDir() (tempDir string, err error) {
+func (s *Store) TempDir() (tempDir string, err error) {
 	tempDir, err = ioutil.TempDir(s.StorePath, BuildDirPattern)
 	if err != nil {
 		return
@@ -42,8 +49,50 @@ func (s Store) TempDir() (tempDir string, err error) {
 	return tempDir, os.Chmod(tempDir, 0777)
 }
 
-func (s Store) TempBuildDir() (tempDir string, err error) {
+func (s *Store) TempBuildDir() (tempDir string, err error) {
 	return ioutil.TempDir(filepath.Join(s.BramblePath, "var/builds"), "build-")
+}
+
+func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
+	existingDrv, err := s.LoadDerivation(filename)
+	if err != nil {
+		return
+	}
+	// It's not built if it doesn't exist
+	if existingDrv == nil {
+		return nil, false, nil
+	}
+	// It's not built if it doesn't have the outputs we need
+	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
+}
+
+func (s *Store) LoadDerivation(filename string) (drv *Derivation, err error) {
+	defer logger.Debug("loadDerivation ", filename, " ", drv)
+	drv = s.derivations.Load(filename)
+	if drv != nil && !drv.MissingOutput() {
+		// if it has outputs return now
+		return
+	}
+	loc := s.JoinStorePath(filename)
+	if !fileutil.FileExists(loc) {
+		// If we have the derivation in memory just return it
+		if drv != nil {
+			return drv, nil
+		}
+		// Doesn't exist
+		return nil, nil
+	}
+	f, err := os.Open(loc)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	defer func() { _ = f.Close() }()
+	drv = &Derivation{store: s}
+	if err = json.NewDecoder(f).Decode(&drv); err != nil {
+		return
+	}
+	s.derivations.Store(filename, drv)
+	return drv, nil
 }
 
 func ensureBramblePath(s *Store, bramblePath string) (err error) {
@@ -144,14 +193,14 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	return
 }
 
-func (s Store) JoinStorePath(v ...string) string {
+func (s *Store) JoinStorePath(v ...string) string {
 	return filepath.Join(append([]string{s.StorePath}, v...)...)
 }
-func (s Store) JoinBramblePath(v ...string) string {
+func (s *Store) JoinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.BramblePath}, v...)...)
 }
 
-func (s Store) WriteReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
+func (s *Store) WriteReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
 	hshr := hasher.NewHasher()
 	file, err := ioutil.TempFile(s.JoinBramblePath("tmp"), "")
 	if err != nil {
@@ -184,7 +233,11 @@ func (s Store) WriteReader(src io.Reader, name string, validateHash string) (con
 	return hshr.Sha256Hex(), path, nil
 }
 
-func (s Store) WriteConfigLink(location string) (err error) {
+func (s *Store) CreateTmpFile() (f *os.File, err error) {
+	return ioutil.TempFile(s.StorePath, BuildDirPattern)
+}
+
+func (s *Store) WriteConfigLink(location string) (err error) {
 	hshr := hasher.NewHasher()
 	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
@@ -217,4 +270,49 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 	}
 	storeDirectoryName += ("/" + PathPaddingCharacters[:extra])
 	return storeDirectoryName, nil
+}
+
+func (s *Store) WriteDerivation(drv *Derivation) error {
+	filename := drv.Filename()
+	fileLocation := s.JoinStorePath(filename)
+
+	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
+}
+
+func (s *Store) StoreDerivation(drv *Derivation) {
+	s.derivations.Store(drv.Filename(), drv)
+}
+
+func (s *Store) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer *strings.Replacer, err error) {
+	// Find all the replacements we need to make, template strings need to
+	// become filesystem paths
+	replacements := []string{}
+	for _, do := range outputs {
+		d := s.derivations.Load(do.Filename)
+		if d == nil {
+			return nil, errors.Errorf(
+				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
+		}
+		path := filepath.Join(
+			s.StorePath,
+			d.Output(do.OutputName).Path,
+		)
+		replacements = append(replacements, do.templateString(), path)
+	}
+	// Replace the content using the json body and then convert it back into a
+	// new derivation
+	return strings.NewReplacer(replacements...), nil
+}
+
+func (s *Store) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *Derivation, err error) {
+	// Find all derivation output template strings within the derivation
+	outputs := drv.InputDerivations
+
+	replacer, err := s.stringsReplacerForOutputs(outputs)
+	if err != nil {
+		return
+	}
+	replacedJSON := replacer.Replace(string(drv.JSON()))
+	err = json.Unmarshal([]byte(replacedJSON), &copy)
+	return copy, err
 }

@@ -1,4 +1,4 @@
-package bramble
+package dstruct
 
 import (
 	"reflect"
@@ -59,7 +59,7 @@ func Test_mergeGraphs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			graph := mergeGraphs(tt.args...)
+			graph := MergeGraphs(tt.args...)
 			if err := graph.Validate(); err != nil {
 				t.Error(err)
 			}

@@ -106,7 +106,7 @@ func TestAllFunctions(t *testing.T) {
 		}
 		// TODO: ignore .git, ignore .gitignore?
 		if strings.HasSuffix(path, ".bramble") {
-			module, err := b.filepathToModuleName(path)
+			module, err := b.project.FilepathToModuleName(path)
 			if err != nil {
 				return err
 			}
