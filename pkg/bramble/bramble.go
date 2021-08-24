@@ -11,8 +11,8 @@ import (
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 
+	"github.com/maxmcd/bramble/pkg/frontend"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/project"
 	"github.com/maxmcd/bramble/pkg/store"
 )
 
@@ -23,7 +23,7 @@ type Bramble struct {
 	// don't use features that require root like setuid binaries
 	noRoot bool
 
-	project *project.Project
+	project *frontend.Project
 	store   *store.Store
 
 	// working directory
