@@ -1,6 +1,7 @@
-package project
+package frontend
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,13 +9,14 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 )
 
 const BrambleExtension = ".bramble"
 
 var (
-	ErrNoProject = errors.New("No Project found")
+	ErrNotInProject = errors.New("couldn't find a bramble.toml file in this directory or any parent")
 )
 
 type Project struct {
@@ -37,7 +39,7 @@ type ConfigModule struct {
 func NewProject(wd string) (*Project, error) {
 	found, location := findConfig(wd)
 	if !found {
-		return nil, ErrNoProject
+		return nil, ErrNotInProject
 	}
 	p := &Project{
 		Location: location,
@@ -62,7 +64,7 @@ func NewProject(wd string) (*Project, error) {
 	}
 	defer f.Close()
 	_, err = toml.DecodeReader(f, &p.lockFile)
-	return nil, errors.Wrapf(err, "error decoding lockfile %q", lockFile)
+	return p, errors.Wrapf(err, "error decoding lockfile %q", lockFile)
 }
 
 func findConfig(wd string) (found bool, location string) {
@@ -148,4 +150,27 @@ func findBrambleFiles(path string) (brambleFiles []string, err error) {
 		brambleFiles = append(brambleFiles, path)
 		return nil
 	})
+}
+
+func (b *Project) parseModuleFuncArgument(args []string) (module, function string, err error) {
+	if len(args) == 0 {
+		logger.Print(`"bramble build" requires 1 argument`)
+		return "", "", flag.ErrHelp
+	}
+
+	firstArgument := args[0]
+	lastIndex := strings.LastIndex(firstArgument, ":")
+	if lastIndex < 0 {
+		logger.Print("module and function argument is not properly formatted")
+		return "", "", flag.ErrHelp
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", "", errors.Wrap(err, "error retrieving working directory")
+	}
+
+	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
+	module, err = b.moduleFromPath(wd, path)
+	return
 }

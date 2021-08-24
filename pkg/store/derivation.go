@@ -13,10 +13,8 @@ import (
 	"github.com/maxmcd/bramble/pkg/dstruct"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
-	"go.starlark.net/starlark"
 )
 
 var (
@@ -88,66 +86,8 @@ func (store *Store) NewDerivation() *Derivation {
 	}
 }
 
-// DerivationOutput tracks the build outputs. Outputs are not included in the
-// Derivation hash. The path tracks the output location in the bramble store
-// and Dependencies tracks the bramble outputs that are runtime dependencies.
-type Output struct {
-	Path         string
-	Dependencies []string
-}
-
-func (o Output) Empty() bool {
-	if o.Path == "" && len(o.Dependencies) == 0 {
-		return true
-	}
-	return false
-}
-
-// DerivationOutput is one of the derivation inputs. Path is the location of
-// the derivation, output is the name of the specific output this derivation
-// uses for the build
-type DerivationOutput struct {
-	Filename   string
-	OutputName string
-	Output     string
-}
-
-func (do DerivationOutput) templateString() string {
-	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
-}
-
-type DerivationOutputs []DerivationOutput
-
-func (dos DerivationOutputs) Len() int      { return len(dos) }
-func (dos DerivationOutputs) Swap(i, j int) { dos[i], dos[j] = dos[j], dos[i] }
-func (dos DerivationOutputs) Less(i, j int) bool {
-	return dos[i].Filename+dos[i].OutputName < dos[j].Filename+dos[j].OutputName
-}
-
-type DerivationsMap struct {
-	d    map[string]*Derivation
-	lock sync.RWMutex
-}
-
-func (dm *DerivationsMap) Load(filename string) *Derivation {
-	dm.lock.RLock()
-	defer dm.lock.RUnlock()
-	return dm.d[filename]
-}
-
-func (dm *DerivationsMap) Has(filename string) bool {
-	return dm.Load(filename) != nil
-}
-func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
-	dm.lock.Lock()
-	defer dm.lock.Unlock()
-	dm.d[filename] = drv
-}
-
-func (dm *DerivationsMap) Range(cb func(map[string]*Derivation)) {
-	dm.lock.Lock()
-	cb(dm.d)
-	dm.lock.Unlock()
+func (drv *Derivation) TemplateString() string {
+	return drv.OutputTemplateString(drv.MainOutput())
 }
 
 func (drv *Derivation) DerivationOutputs() (dos DerivationOutputs) {
@@ -177,33 +117,6 @@ func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
 		dos[j] = dos[i]
 	}
 	return dos[:j+1]
-}
-
-var (
-	_ starlark.Value    = new(Derivation)
-	_ starlark.HasAttrs = new(Derivation)
-)
-
-func (drv *Derivation) Freeze()               {}
-func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
-func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv *Derivation) Type() string          { return "derivation" }
-
-func (drv *Derivation) String() string {
-	return drv.templateString(drv.mainOutput())
-}
-
-func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
-	if !drv.HasOutput(name) {
-		return nil, nil
-	}
-	return starlark.String(
-		drv.templateString(name),
-	), nil
-}
-
-func (drv *Derivation) AttrNames() (out []string) {
-	return drv.OutputNames
 }
 
 func (drv *Derivation) MissingOutput() bool {
@@ -253,7 +166,7 @@ func (drv *Derivation) SetOutput(name string, o Output) {
 	panic("unable to set output with name: " + name)
 }
 
-func (drv *Derivation) templateString(output string) string {
+func (drv *Derivation) OutputTemplateString(output string) string {
 	outputPath := drv.Output(output).Path
 	if drv.Output(output).Path != "" {
 		return fmt.Sprintf(BuiltDerivationOutputTemplate, outputPath)
@@ -262,7 +175,7 @@ func (drv *Derivation) templateString(output string) string {
 	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, fn, output)
 }
 
-func (drv *Derivation) mainOutput() string {
+func (drv *Derivation) MainOutput() string {
 	if out := drv.Output("out"); out.Path != "" || len(drv.OutputNames) == 0 {
 		return "out"
 	}
@@ -282,6 +195,7 @@ func (drv *Derivation) PrettyJSON() string {
 	return string(b)
 }
 
+// REFAC, this was used in lang to populate the inputDerivations, this needs to be added in a post-lang process
 // PopulateUnbuiltInputDerivations matches on the derivation input template and
 // adds those candidates to the inputderivations
 func (drv *Derivation) PopulateUnbuiltInputDerivations() {
@@ -522,4 +436,66 @@ func (drv *Derivation) CopyWithOutputValuesReplaced() (copy *Derivation, err err
 		}
 	}
 	return copy, json.Unmarshal([]byte(s), &copy)
+}
+
+// DerivationOutput tracks the build outputs. Outputs are not included in the
+// Derivation hash. The path tracks the output location in the bramble store
+// and Dependencies tracks the bramble outputs that are runtime dependencies.
+type Output struct {
+	Path         string
+	Dependencies []string
+}
+
+func (o Output) Empty() bool {
+	if o.Path == "" && len(o.Dependencies) == 0 {
+		return true
+	}
+	return false
+}
+
+// DerivationOutput is one of the derivation inputs. Path is the location of
+// the derivation, output is the name of the specific output this derivation
+// uses for the build
+type DerivationOutput struct {
+	Filename   string
+	OutputName string
+	Output     string
+}
+
+func (do DerivationOutput) templateString() string {
+	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
+}
+
+type DerivationOutputs []DerivationOutput
+
+func (dos DerivationOutputs) Len() int      { return len(dos) }
+func (dos DerivationOutputs) Swap(i, j int) { dos[i], dos[j] = dos[j], dos[i] }
+func (dos DerivationOutputs) Less(i, j int) bool {
+	return dos[i].Filename+dos[i].OutputName < dos[j].Filename+dos[j].OutputName
+}
+
+type DerivationsMap struct {
+	d    map[string]*Derivation
+	lock sync.RWMutex
+}
+
+func (dm *DerivationsMap) Load(filename string) *Derivation {
+	dm.lock.RLock()
+	defer dm.lock.RUnlock()
+	return dm.d[filename]
+}
+
+func (dm *DerivationsMap) Has(filename string) bool {
+	return dm.Load(filename) != nil
+}
+func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	dm.d[filename] = drv
+}
+
+func (dm *DerivationsMap) Range(cb func(map[string]*Derivation)) {
+	dm.lock.Lock()
+	cb(dm.d)
+	dm.lock.Unlock()
 }

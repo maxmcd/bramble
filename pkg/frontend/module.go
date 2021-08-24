@@ -1,4 +1,4 @@
-package project
+package frontend
 
 import (
 	"fmt"
@@ -50,13 +50,13 @@ func (p *Project) ResolveModule(module string) (path string, err error) {
 	return path, nil
 }
 
-func (b *Project) moduleFromPath(wd string, path string) (thisModule string, err error) {
-	thisModule = (b.config.Module.Name + "/" + b.relativePathFromConfig(wd))
+func (p *Project) moduleFromPath(wd string, path string) (thisModule string, err error) {
+	thisModule = (p.config.Module.Name + "/" + p.relativePathFromConfig(wd))
 
 	// See if this path is actually the name of a module, for now we just
 	// support one module.
 	// TODO: search through all modules in scope for this config
-	if strings.HasPrefix(path, b.config.Module.Name) {
+	if strings.HasPrefix(path, p.config.Module.Name) {
 		return path, nil
 	}
 
@@ -82,8 +82,8 @@ func (b *Project) moduleFromPath(wd string, path string) (thisModule string, err
 	return strings.TrimSuffix(thisModule, "/"), nil
 }
 
-func (b *Project) relativePathFromConfig(wd string) string {
-	relativePath, _ := filepath.Rel(b.Location, wd)
+func (p *Project) relativePathFromConfig(wd string) string {
+	relativePath, _ := filepath.Rel(p.Location, wd)
 	if relativePath == "." {
 		// don't add a dot to the path
 		return ""
@@ -91,7 +91,7 @@ func (b *Project) relativePathFromConfig(wd string) string {
 	return relativePath
 }
 
-func (b *Project) moduleNameFromFileName(wd string, filename string) (moduleName string, err error) {
+func (p *Project) moduleNameFromFileName(wd string, filename string) (moduleName string, err error) {
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(wd, filename)
 	}
@@ -102,10 +102,10 @@ func (b *Project) moduleNameFromFileName(wd string, filename string) (moduleName
 	if !fileutil.FileExists(filename) {
 		return "", errors.Errorf("bramble file %q doesn't exist", filename)
 	}
-	if !strings.HasPrefix(filename, b.Location) {
+	if !strings.HasPrefix(filename, p.Location) {
 		return "", errors.New("we don't support external modules yet")
 	}
-	relativeWorkspacePath, err := filepath.Rel(b.Location, filename)
+	relativeWorkspacePath, err := filepath.Rel(p.Location, filename)
 	if err != nil {
 		return "", err
 	}

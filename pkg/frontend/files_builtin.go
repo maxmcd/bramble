@@ -1,4 +1,4 @@
-package lang
+package frontend
 
 import (
 	"fmt"
@@ -13,18 +13,18 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type filesList struct {
+type FilesList struct {
 	files    []string
 	location string
 }
 
-var _ starlark.Value = new(filesList)
+var _ starlark.Value = new(FilesList)
 
-func (fl filesList) Freeze()               {}
-func (fl filesList) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("file_list") }
-func (fl filesList) String() string        { return fmt.Sprint([]string(fl.files)) }
-func (fl filesList) Type() string          { return "file_list" }
-func (fl filesList) Truth() starlark.Bool  { return true }
+func (fl FilesList) Freeze()               {}
+func (fl FilesList) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("file_list") }
+func (fl FilesList) String() string        { return fmt.Sprint([]string(fl.files)) }
+func (fl FilesList) Type() string          { return "file_list" }
+func (fl FilesList) Truth() starlark.Bool  { return true }
 
 func (r *Runtime) starlarkGlobListFiles(includeDirectories bool, fileDirectory string, list *starlark.List) (map[string]struct{}, error) {
 	projFilesystem := os.DirFS(r.project.Location)
@@ -93,7 +93,7 @@ func (r *Runtime) filesBuiltin(thread *starlark.Thread, fn *starlark.Builtin, ar
 		}
 	}
 
-	fl := filesList{
+	fl := FilesList{
 		location: fileDirectory,
 	}
 	for f := range inclSet {

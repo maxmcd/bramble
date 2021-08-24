@@ -7,6 +7,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/dstruct"
 	"github.com/maxmcd/dag"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,20 +28,20 @@ func TestDerivationOutputChange(t *testing.T) {
 		store:       store,
 		Name:        "script",
 		OutputNames: []string{"out"},
-		Builder:     fmt.Sprintf("%s/sh", first.String()),
+		Builder:     fmt.Sprintf("%s/sh", first.TemplateString()),
 		Args:        []string{"build_it"},
 	}
-	second.populateUnbuiltInputDerivations()
+	second.PopulateUnbuiltInputDerivations()
 	store.StoreDerivation(second)
 
 	third := &Derivation{
 		store:       store,
 		Name:        "scrip2",
 		OutputNames: []string{"out", "foo"},
-		Builder:     fmt.Sprintf("%s/sh", second.String()),
+		Builder:     fmt.Sprintf("%s/sh", second.TemplateString()),
 		Args:        []string{"build_it2"},
 	}
-	third.populateUnbuiltInputDerivations()
+	third.PopulateUnbuiltInputDerivations()
 	store.StoreDerivation(third)
 
 	graph, err := third.BuildDependencyGraph()
@@ -80,7 +81,7 @@ func TestDerivationOutputChange(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		newTemplateName := drv.String()
+		newTemplateName := drv.TemplateString()
 		for _, edge := range graph.EdgesTo(v) {
 			if edge.Source() == dstruct.FakeDAGRoot {
 				continue
@@ -98,4 +99,48 @@ func TestDerivationOutputChange(t *testing.T) {
 		counter++
 		return nil
 	})
+}
+
+func TestDerivationValueReplacement(t *testing.T) {
+	store, err := NewStore(".")
+	require.NoError(t, err)
+
+	fetchURL := &Derivation{
+		store:       store,
+		OutputNames: []string{"out"},
+		Builder:     "fetch_url",
+		Env:         map[string]string{"url": "1"},
+	}
+	assert.Equal(t, "{{ tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv:out }}", fetchURL.TemplateString())
+
+	other := &Derivation{
+		store:       store,
+		OutputNames: []string{"out"},
+		Builder:     "/bin/sh",
+		Env:         map[string]string{"foo": "bar"},
+	}
+
+	building := &Derivation{
+		store:       store,
+		OutputNames: []string{"out"},
+		Builder:     fetchURL.TemplateString() + "/bin/sh",
+		Env:         map[string]string{"PATH": other.OutputTemplateString("out") + "/bin"},
+	}
+	// Assemble our derivations
+
+	// Pretend we built ancestors by filling in their outputs
+	fetchURL.Outputs = []Output{{Path: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+	other.Outputs = []Output{{Path: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+
+	store.StoreDerivation(fetchURL)
+	store.StoreDerivation(other)
+
+	building.PopulateUnbuiltInputDerivations()
+	store.StorePath = "/bramble/store"
+	buildCopy, err := store.copyDerivationWithOutputValuesReplaced(building)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Contains(t, buildCopy.PrettyJSON(), "/bramble/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bin/sh")
+	assert.Contains(t, buildCopy.PrettyJSON(), "/bramble/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/bin")
 }

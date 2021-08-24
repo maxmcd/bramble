@@ -1,4 +1,4 @@
-package lang
+package frontend
 
 import (
 	"context"
@@ -43,7 +43,31 @@ func init() {
 
 type Derivation struct {
 	store.Derivation
-	sources filesList
+	sources FilesList
+}
+
+var (
+	_ starlark.Value    = new(Derivation)
+	_ starlark.HasAttrs = new(Derivation)
+)
+
+func (drv *Derivation) Freeze()               {}
+func (drv *Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("cmd") }
+func (drv *Derivation) Truth() starlark.Bool  { return starlark.True }
+func (drv *Derivation) Type() string          { return "derivation" }
+func (drv *Derivation) String() string        { return drv.TemplateString() }
+
+func (drv *Derivation) Attr(name string) (val starlark.Value, err error) {
+	if !drv.HasOutput(name) {
+		return nil, nil
+	}
+	return starlark.String(
+		drv.OutputTemplateString(name),
+	), nil
+}
+
+func (drv *Derivation) AttrNames() (out []string) {
+	return drv.OutputNames
 }
 
 func valuesToDerivations(values starlark.Value) (derivations []*Derivation) {
@@ -82,10 +106,9 @@ func (f *derivationFunction) Type() string          { return "module" }
 // newDerivationFunction creates a new derivation function. When initialized this function checks if the
 // bramble store exists and creates it if it does not.
 func newDerivationFunction(runtime *Runtime) *derivationFunction {
-	fn := &derivationFunction{
+	return &derivationFunction{
 		runtime: runtime,
 	}
-	return fn
 }
 
 func isTopLevel(thread *starlark.Thread) bool {
@@ -113,22 +136,17 @@ func (f *derivationFunction) CallInternal(thread *starlark.Thread, args starlark
 	if err != nil {
 		return nil, err
 	}
-
+	_ = drv.sources.location
+	_ = f.runtime.project
 	defer func() {
 		logger.Debugf("derivation() %s %s", time.Since(now), strings.TrimPrefix(
 			drv.sources.location, f.runtime.project.Location))
 	}()
 
-	// find all source files that are used for this derivation
-	if err = f.runtime.calculateDerivationInputSources(ctx, drv); err != nil {
-		return
-	}
-
-	// Add this derivation to our internal store
-	f.runtime.store.StoreDerivation(&drv.Derivation)
 	return drv, nil
 }
 
+// REFAC, move to post-lang stage (??? check notes)
 func (rt *Runtime) calculateDerivationInputSources(ctx context.Context, drv *Derivation) (err error) {
 	region := trace.StartRegion(ctx, "calculateDerivationInputSources")
 	defer region.End()
@@ -153,7 +171,7 @@ func (rt *Runtime) calculateDerivationInputSources(ctx context.Context, drv *Der
 
 	// get absolute paths for all sources
 	for i, src := range sources.files {
-		sources.files[i] = filepath.Join(b.configLocation, src)
+		sources.files[i] = filepath.Join(rt.project.Location, src)
 	}
 	prefix := fileutil.CommonFilepathPrefix(append(sources.files, absDir))
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
@@ -195,14 +213,12 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 	region := trace.StartRegion(ctx, "newDerivationFromArgs")
 	defer region.End()
 
-	drv = &Derivation{
-		Derivation: *f.runtime.store.NewDerivation(),
-	}
+	drv = &Derivation{}
 	var (
 		name      starlark.String
 		builder   starlark.String
 		argsParam *starlark.List
-		sources   filesList
+		sources   FilesList
 		env       *starlark.Dict
 		outputs   *starlark.List
 	)
@@ -224,6 +240,7 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 			return
 		}
 	}
+
 	drv.sources = sources
 
 	if env != nil {
@@ -242,8 +259,6 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 	}
 
 	drv.Builder = builder.GoString()
-
-	drv.PopulateUnbuiltInputDerivations()
 
 	return drv, nil
 }

@@ -1,4 +1,4 @@
-package lang
+package frontend
 
 import (
 	"bytes"
@@ -10,30 +10,55 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/dstruct"
-	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/filecache"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/project"
 	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-func NewRuntime(project *project.Project, store *store.Store) *Runtime {
-	return &Runtime{
+func NewRuntime(project *Project, store *store.Store) (*Runtime, error) {
+	if project == nil {
+		return nil, errors.New("project can't be nil")
+	}
+	if store == nil {
+		return nil, errors.New("store can't be nil")
+	}
+	rt := &Runtime{
+		thread:        &starlark.Thread{},
 		project:       project,
 		store:         store,
 		moduleCache:   map[string]string{},
 		filenameCache: dstruct.NewBiStringMap(),
 	}
+
+	// creates the derivation function and checks we have a valid bramble path and store
+	rt.derivationFn = newDerivationFunction(rt)
+
+	assertGlobals, _ := assert.LoadAssertModule()
+
+	// set the necessary error reporter so that the assert package can catch
+	// errors
+	assert.SetReporter(rt.thread, runErrorReporter{})
+
+	rt.predeclared = starlark.StringDict{
+		"derivation": rt.derivationFn,
+		"assert":     assertGlobals["assert"],
+		"sys":        starlarkSys,
+		"files":      starlark.NewBuiltin("files", rt.filesBuiltin),
+	}
+	return rt, nil
 }
 
 type Runtime struct {
-	project *project.Project
+	project *Project
 	store   *store.Store
 
 	derivationFn *derivationFunction
+
+	filecache filecache.FileCache
 
 	thread      *starlark.Thread
 	predeclared starlark.StringDict
@@ -48,27 +73,6 @@ var starlarkSys = &starlarkstruct.Module{
 		"os":   starlark.String(runtime.GOOS),
 		"arch": starlark.String(runtime.GOARCH),
 	},
-}
-
-func (b *Runtime) initPredeclared() (err error) {
-	// creates the derivation function and checks we have a valid bramble path and store
-	b.derivationFn = newDerivationFunction(b)
-
-	assertGlobals, err := assert.LoadAssertModule()
-	if err != nil {
-		return
-	}
-	// set the necessary error reporter so that the assert package can catch
-	// errors
-	assert.SetReporter(b.thread, runErrorReporter{})
-
-	b.predeclared = starlark.StringDict{
-		"derivation": b.derivationFn,
-		"assert":     assertGlobals["assert"],
-		"sys":        starlarkSys,
-		"files":      starlark.NewBuiltin("files", b.filesBuiltin),
-	}
-	return
 }
 
 func (r *Runtime) resolveModule(module string) (globals starlark.StringDict, err error) {
@@ -104,8 +108,8 @@ func (r *Runtime) starlarkExecFile(moduleName, filename string) (globals starlar
 	return g, err
 }
 
-func (r *Runtime) compileStarlarkPath(path string) (prog *starlark.Program, err error) {
-	compiledProgram, err := os.Open(path)
+func (r *Runtime) compileStarlarkPath(name string) (prog *starlark.Program, err error) {
+	compiledProgram, err := r.filecache.Open(name)
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening moduleCache storeLocation")
 	}
@@ -115,10 +119,10 @@ func (r *Runtime) compileStarlarkPath(path string) (prog *starlark.Program, err 
 func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
 	logger.Debugw("sourceStarlarkProgram", "moduleName", moduleName, "file", filename)
 	r.filenameCache.Store(filename, moduleName)
-	storeLocation, ok := r.moduleCache[moduleName]
+	inputHash, ok := r.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
-		return r.compileStarlarkPath(r.store.JoinStorePath(storeLocation))
+		return r.compileStarlarkPath(inputHash)
 	}
 
 	// hash the file input
@@ -131,19 +135,11 @@ func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *star
 	if _, err = io.Copy(hshr, f); err != nil {
 		return nil, err
 	}
-	inputHash := hshr.String()
+	inputHash = hshr.String()
 
-	inputHashStoreLocation := r.store.JoinBramblePath("var", "star-cache", inputHash)
-	storeLocation, ok = fileutil.ValidSymlinkExists(inputHashStoreLocation)
-	if ok {
-		// if we have the hashed input on the filesystem cache and it points to a valid path
-		// in the store, use that store path and add the cached location to the map
-		relStoreLocation, err := filepath.Rel(r.store.StorePath, storeLocation)
-		if err != nil {
-			return nil, err
-		}
-		r.moduleCache[moduleName] = relStoreLocation
-		return r.compileStarlarkPath(relStoreLocation)
+	if r.filecache.Exists(inputHash) {
+		r.moduleCache[moduleName] = inputHash
+		return r.compileStarlarkPath(inputHash)
 	}
 
 	// if we're this far we don't have a cache of the program, process it directly
@@ -159,13 +155,11 @@ func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *star
 	if err = prog.Write(&buf); err != nil {
 		return nil, err
 	}
-	_, path, err := r.store.WriteReader(&buf, filepath.Base(filename), "")
-	if err != nil {
-		return
+	if err := r.filecache.Write(inputHash, buf.Bytes()); err != nil {
+		return nil, err
 	}
-	r.moduleCache[moduleName] = filepath.Base(path)
-	_ = os.Remove(inputHashStoreLocation)
-	return prog, os.Symlink(path, inputHashStoreLocation)
+	r.moduleCache[moduleName] = inputHash
+	return prog, nil
 }
 
 func (r *Runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
