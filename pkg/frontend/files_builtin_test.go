@@ -1,4 +1,4 @@
-package lang
+package frontend
 
 import (
 	"testing"

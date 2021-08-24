@@ -227,20 +227,3 @@ func (b *Bramble) GC(_ []string) (err error) {
 func (b *Bramble) derivationBuild(args []string) error {
 	return nil
 }
-
-func (b *Bramble) parseModuleFuncArgument(args []string) (module, function string, err error) {
-	if len(args) == 0 {
-		logger.Print(`"bramble build" requires 1 argument`)
-		return "", "", flag.ErrHelp
-	}
-
-	firstArgument := args[0]
-	lastIndex := strings.LastIndex(firstArgument, ":")
-	if lastIndex < 0 {
-		logger.Print("module and function argument is not properly formatted")
-		return "", "", flag.ErrHelp
-	}
-	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
-	module, err = b.moduleFromPath(path)
-	return
-}

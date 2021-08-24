@@ -312,6 +312,15 @@ func FileExists(path string) bool {
 	return !fi.IsDir()
 }
 
+// DirExists will only return true if the path exists and is a directory
+func DirExists(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fi.IsDir()
+}
+
 func IsDir(file string) bool {
 	info, err := os.Stat(file)
 	if err != nil {
