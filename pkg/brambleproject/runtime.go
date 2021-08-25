@@ -81,29 +81,33 @@ var starlarkSys = &starlarkstruct.Module{
 	},
 }
 
-func (r *Runtime) resolveModule(module string) (globals starlark.StringDict, err error) {
-	if _, ok := r.moduleCache[module]; ok {
-		filename, exists := r.filenameCache.LoadInverse(module)
+func (rt *Runtime) newDerivation() *Derivation {
+	return &Derivation{Derivation: *rt.store.NewDerivation()}
+}
+
+func (rt *Runtime) resolveModule(module string) (globals starlark.StringDict, err error) {
+	if _, ok := rt.moduleCache[module]; ok {
+		filename, exists := rt.filenameCache.LoadInverse(module)
 		if !exists {
 			return nil, errors.Errorf("module %q returns no matching filename", module)
 		}
-		return r.starlarkExecFile(module, filename)
+		return rt.starlarkExecFile(module, filename)
 	}
 
-	path, err := r.project.ResolveModule(module)
+	path, err := rt.project.ResolveModule(module)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.starlarkExecFile(module, path)
+	return rt.starlarkExecFile(module, path)
 }
 
-func (r *Runtime) starlarkExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
-	prog, err := r.sourceStarlarkProgram(moduleName, filename)
+func (rt *Runtime) starlarkExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
+	prog, err := rt.sourceStarlarkProgram(moduleName, filename)
 	if err != nil {
 		return
 	}
-	g, err := prog.Init(r.thread, r.predeclared)
+	g, err := prog.Init(rt.thread, rt.predeclared)
 	for name := range g {
 		// no importing or calling of underscored methods
 		if strings.HasPrefix(name, "_") {
@@ -114,21 +118,21 @@ func (r *Runtime) starlarkExecFile(moduleName, filename string) (globals starlar
 	return g, err
 }
 
-func (r *Runtime) compileStarlarkPath(name string) (prog *starlark.Program, err error) {
-	compiledProgram, err := r.filecache.Open(name)
+func (rt *Runtime) compileStarlarkPath(name string) (prog *starlark.Program, err error) {
+	compiledProgram, err := rt.filecache.Open(name)
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening moduleCache storeLocation")
 	}
 	return starlark.CompiledProgram(compiledProgram)
 }
 
-func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
+func (rt *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
 	logger.Debugw("sourceStarlarkProgram", "moduleName", moduleName, "file", filename)
-	r.filenameCache.Store(filename, moduleName)
-	inputHash, ok := r.moduleCache[moduleName]
+	rt.filenameCache.Store(filename, moduleName)
+	inputHash, ok := rt.moduleCache[moduleName]
 	if ok {
 		// we have a cached binary location in the cache map, so we just use that
-		return r.compileStarlarkPath(inputHash)
+		return rt.compileStarlarkPath(inputHash)
 	}
 
 	// hash the file input
@@ -143,16 +147,16 @@ func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *star
 	}
 	inputHash = hshr.String()
 
-	if exists, _ := r.filecache.Exists(inputHash); exists {
-		r.moduleCache[moduleName] = inputHash
-		return r.compileStarlarkPath(inputHash)
+	if exists, _ := rt.filecache.Exists(inputHash); exists {
+		rt.moduleCache[moduleName] = inputHash
+		return rt.compileStarlarkPath(inputHash)
 	}
 
 	// if we're this far we don't have a cache of the program, process it directly
 	if _, err = f.Seek(0, 0); err != nil {
 		return
 	}
-	_, prog, err = starlark.SourceProgram(filename, f, r.predeclared.Has)
+	_, prog, err = starlark.SourceProgram(filename, f, rt.predeclared.Has)
 	if err != nil {
 		return
 	}
@@ -161,21 +165,21 @@ func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *star
 	if err = prog.Write(&buf); err != nil {
 		return nil, err
 	}
-	if err := r.filecache.Write(inputHash, buf.Bytes()); err != nil {
+	if err := rt.filecache.Write(inputHash, buf.Bytes()); err != nil {
 		return nil, err
 	}
-	r.moduleCache[moduleName] = inputHash
+	rt.moduleCache[moduleName] = inputHash
 	return prog, nil
 }
 
-func (r *Runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
-	globals, err := starlark.ExecFile(r.thread, filepath.Join(wd, "foo.bramble"), script, r.predeclared)
+func (rt *Runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
+	globals, err := starlark.ExecFile(rt.thread, filepath.Join(wd, "foo.bramble"), script, rt.predeclared)
 	if err != nil {
 		return nil, err
 	}
-	return starlark.Call(r.thread, globals["test"], nil, nil)
+	return starlark.Call(rt.thread, globals["test"], nil, nil)
 }
 
-func (r *Runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	return r.resolveModule(module)
+func (rt *Runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
+	return rt.resolveModule(module)
 }
