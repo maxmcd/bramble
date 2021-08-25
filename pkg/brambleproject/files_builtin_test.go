@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"testing"
@@ -21,7 +21,7 @@ func TestBramble_filesBuiltin(t *testing.T) {
 		{script: `b = files(["."], include_directories=True)`,
 			respContains: "pkg/bramble"},
 		{script: `b = files(["*.go"])`,
-			respContains: "bramble.go"},
+			respContains: "files_builtin.go"},
 		{script: `b = files(["*.go"], ["*_test.go"])`,
 			respDoesntContain: "_test.go"},
 		{script: `files([], allow_empty=True)`},

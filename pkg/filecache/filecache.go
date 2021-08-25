@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrUninitialized = errors.New("filecache has not been initized, did you make it with NewFileCache?")
+
 func NewFileCache(dir string) (fc FileCache, err error) {
 	u, err := user.Current()
 	if err != nil {
@@ -28,15 +30,30 @@ type FileCache struct {
 }
 
 func (fc FileCache) Open(name string) (f *os.File, err error) {
-	return os.Open(fc.Path(name))
+	p, err := fc.Path(name)
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(p)
 }
-func (fc FileCache) Exists(name string) bool {
-	return fileutil.PathExists(name)
+func (fc FileCache) Exists(name string) (bool, error) {
+	p, err := fc.Path(name)
+	if err != nil {
+		return false, err
+	}
+	return fileutil.PathExists(p), nil
 }
 
 func (fc FileCache) Write(name string, b []byte) (err error) {
-	return ioutil.WriteFile(name, b, 0666)
+	p, err := fc.Path(name)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(p, b, 0666)
 }
-func (fc FileCache) Path(name string) string {
-	return filepath.Join(fc.dir, name)
+func (fc FileCache) Path(name string) (string, error) {
+	if fc.dir == "" {
+		return "", ErrUninitialized
+	}
+	return filepath.Join(fc.dir, name), nil
 }
