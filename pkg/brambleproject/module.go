@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"fmt"
@@ -50,8 +50,8 @@ func (p *Project) ResolveModule(module string) (path string, err error) {
 	return path, nil
 }
 
-func (p *Project) moduleFromPath(wd string, path string) (thisModule string, err error) {
-	thisModule = (p.config.Module.Name + "/" + p.relativePathFromConfig(wd))
+func (p *Project) moduleFromPath(path string) (thisModule string, err error) {
+	thisModule = (p.config.Module.Name + "/" + p.relativePathFromConfig())
 
 	// See if this path is actually the name of a module, for now we just
 	// support one module.
@@ -67,13 +67,13 @@ func (p *Project) moduleFromPath(wd string, path string) (thisModule string, err
 
 	// support things like bar/main.bramble:foo
 	if strings.HasSuffix(path, BrambleExtension) &&
-		fileutil.FileExists(filepath.Join(wd, path)) {
+		fileutil.FileExists(filepath.Join(p.wd, path)) {
 		return thisModule + path[:len(path)-len(BrambleExtension)], nil
 	}
 
 	fullName := path + BrambleExtension
-	if !fileutil.FileExists(filepath.Join(wd, fullName)) {
-		if !fileutil.FileExists(filepath.Join(wd, path+"/default.bramble")) {
+	if !fileutil.FileExists(filepath.Join(p.wd, fullName)) {
+		if !fileutil.FileExists(filepath.Join(p.wd, path+"/default.bramble")) {
 			return "", errors.Errorf("%q: no such file or directory", path)
 		}
 	}
@@ -82,8 +82,8 @@ func (p *Project) moduleFromPath(wd string, path string) (thisModule string, err
 	return strings.TrimSuffix(thisModule, "/"), nil
 }
 
-func (p *Project) relativePathFromConfig(wd string) string {
-	relativePath, _ := filepath.Rel(p.Location, wd)
+func (p *Project) relativePathFromConfig() string {
+	relativePath, _ := filepath.Rel(p.Location, p.wd)
 	if relativePath == "." {
 		// don't add a dot to the path
 		return ""
@@ -91,9 +91,9 @@ func (p *Project) relativePathFromConfig(wd string) string {
 	return relativePath
 }
 
-func (p *Project) moduleNameFromFileName(wd string, filename string) (moduleName string, err error) {
+func (p *Project) moduleNameFromFileName(filename string) (moduleName string, err error) {
 	if !filepath.IsAbs(filename) {
-		filename = filepath.Join(wd, filename)
+		filename = filepath.Join(p.wd, filename)
 	}
 	filename, err = filepath.Abs(filename)
 	if err != nil {

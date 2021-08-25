@@ -1,4 +1,4 @@
-package store
+package bramblebuild
 
 import (
 	"path/filepath"

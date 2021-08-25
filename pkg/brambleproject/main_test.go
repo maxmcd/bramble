@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"os"
@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/store"
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 )
 
 func newTestRuntime() *Runtime {
-	store, err := store.NewStore("")
+	store, err := bramblebuild.NewStore("")
 	if err != nil {
 		panic(err)
 	}

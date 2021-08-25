@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/maxmcd/bramble/pkg/store"
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -42,7 +42,7 @@ func init() {
 }
 
 type Derivation struct {
-	store.Derivation
+	bramblebuild.Derivation
 	sources FilesList
 }
 

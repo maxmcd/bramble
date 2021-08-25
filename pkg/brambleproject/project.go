@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"flag"
@@ -36,13 +36,18 @@ type ConfigModule struct {
 	Name string `toml:"name"`
 }
 
-func NewProject(wd string) (*Project, error) {
-	found, location := findConfig(wd)
+func NewProject(wd string) (p *Project, err error) {
+	absWD, err := filepath.Abs(wd)
+	if err != nil {
+		return nil, errors.Wrapf(err, "can't convert relative working directory path %q to absolute path", wd)
+	}
+	found, location := findConfig(absWD)
 	if !found {
 		return nil, ErrNotInProject
 	}
-	p := &Project{
+	p = &Project{
 		Location: location,
+		wd:       absWD,
 	}
 	bDotToml := filepath.Join(location, "bramble.toml")
 	f, err := os.Open(bDotToml)
@@ -165,12 +170,7 @@ func (b *Project) parseModuleFuncArgument(args []string) (module, function strin
 		return "", "", flag.ErrHelp
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", "", errors.Wrap(err, "error retrieving working directory")
-	}
-
 	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
-	module, err = b.moduleFromPath(wd, path)
+	module, err = b.moduleFromPath(path)
 	return
 }

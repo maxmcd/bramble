@@ -1,4 +1,4 @@
-package frontend
+package brambleproject
 
 import (
 	"bytes"
@@ -9,22 +9,27 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/maxmcd/bramble/pkg/dstruct"
 	"github.com/maxmcd/bramble/pkg/filecache"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/store"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-func NewRuntime(project *Project, store *store.Store) (*Runtime, error) {
+func NewRuntime(project *Project, store *bramblebuild.Store) (*Runtime, error) {
 	if project == nil {
 		return nil, errors.New("project can't be nil")
 	}
 	if store == nil {
 		return nil, errors.New("store can't be nil")
+	}
+
+	cache, err := filecache.NewFileCache("bramble/starlark")
+	if err != nil {
+		return nil, errors.Wrap(err, "error trying to create cache directory")
 	}
 	rt := &Runtime{
 		thread:        &starlark.Thread{},
@@ -32,6 +37,7 @@ func NewRuntime(project *Project, store *store.Store) (*Runtime, error) {
 		store:         store,
 		moduleCache:   map[string]string{},
 		filenameCache: dstruct.NewBiStringMap(),
+		filecache:     cache,
 	}
 
 	// creates the derivation function and checks we have a valid bramble path and store
@@ -54,7 +60,7 @@ func NewRuntime(project *Project, store *store.Store) (*Runtime, error) {
 
 type Runtime struct {
 	project *Project
-	store   *store.Store
+	store   *bramblebuild.Store
 
 	derivationFn *derivationFunction
 
@@ -137,7 +143,7 @@ func (r *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *star
 	}
 	inputHash = hshr.String()
 
-	if r.filecache.Exists(inputHash) {
+	if exists, _ := r.filecache.Exists(inputHash); exists {
 		r.moduleCache[moduleName] = inputHash
 		return r.compileStarlarkPath(inputHash)
 	}

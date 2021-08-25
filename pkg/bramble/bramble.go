@@ -11,9 +11,9 @@ import (
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 
-	"github.com/maxmcd/bramble/pkg/frontend"
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
+	"github.com/maxmcd/bramble/pkg/brambleproject"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/bramble/pkg/store"
 )
 
 // Bramble is the main bramble client. It has various caches and metadata
@@ -23,8 +23,8 @@ type Bramble struct {
 	// don't use features that require root like setuid binaries
 	noRoot bool
 
-	project *frontend.Project
-	store   *store.Store
+	project *brambleproject.Project
+	store   *bramblebuild.Store
 
 	// working directory
 	wd          string

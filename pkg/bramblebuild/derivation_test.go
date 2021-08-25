@@ -1,4 +1,4 @@
-package store
+package bramblebuild
 
 import (
 	"fmt"
@@ -102,7 +102,7 @@ func TestDerivationOutputChange(t *testing.T) {
 }
 
 func TestDerivationValueReplacement(t *testing.T) {
-	store, err := NewStore(".")
+	store, err := NewStore("")
 	require.NoError(t, err)
 
 	fetchURL := &Derivation{
