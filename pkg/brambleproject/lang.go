@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 )
@@ -213,7 +213,7 @@ func (f *derivationFunction) newDerivationFromArgs(ctx context.Context, args sta
 	region := trace.StartRegion(ctx, "newDerivationFromArgs")
 	defer region.End()
 
-	drv = &Derivation{}
+	drv = f.runtime.newDerivation()
 	var (
 		name      starlark.String
 		builder   starlark.String
