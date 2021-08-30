@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/maxmcd/bramble/pkg/bramblebuild"
+	"github.com/maxmcd/bramble/pkg/brambleproject"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -208,4 +210,32 @@ func DefaultUsageFunc(c *ffcli.Command) string {
 func countFlags(fs *flag.FlagSet) (n int) {
 	fs.VisitAll(func(*flag.Flag) { n++ })
 	return n
+}
+
+func newDefaultRuntimeAndStore() (rt *brambleproject.Runtime, err error) {
+	store, err := bramblebuild.NewStore("")
+	if err != nil {
+		return nil, err
+	}
+	project, err := brambleproject.NewProject(".")
+	if err != nil {
+		return nil, err
+	}
+	rt, err = brambleproject.NewRuntime(project, store)
+	return rt, err
+}
+
+func Build(ctx context.Context, args []string) error {
+	rt, err := newDefaultRuntimeAndStore()
+	if err != nil {
+		return err
+	}
+	drvs, err := rt.ExecFromArguments("build", args)
+	if err != nil {
+		return err
+	}
+
+	builder := rt.NewBuilder(false)
+	_, err = builder.BuildDerivations(ctx, drvs, nil)
+	return err
 }

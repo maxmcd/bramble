@@ -2,6 +2,7 @@ package brambleproject
 
 import (
 	"bytes"
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
@@ -79,6 +80,53 @@ var starlarkSys = &starlarkstruct.Module{
 		"os":   starlark.String(runtime.GOOS),
 		"arch": starlark.String(runtime.GOARCH),
 	},
+}
+
+func (rt *Runtime) NewBuilder(rootless bool) *bramblebuild.Builder {
+	return rt.store.NewBuilder(rootless, rt.project.lockFile.URLHashes)
+}
+
+func (rt *Runtime) ExecFromArguments(cmd string, args []string) (drvs []*bramblebuild.Derivation, err error) {
+	if len(args) == 0 {
+		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
+		err = flag.ErrHelp
+		return
+	}
+
+	// parse something like ./tests:foo into the correct module and function
+	// name
+	module, fn, err := rt.project.parseModuleFuncArgument(args)
+	if err != nil {
+		return
+	}
+	logger.Debug("resolving module", module)
+	// parse the module and all of its imports, return available functions
+	globals, err := rt.resolveModule(module)
+	if err != nil {
+		return
+	}
+	toCall, ok := globals[fn]
+	if !ok {
+		err = errors.Errorf("function %q not found in module %q", fn, module)
+		return
+	}
+
+	logger.Debug("Calling function ", fn)
+	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
+	if err != nil {
+		err = errors.Wrap(err, "error running")
+		return
+	}
+
+	// The function must return a single derivation or a list of derivations, or
+	// a tuple of derivations. We turn them into an array.
+	derivations := valuesToDerivations(values)
+
+	// Pull store derivations out of the project derivations
+	for _, drv := range derivations {
+		drvs = append(drvs, &drv.Derivation)
+	}
+	return
 }
 
 func (rt *Runtime) newDerivation() *Derivation {
