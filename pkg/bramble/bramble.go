@@ -2,14 +2,11 @@ package bramble
 
 import (
 	"context"
-	"flag"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
-	"go.starlark.net/starlark"
 
 	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/maxmcd/bramble/pkg/brambleproject"
@@ -79,88 +76,9 @@ func NewBramble(wd string, opts ...Option) (b *Bramble, err error) {
 	return b, nil
 }
 
-func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-	b, err := NewBramble(loc)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		// TODO: ignore .git, ignore .gitignore?
-		if strings.HasSuffix(path, ".bramble") {
-			module, err := b.project.FilepathToModuleName(path)
-			if err != nil {
-				return err
-			}
-			globals, err := b.resolveModule(module)
-			if err != nil {
-				return err
-			}
-			for name, v := range globals {
-				if fn, ok := v.(*starlark.Function); ok {
-					if fn.NumParams()+fn.NumKwonlyParams() > 0 {
-						continue
-					}
-					fn.NumParams()
-					value, err := starlark.Call(b.thread, fn, nil, nil)
-					if err != nil {
-						return errors.Wrapf(err, "calling %q in %s", name, path)
-					}
-					derivations = append(derivations, valuesToDerivations(value)...)
-				}
-			}
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	return
-}
-
 func (b *Bramble) repl(_ []string) (err error) {
 	repl.REPL(b.thread, b.predeclared)
 	return nil
-}
-
-func (b *Bramble) parseAndCallBuildArg(cmd string, args []string) (derivations []*Derivation, err error) {
-	if len(args) == 0 {
-		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
-		err = flag.ErrHelp
-		return
-	}
-
-	// parse something like ./tests:foo into the correct module and function
-	// name
-	module, fn, err := b.parseModuleFuncArgument(args)
-	if err != nil {
-		return
-	}
-	logger.Debug("resolving module", module)
-	// parse the module and all of its imports, return available functions
-	globals, err := b.resolveModule(module)
-	if err != nil {
-		return
-	}
-	toCall, ok := globals[fn]
-	if !ok {
-		err = errors.Errorf("function %q not found in module %q", fn, module)
-		return
-	}
-
-	logger.Debug("Calling function ", fn)
-	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
-	if err != nil {
-		err = errors.Wrap(err, "error running")
-		return
-	}
-
-	// The function must return a single derivation or a list of derivations, or
-	// a tuple of derivations. We turn them into an array.
-	derivations = valuesToDerivations(values)
-	return
 }
 
 func (b *Bramble) Shell(ctx context.Context, args []string) (result []BuildResult, err error) {

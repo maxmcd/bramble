@@ -77,7 +77,7 @@ func (br BuildResult) String() string {
 	return fmt.Sprintf("{%s %s DidBuild: %t}", br.Derivation.Name, br.Derivation.Filename(), br.DidBuild)
 }
 
-func (b *Builder) buildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
+func (b *Builder) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
 	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
 	// derivation and then just merge the graphs with a fake root
