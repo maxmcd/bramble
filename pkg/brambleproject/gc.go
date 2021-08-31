@@ -1,4 +1,4 @@
-package bramblebuild
+package brambleproject
 
 // import (
 // 	"fmt"
@@ -8,6 +8,7 @@ package bramblebuild
 // 	"strings"
 // 	"sync"
 
+// 	"github.com/maxmcd/bramble/pkg/bramblebuild"
 // 	"github.com/maxmcd/bramble/pkg/dstruct"
 // 	"github.com/maxmcd/bramble/pkg/fileutil"
 // 	"github.com/maxmcd/bramble/pkg/logger"
@@ -16,8 +17,8 @@ package bramblebuild
 // 	"go.starlark.net/starlark"
 // )
 
-// func (store *Store) GC() (err error) {
-// 	derivations, err := b.collectDerivationsToPreserve()
+// func (rt *Runtime) GC() (err error) {
+// 	derivations, err := rt.collectDerivationsToPreserve()
 // 	if err != nil {
 // 		return
 // 	}
@@ -103,8 +104,8 @@ package bramblebuild
 
 // // REFAC: since this covers store and projects consider moving a lot of the logic into the bramble package
 
-// func (b *Bramble) collectDerivationsToPreserve() (derivations []*Derivation, err error) {
-// 	registryFolder := b.store.JoinBramblePath("var", "config-registry")
+// func (rt *Runtime) collectDerivationsToPreserve() (derivations []*Derivation, err error) {
+// 	registryFolder := rt.store.JoinBramblePath("var", "config-registry")
 // 	files, err := ioutil.ReadDir(registryFolder)
 // 	if err != nil {
 // 		return
@@ -134,7 +135,7 @@ package bramblebuild
 // 			continue
 // 		}
 // 		// Grab derivation cache from other projects and add to ours
-// 		drvs[0].bramble.derivations.Range(func(m map[string]*Derivation) {
+// 		drvs[0].derivations.Range(func(m map[string]*Derivation) {
 // 			for filename, drv := range m {
 // 				// Replace bramble with our bramble
 // 				drv.bramble = b
@@ -146,24 +147,31 @@ package bramblebuild
 // 	return
 // }
 
-// // REFAC: This is about a project, it's in the store directory...
 // func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-// 	b, err := NewProject(loc)
+// 	project, err := NewProject(loc)
 // 	if err != nil {
 // 		return nil, err
 // 	}
 
-// 	if err := filepath.Walk(b.configLocation, func(path string, fi os.FileInfo, err error) error {
+// 	store, err := bramblebuild.NewStore("")
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	rt, err := NewRuntime(project, store)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if err := filepath.Walk(project.Location, func(path string, fi os.FileInfo, err error) error {
 // 		if err != nil {
 // 			return err
 // 		}
 // 		// TODO: ignore .git, ignore .gitignore?
 // 		if strings.HasSuffix(path, ".bramble") {
-// 			module, err := b.project.FilepathToModuleName(path)
+// 			module, err := project.FilepathToModuleName(path)
 // 			if err != nil {
 // 				return err
 // 			}
-// 			globals, err := b.resolveModule(module)
+// 			globals, err := rt.resolveModule(module)
 // 			if err != nil {
 // 				return err
 // 			}
@@ -173,7 +181,7 @@ package bramblebuild
 // 						continue
 // 					}
 // 					fn.NumParams()
-// 					value, err := starlark.Call(b.thread, fn, nil, nil)
+// 					value, err := starlark.Call(rt.thread, fn, nil, nil)
 // 					if err != nil {
 // 						return errors.Wrapf(err, "calling %q in %s", name, path)
 // 					}
