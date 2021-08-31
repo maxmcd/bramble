@@ -61,7 +61,7 @@ func (b *Builder) buildDerivationIfNew(ctx context.Context, drv *Derivation) (di
 	}
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
-	if err = b.buildDerivation(ctx, drv, false); err != nil {
+	if err = b.BuildDerivation(ctx, drv, false); err != nil {
 		return false, errors.Wrap(err, "error building "+filename)
 	}
 	// TODO: lock store on write
@@ -185,7 +185,7 @@ func (b *Builder) BuildDerivations(ctx context.Context, derivations []*Derivatio
 	return result, err
 }
 
-func (b *Builder) buildDerivation(ctx context.Context, drv *Derivation, shell bool) (err error) {
+func (b *Builder) BuildDerivation(ctx context.Context, drv *Derivation, shell bool) (err error) {
 	var task *trace.Task
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()

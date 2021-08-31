@@ -8,11 +8,9 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
-	"go.starlark.net/starlark"
 )
 
 const BrambleExtension = ".bramble"
@@ -174,54 +172,5 @@ func (b *Project) parseModuleFuncArgument(args []string) (module, function strin
 
 	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
 	module, err = b.moduleFromPath(path)
-	return
-}
-
-func findAllDerivationsInProject(loc string) (derivations []*Derivation, err error) {
-	project, err := NewProject(loc)
-	if err != nil {
-		return nil, err
-	}
-
-	store, err := bramblebuild.NewStore("")
-	if err != nil {
-		return nil, err
-	}
-	rt, err := NewRuntime(project, store)
-	if err != nil {
-		return nil, err
-	}
-	if err := filepath.Walk(project.Location, func(path string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		// TODO: ignore .git, ignore .gitignore?
-		if strings.HasSuffix(path, ".bramble") {
-			module, err := project.FilepathToModuleName(path)
-			if err != nil {
-				return err
-			}
-			globals, err := rt.resolveModule(module)
-			if err != nil {
-				return err
-			}
-			for name, v := range globals {
-				if fn, ok := v.(*starlark.Function); ok {
-					if fn.NumParams()+fn.NumKwonlyParams() > 0 {
-						continue
-					}
-					fn.NumParams()
-					value, err := starlark.Call(rt.thread, fn, nil, nil)
-					if err != nil {
-						return errors.Wrapf(err, "calling %q in %s", name, path)
-					}
-					derivations = append(derivations, valuesToDerivations(value)...)
-				}
-			}
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
 	return
 }

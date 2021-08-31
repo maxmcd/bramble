@@ -16,6 +16,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
+	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -40,6 +41,7 @@ func NewRuntime(project *Project, store *bramblebuild.Store) (*Runtime, error) {
 		filenameCache: dstruct.NewBiStringMap(),
 		filecache:     cache,
 	}
+	rt.thread.Load = rt.load
 
 	// creates the derivation function and checks we have a valid bramble path and store
 	rt.derivationFn = newDerivationFunction(rt)
@@ -127,6 +129,10 @@ func (rt *Runtime) ExecFromArguments(cmd string, args []string) (drvs []*bramble
 		drvs = append(drvs, &drv.Derivation)
 	}
 	return
+}
+
+func (rt *Runtime) REPL() {
+	repl.REPL(rt.thread, rt.predeclared)
 }
 
 func (rt *Runtime) newDerivation() *Derivation {
