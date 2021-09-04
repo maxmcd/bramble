@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"runtime/debug"
+	"sort"
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/assert"
@@ -20,6 +21,7 @@ import (
 
 func (rt *runtime) init() {
 	assertGlobals, _ := assert.LoadAssertModule()
+	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
 	rt.predeclared = starlark.StringDict{
 		"derivation": starlark.NewBuiltin("derivation", rt.derivationFunction),
@@ -67,6 +69,8 @@ type runtime struct {
 	projectLocation  string
 	moduleName       string
 
+	allDerivations map[string]Derivation
+
 	cache map[string]*entry
 
 	predeclared starlark.StringDict
@@ -75,8 +79,9 @@ type runtime struct {
 var starlarkSys = &starlarkstruct.Module{
 	Name: "sys",
 	Members: starlark.StringDict{
-		"os":   starlark.String(stdruntime.GOOS),
-		"arch": starlark.String(stdruntime.GOARCH),
+		"os":       starlark.String(stdruntime.GOOS),
+		"arch":     starlark.String(stdruntime.GOARCH),
+		"platform": starlark.String(stdruntime.GOOS + "-" + stdruntime.GOARCH),
 	},
 }
 
@@ -127,38 +132,57 @@ func ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
 
 	module, fn, err := rt.parseModuleFuncArgument(args)
 	if err != nil {
-		return
+		return output, err
 	}
 	logger.Debug("resolving module", module)
 	// parse the module and all of its imports, return available functions
 	globals, err := rt.execModule(module)
 	if err != nil {
-		return
+		return output, err
 	}
 
 	toCall, ok := globals[fn]
 	if !ok {
-		err = errors.Errorf("function %q not found in module %q", fn, module)
-		return
+		return output, errors.Errorf("function %q not found in module %q", fn, module)
 	}
 
 	logger.Debug("Calling function ", fn)
 	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
 	if err != nil {
-		err = errors.Wrap(err, "error running")
-		return
+		return output, errors.Wrap(err, "error running")
 	}
 
 	// The function must return a single derivation or a list of derivations, or
 	// a tuple of derivations. We turn them into an array.
-	derivations := valuesToDerivations(values)
-	_ = derivations
-	// Pull store derivations out of the project derivations
-	// for _, drv := range derivations {
-	// 	drvs = append(drvs, &drv.Derivation)
-	// }
-	// _ = drvs
+	output.Output = valuesToDerivations(values)
+	output.AllDerivations = rt.allDerivationDependencies(output.Output)
 	return
+}
+
+func (rt *runtime) allDerivationDependencies(in []Derivation) []Derivation {
+	staging := map[string]Derivation{}
+	queue := make(chan string, len(rt.allDerivations))
+	for _, drv := range in {
+		queue <- drv.hash()
+	}
+	for {
+		select {
+		case hash := <-queue:
+			drv := rt.allDerivations[hash]
+			staging[hash] = drv
+			for _, dep := range drv.Dependencies {
+				queue <- dep.Hash
+			}
+		default:
+			// Nothing left in the queue
+			out := []Derivation{}
+			for _, drv := range staging {
+				out = append(out, drv)
+			}
+			sort.Slice(out, func(i, j int) bool { return out[i].hash() < out[j].hash() })
+			return out
+		}
+	}
 }
 
 func (rt *runtime) parseModuleFuncArgument(args []string) (module, function string, err error) {
