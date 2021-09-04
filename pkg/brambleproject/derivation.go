@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"sort"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
@@ -14,7 +16,8 @@ import (
 )
 
 var (
-	derivationTemplate = "{{ %s:%s }}"
+	derivationTemplate                      = "{{ %s:%s }}"
+	derivationTemplateRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}):(.+?) \}\}`)
 )
 
 func init() {
@@ -45,13 +48,13 @@ func init() {
 type Derivation struct {
 	// Args are arguments that are passed to the builder
 	Args []string
-	// BuildContextSource is the source directory that
-	BuildContextSource       string
-	BuildContextRelativePath string
 	// Builder will either be set to a string constant to signify an internal
 	// builder (like "fetch_url"), or it will be set to the path of an
 	// executable in the bramble store
 	Builder string
+
+	Dependencies []Dependency
+
 	// Env are environment variables set during the build
 	Env map[string]string
 
@@ -60,6 +63,11 @@ type Derivation struct {
 	Platform string
 
 	Sources FilesList
+}
+
+type Dependency struct {
+	Hash   string
+	Output string
 }
 
 var (
@@ -158,8 +166,132 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 	if err != nil {
 		return nil, err
 	}
+	rt.allDerivations[drv.hash()] = drv
 
 	return drv, nil
+}
+
+func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
+	drv = Derivation{Outputs: []string{"out"}}
+	var (
+		name      starlark.String
+		builder   starlark.String
+		argsParam *starlark.List
+		env       *starlark.Dict
+		outputs   *starlark.List
+	)
+	if err = starlark.UnpackArgs("derivation", args, kwargs,
+		"name", &name,
+		"builder", &builder,
+		"args?", &argsParam,
+		"sources?", &drv.Sources,
+		"env?", &env,
+		"outputs?", &outputs,
+		"platform?", &drv.Platform,
+	); err != nil {
+		return
+	}
+
+	drv.Name = name.GoString()
+
+	if argsParam != nil {
+		if drv.Args, err = starutil.IterableToGoList(argsParam); err != nil {
+			return
+		}
+	}
+
+	for _, src := range drv.Sources.Files {
+		abs := filepath.Join(rt.projectLocation, src)
+		if !fileutil.PathExists(abs) {
+			return drv, errors.Errorf("Source file %q doesn't exit", abs)
+		}
+	}
+	if env != nil {
+		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
+			return
+		}
+	}
+
+	if outputs != nil {
+		var outputsList []string
+		outputsList, err = starutil.IterableToGoList(outputs)
+		if err != nil {
+			return
+		}
+		// TODO: error if the array is empty?
+		drv.Outputs = outputsList
+	}
+
+	// TODO: valide that the builder is either a built-in or looks like a real
+	// builder?
+	drv.Builder = builder.GoString()
+	drv = makeConsistentNullJSONValues(drv)
+
+	drv.Dependencies = rt.findDependencies(drv)
+	return drv, nil
+}
+
+// makeConsistentNullJSONValues ensures that we null any empty arrays, some of
+// these values will be initialized with zero-length arrays above, we want to
+// make sure we remove this inconsistency from our hashed json output. To us
+// an empty array is null.
+func makeConsistentNullJSONValues(drv Derivation) Derivation {
+	if len(drv.Args) == 0 {
+		drv.Args = nil
+	}
+	if len(drv.Env) == 0 {
+		drv.Env = nil
+	}
+	if len(drv.Dependencies) == 0 {
+		drv.Dependencies = nil
+	}
+	if len(drv.Sources.Files) == 0 {
+		drv.Sources.Files = nil
+	}
+	return drv
+}
+
+// runErrorReporter reports errors during a run. These errors are just passed up the thread
+type runErrorReporter struct{}
+
+func (e runErrorReporter) Error(err error) {}
+func (e runErrorReporter) FailNow() bool   { return true }
+
+func (rt *runtime) findDependencies(drv Derivation) []Dependency {
+	s := string(drv.json())
+	out := []Dependency{}
+	for _, match := range derivationTemplateRegexp.FindAllStringSubmatch(s, -1) {
+		// We must validate that the derivation exists and this isn't just an
+		// errant template string
+
+		if _, found := rt.allDerivations[match[1]]; found {
+			out = append(out, Dependency{
+				Hash:   match[1],
+				Output: match[2],
+			})
+		}
+	}
+	return sortAndUniqueDependencies(out)
+}
+
+func sortAndUniqueDependencies(deps []Dependency) []Dependency {
+	sort.Slice(deps, func(i, j int) bool {
+		return deps[i].Hash+deps[i].Output < deps[j].Hash+deps[j].Output
+	})
+
+	// dedupe
+	if len(deps) == 0 {
+		return nil
+	}
+	j := 0
+	for i := 1; i < len(deps); i++ {
+		if deps[j] == deps[i] {
+			continue
+		}
+		j++
+		deps[j] = deps[i]
+	}
+	return deps[:j+1]
 }
 
 // REFAC, move to post-lang stage (??? check notes)
@@ -224,86 +356,3 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 // 	sort.Strings(drv.SourcePaths)
 // 	return
 // }
-
-func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
-	drv = Derivation{Outputs: []string{"out"}}
-	var (
-		name      starlark.String
-		builder   starlark.String
-		argsParam *starlark.List
-		sources   FilesList
-		env       *starlark.Dict
-		outputs   *starlark.List
-	)
-	if err = starlark.UnpackArgs("derivation", args, kwargs,
-		"name", &name,
-		"builder", &builder,
-		"args?", &argsParam,
-		"sources?", &sources,
-		"env?", &env,
-		"outputs?", &outputs,
-	); err != nil {
-		return
-	}
-
-	drv.Name = name.GoString()
-
-	if argsParam != nil {
-		if drv.Args, err = starutil.IterableToGoList(argsParam); err != nil {
-			return
-		}
-	}
-
-	drv.Sources = sources
-	for _, src := range drv.Sources.files {
-		abs := filepath.Join(rt.projectLocation, src)
-		if !fileutil.PathExists(abs) {
-			return drv, errors.Errorf("Source file %q doesn't exit", abs)
-		}
-	}
-	if env != nil {
-		if drv.Env, err = starutil.DictToGoStringMap(env); err != nil {
-			return
-		}
-	}
-
-	if outputs != nil {
-		var outputsList []string
-		outputsList, err = starutil.IterableToGoList(outputs)
-		if err != nil {
-			return
-		}
-		// TODO: error if the array is empty?
-		drv.Outputs = outputsList
-	}
-
-	drv.Builder = builder.GoString()
-	drv = makeConsistentNullJSONValues(drv)
-	return drv, nil
-}
-
-// makeConsistentNullJSONValues ensures that we null any empty arrays, some of
-// these values will be initialized with zero-length arrays above, we want to
-// make sure we remove this inconsistency from our hashed json output. To us
-// an empty array is null.
-func makeConsistentNullJSONValues(drv Derivation) Derivation {
-	if len(drv.Args) == 0 {
-		drv.Args = nil
-	}
-	if len(drv.Env) == 0 {
-		drv.Env = nil
-	}
-	if len(drv.Outputs) == 0 {
-		drv.Outputs = nil
-	}
-	if len(drv.Outputs) == 0 {
-		drv.Outputs = nil
-	}
-	return drv
-}
-
-// runErrorReporter reports errors during a run. These errors are just passed up the thread
-type runErrorReporter struct{}
-
-func (e runErrorReporter) Error(err error) {}
-func (e runErrorReporter) FailNow() bool   { return true }

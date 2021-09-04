@@ -14,15 +14,15 @@ import (
 )
 
 type FilesList struct {
-	files    []string
-	location string
+	Files    []string
+	Location string
 }
 
 var _ starlark.Value = new(FilesList)
 
 func (fl FilesList) Freeze()               {}
 func (fl FilesList) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("file_list") }
-func (fl FilesList) String() string        { return fmt.Sprint([]string(fl.files)) }
+func (fl FilesList) String() string        { return fmt.Sprint([]string(fl.Files)) }
 func (fl FilesList) Type() string          { return "file_list" }
 func (fl FilesList) Truth() starlark.Bool  { return true }
 
@@ -97,15 +97,20 @@ func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builti
 		}
 	}
 
+	// Only put the relative location in the derivation
+	relFileDirectory, err := filepath.Rel(fb.projectLocation, fileDirectory)
+	if err != nil {
+		return nil, errors.Wrapf(err, "can't compute relative path between %q and %q", fb.projectLocation, fileDirectory)
+	}
 	fl := FilesList{
-		location: fileDirectory,
+		Location: relFileDirectory,
 	}
 	for f := range inclSet {
 		if _, match := exclSet[f]; !match {
-			fl.files = append(fl.files, f)
+			fl.Files = append(fl.Files, f)
 		}
 	}
-	if len(fl.files) == 0 && !allowEmpty {
+	if len(fl.Files) == 0 && !allowEmpty {
 		return nil, errors.New("files() call matched zero files")
 	}
 

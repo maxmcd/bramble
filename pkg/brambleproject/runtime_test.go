@@ -1,9 +1,10 @@
 package brambleproject
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -13,20 +14,66 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func TestTestProject(t *testing.T) {
+func TestExecModule(t *testing.T) {
 	projectLocation, err := filepath.Abs("./testdata/project")
 	require.NoError(t, err)
 
-	out, err := ExecModule(ExecModuleInput{
-		Command:   "build",
-		Arguments: []string{":foo"},
-		ProjectInput: ProjectInput{
-			WorkingDirectory: projectLocation,
-			ProjectLocation:  projectLocation,
-			ModuleName:       "testproject",
+	type output struct {
+		output []string
+		all    []string
+	}
+	tests := []struct {
+		name       string
+		args       []string
+		wantOutput output
+		wantErr    bool
+	}{
+		{
+			args: []string{":chain"},
+			wantOutput: output{
+				output: []string{"c"},
+				all:    []string{"a", "b", "c"},
+			},
 		},
-	})
-	fmt.Println(out, err)
+		{
+			args: []string{":foo"},
+			wantOutput: output{
+				output: []string{"name"},
+				all:    []string{"example.com", "name"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotOutput, err := ExecModule(ExecModuleInput{
+				Command:   "build",
+				Arguments: tt.args,
+				ProjectInput: ProjectInput{
+					WorkingDirectory: projectLocation,
+					ProjectLocation:  projectLocation,
+					ModuleName:       "testproject",
+				},
+			})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ExecModule() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			reducedOutput := output{}
+			for _, drv := range gotOutput.AllDerivations {
+				reducedOutput.all = append(reducedOutput.all, drv.Name)
+			}
+			for _, drv := range gotOutput.Output {
+				reducedOutput.output = append(reducedOutput.output, drv.Name)
+			}
+			sort.Strings(reducedOutput.all)
+			sort.Strings(reducedOutput.output)
+
+			if !reflect.DeepEqual(reducedOutput, tt.wantOutput) {
+				t.Errorf("ExecModule() = %v, want %v", reducedOutput, tt.wantOutput)
+			}
+		})
+	}
 }
 
 func TestAllFunctions(t *testing.T) {

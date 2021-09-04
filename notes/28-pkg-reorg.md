@@ -122,3 +122,24 @@ type Bramble interface {
     Build(input BuildInput) (BuildOutput, error)
 }
 ```
+
+
+What do we want the response from ExecModule() to be like. The language runtime
+spits out derivations like this:
+```json
+// b7lwux3jsksgtpb3n2xlmhkbeqzmygsp
+{"Args":null,"Builder":"fetch_url","Env":{"url":"example.com"},"Name":"example.com","Outputs":["out"],"Platform":"","Sources":{}}
+// qlf7agcj3i6b747l7tom3an7xmthua6c
+{"Args":null,"Builder":"foo","Env":{"eg":"{{ b7lwux3jsksgtpb3n2xlmhkbeqzmygsp:out }}"},"Name":"name","Outputs":["out"],"Platform":"linux-amd64","Sources":{}}
+```
+
+The build library will need to:
+1. Accept these derivations
+2. Grab sources and turn them into a real derivation
+3. Either pull the real derivation hash from source or build the derivation's dependencies so that the final derivation value can be determined
+
+What does Build() take? I guess valid but not completely built derivations.
+
+So maybe we have a function in the build lib, like "createDerivation" and it takes the derivation details along with the sources and spits out a derivation. We can run our derivations one by one through this and then patch up our hashes and replace them w\ real hashes as needed.
+
+TODO: figure out intentional hash collisions
