@@ -24,21 +24,19 @@ import (
 	git "github.com/go-git/go-git/v5"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	"github.com/maxmcd/bramble/pkg/dstruct"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/maxmcd/dag"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 )
 
-func (store *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder {
+func (s *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder {
 	return &Builder{
-		store:     store,
+		store:     s,
 		URLHashes: urlHashes,
 	}
 }
@@ -47,6 +45,8 @@ type Builder struct {
 	store     *Store
 	rootless  bool
 	URLHashes map[string]string
+
+	derivationsMap *DerivationsMap
 }
 
 func (b *Builder) buildDerivationIfNew(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
@@ -75,114 +75,6 @@ type BuildResult struct {
 
 func (br BuildResult) String() string {
 	return fmt.Sprintf("{%s %s DidBuild: %t}", br.Derivation.Name, br.Derivation.Filename(), br.DidBuild)
-}
-
-func (b *Builder) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
-	result []BuildResult, err error) {
-	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
-	// derivation and then just merge the graphs with a fake root
-
-	graphs := []*dstruct.AcyclicGraph{}
-	for _, drv := range derivations {
-		graph, err := drv.BuildDependencyGraph()
-		if err != nil {
-			return nil, err
-		}
-		graphs = append(graphs, graph)
-	}
-	graph := dstruct.MergeGraphs(graphs...)
-	if graph == nil || len(graph.Vertices()) == 0 {
-		return
-	}
-	if err = graph.Validate(); err != nil {
-		err = errors.WithStack(err)
-		return
-	}
-	var wg sync.WaitGroup
-	errChan := make(chan error)
-	semaphore := make(chan struct{}, 1)
-	var errored bool
-	if err = graph.Validate(); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	go func() {
-		graph.Walk(func(v dag.Vertex) (_ error) {
-			if errored {
-				return
-			}
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			// serial for now
-
-			// Skip the rake root
-			if v == dstruct.FakeDAGRoot {
-				return
-			}
-			do := v.(DerivationOutput)
-			// REFAC: see comment below
-			drv := b.store.derivations.Load(do.Filename)
-			drv.lock.Lock()
-			defer drv.lock.Unlock()
-
-			if skipDerivation != nil && skipDerivation == drv {
-				// Is this enough of an equality check?
-				return
-			}
-			wg.Add(1)
-			didBuild, err := b.buildDerivationIfNew(ctx, drv)
-			if err != nil {
-				// Passing the error might block, so we need an explicit Done
-				// call here.
-				wg.Done()
-				errored = true
-				logger.Print(err)
-				errChan <- err
-				return
-			}
-
-			// Post build processing of dependencies template values:
-			{
-				// We construct the template value using the DerivationOutput which
-				// uses the initial derivation output value
-				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
-
-				newTemplateName := drv.OutputTemplateString(do.OutputName)
-
-				for _, edge := range graph.EdgesTo(v) {
-					if edge.Source() == dstruct.FakeDAGRoot {
-						continue
-					}
-					childDO := edge.Source().(DerivationOutput)
-
-					// REFAC: consider moving this cache to just within the builder, can be the context for rebuilding the tree
-					childDRV := b.store.derivations.Load(childDO.Filename)
-					for i, input := range childDRV.InputDerivations {
-						// Add the output to the derivation input
-						if input.Filename == do.Filename && input.OutputName == do.OutputName {
-							childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
-						}
-					}
-					if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
-						panic(err)
-					}
-				}
-			}
-
-			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
-			wg.Done()
-			return
-		})
-		errChan <- nil
-	}()
-	err = <-errChan
-	cancel() // Call cancel on the context, no-op if nothing is running
-	if err != nil {
-		// If we receive an error cancel the context and wait for any jobs that
-		// are running.
-		wg.Wait()
-	}
-	return result, err
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv *Derivation, shell bool) (err error) {
@@ -321,7 +213,6 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 	// if we don't have a hash to validate, validate the one we already have
 	if hash == "" && exists {
 		hash = existingHash
-
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -471,7 +362,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, ou
 	}
 	return nil
 }
-func (b *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
+func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
 	region := trace.StartRegion(ctx, "unarchiveAndReplaceOutputFolderName")
 	defer region.End()
 	pipeReader, pipWriter := io.Pipe()

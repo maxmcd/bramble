@@ -64,5 +64,5 @@ func HashFile(name string, file io.ReadCloser) (fileHash, filename string, err e
 		return
 	}
 	filename = fmt.Sprintf("%s-%s", hasher.String(), name)
-	return
+	return hasher.String(), filename, err
 }

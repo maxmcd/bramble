@@ -1,0 +1,4 @@
+load("github.com/maxmcd/bramble/pkg/brambleproject/testdata/circular/b")
+
+def a():
+    pass

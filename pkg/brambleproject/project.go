@@ -1,15 +1,12 @@
 package brambleproject
 
 import (
-	"flag"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 )
 
@@ -21,7 +18,7 @@ var (
 
 type Project struct {
 	config   Config
-	Location string
+	location string
 
 	wd string
 
@@ -36,6 +33,8 @@ type ConfigModule struct {
 	Name string `toml:"name"`
 }
 
+// NewProject checks for an existing bramble project in the provided working
+// directory and loads its configuration details if one is found.
 func NewProject(wd string) (p *Project, err error) {
 	absWD, err := filepath.Abs(wd)
 	if err != nil {
@@ -46,7 +45,7 @@ func NewProject(wd string) (p *Project, err error) {
 		return nil, ErrNotInProject
 	}
 	p = &Project{
-		Location: location,
+		location: location,
 		wd:       absWD,
 	}
 	bDotToml := filepath.Join(location, "bramble.toml")
@@ -91,11 +90,15 @@ type LockFile struct {
 	URLHashes map[string]string
 }
 
-func (p *Project) AddURLHashToLockfile(url, hash string) (err error) {
+func (p *Project) Location() string {
+	return p.location
+}
+
+func (p *Project) AddURLHashesToLockfile(mapping map[string]string) (err error) {
 	p.lockFileLock.Lock()
 	defer p.lockFileLock.Unlock()
 
-	f, err := os.OpenFile(filepath.Join(p.Location, "bramble.lock"),
+	f, err := os.OpenFile(filepath.Join(p.location, "bramble.lock"),
 		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		return
@@ -110,67 +113,13 @@ func (p *Project) AddURLHashToLockfile(url, hash string) (err error) {
 	}
 	_ = f.Truncate(0)
 	_, _ = f.Seek(0, 0)
-	if v, ok := lf.URLHashes[url]; ok && v != hash {
-		return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+
+	for url, hash := range mapping {
+		if v, ok := lf.URLHashes[url]; ok && v != hash {
+			return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+		}
+		lf.URLHashes[url] = hash
 	}
-	lf.URLHashes[url] = hash
 
 	return toml.NewEncoder(f).Encode(&lf)
-}
-
-func (p *Project) FilepathToModuleName(path string) (module string, err error) {
-	if !strings.HasSuffix(path, BrambleExtension) {
-		return "", errors.Errorf("path %q is not a bramblefile", path)
-	}
-	if !fileutil.FileExists(path) {
-		return "", errors.Wrap(os.ErrNotExist, path)
-	}
-	rel, err := filepath.Rel(p.Location, path)
-	if err != nil {
-		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, p.Location)
-	}
-	if strings.HasSuffix(path, "default"+BrambleExtension) {
-		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
-	} else {
-		rel = strings.TrimSuffix(rel, BrambleExtension)
-	}
-	rel = strings.TrimSuffix(rel, "/")
-	return p.config.Module.Name + "/" + rel, nil
-}
-
-func findBrambleFiles(path string) (brambleFiles []string, err error) {
-	if fileutil.FileExists(path) {
-		return []string{path}, nil
-	}
-	if fileutil.FileExists(path + BrambleExtension) {
-		return []string{path + BrambleExtension}, nil
-	}
-	return brambleFiles, filepath.Walk(path, func(path string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if filepath.Ext(fi.Name()) != BrambleExtension {
-			return nil
-		}
-		brambleFiles = append(brambleFiles, path)
-		return nil
-	})
-}
-
-func (b *Project) parseModuleFuncArgument(args []string) (module, function string, err error) {
-	if len(args) == 0 {
-		logger.Print(`"bramble build" requires 1 argument`)
-		return "", "", flag.ErrHelp
-	}
-
-	firstArgument := args[0]
-	lastIndex := strings.LastIndex(firstArgument, ":")
-	if lastIndex < 0 {
-		logger.Print("module and function argument is not properly formatted")
-		return "", "", flag.ErrHelp
-	}
-
-	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
-	module, err = b.moduleFromPath(path)
-	return
 }

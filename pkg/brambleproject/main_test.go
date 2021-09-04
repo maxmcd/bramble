@@ -7,25 +7,24 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 )
 
-func newTestRuntime() *Runtime {
-	store, err := bramblebuild.NewStore("")
-	if err != nil {
-		panic(err)
+func newTestRuntime(t *testing.T) *runtime {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	projectLocation, err := filepath.Abs("../../")
+	require.NoError(t, err)
+
+	rt := &runtime{
+		workingDirectory: wd,
+		projectLocation:  projectLocation,
+		moduleName:       "github.com/maxmcd/bramble",
 	}
-	project, err := NewProject(".")
-	if err != nil {
-		panic(err)
-	}
-	rt, err := NewRuntime(project, store)
-	if err != nil {
-		panic(err)
-	}
+	rt.init()
 	return rt
 }
 
@@ -51,10 +50,11 @@ func fixUpScript(script string) string {
 func runDerivationTest(t *testing.T, tests []scriptTest) {
 	var err error
 	dir := fileutil.TestTmpDir(t)
+	previous := os.Getenv("BRAMBLE_PATH")
 	os.Setenv("BRAMBLE_PATH", dir)
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { os.RemoveAll(dir); os.Setenv("BRAMBLE_PATH", previous) })
 
-	rt := newTestRuntime()
+	rt := newTestRuntime(t)
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	for _, tt := range tests {
@@ -89,10 +89,10 @@ func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 		return
 	}
 
-	if drv, ok := b.(*Derivation); ok {
-		assert.Contains(t, drv.PrettyJSON(), tt.respContains)
+	if drv, ok := b.(Derivation); ok {
+		assert.Contains(t, drv.prettyJSON(), tt.respContains)
 		if tt.respDoesntContain != "" {
-			assert.NotContains(t, drv.PrettyJSON(), tt.respDoesntContain)
+			assert.NotContains(t, drv.prettyJSON(), tt.respDoesntContain)
 		}
 		return
 	}
