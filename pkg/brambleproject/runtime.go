@@ -1,19 +1,16 @@
 package brambleproject
 
 import (
-	"bytes"
 	"flag"
-	"io"
+	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
+	stdruntime "runtime"
+	"runtime/debug"
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/assert"
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
-	"github.com/maxmcd/bramble/pkg/dstruct"
-	"github.com/maxmcd/bramble/pkg/filecache"
-	"github.com/maxmcd/bramble/pkg/hasher"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
@@ -21,92 +18,124 @@ import (
 	"go.starlark.net/starlarkstruct"
 )
 
-func NewRuntime(project *Project, store *bramblebuild.Store) (*Runtime, error) {
-	if project == nil {
-		return nil, errors.New("project can't be nil")
-	}
-	if store == nil {
-		return nil, errors.New("store can't be nil")
-	}
-
-	cache, err := filecache.NewFileCache("bramble/starlark")
-	if err != nil {
-		return nil, errors.Wrap(err, "error trying to create cache directory")
-	}
-	rt := &Runtime{
-		thread:        &starlark.Thread{},
-		project:       project,
-		store:         store,
-		moduleCache:   map[string]string{},
-		filenameCache: dstruct.NewBiStringMap(),
-		filecache:     cache,
-	}
-	rt.thread.Load = rt.load
-
-	// creates the derivation function and checks we have a valid bramble path and store
-	rt.derivationFn = newDerivationFunction(rt)
-
+func (rt *runtime) init() {
 	assertGlobals, _ := assert.LoadAssertModule()
-
-	// set the necessary error reporter so that the assert package can catch
-	// errors
-	assert.SetReporter(rt.thread, runErrorReporter{})
-
+	rt.cache = map[string]*entry{}
 	rt.predeclared = starlark.StringDict{
-		"derivation": rt.derivationFn,
+		"derivation": starlark.NewBuiltin("derivation", rt.derivationFunction),
 		"assert":     assertGlobals["assert"],
 		"sys":        starlarkSys,
-		"files":      starlark.NewBuiltin("files", rt.filesBuiltin),
+		"files": starlark.NewBuiltin("files", filesBuiltin{
+			projectLocation: rt.projectLocation,
+		}.filesBuiltin),
 	}
-	return rt, nil
 }
 
-type Runtime struct {
-	project *Project
-	store   *bramblebuild.Store
+func (rt *runtime) newThread(name string) *starlark.Thread {
+	thread := &starlark.Thread{
+		Name: name,
+		Load: rt.load,
+	}
+	// set the necessary error reporter so that the assert package can catch
+	// errors
+	assert.SetReporter(thread, runErrorReporter{})
+	return thread
+}
 
-	derivationFn *derivationFunction
+func (rt *runtime) filepathToModuleName(path string) (module string, err error) {
+	if !strings.HasSuffix(path, BrambleExtension) {
+		return "", errors.Errorf("path %q is not a bramblefile", path)
+	}
+	if !fileutil.FileExists(path) {
+		return "", errors.Wrap(os.ErrNotExist, path)
+	}
+	rel, err := filepath.Rel(rt.projectLocation, path)
+	if err != nil {
+		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, rt.projectLocation)
+	}
+	if strings.HasSuffix(path, "default"+BrambleExtension) {
+		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
+	} else {
+		rel = strings.TrimSuffix(rel, BrambleExtension)
+	}
+	rel = strings.TrimSuffix(rel, "/")
+	return rt.moduleName + "/" + rel, nil
+}
 
-	filecache filecache.FileCache
+type runtime struct {
+	workingDirectory string
+	projectLocation  string
+	moduleName       string
 
-	thread      *starlark.Thread
+	cache map[string]*entry
+
 	predeclared starlark.StringDict
-
-	moduleCache   map[string]string
-	filenameCache *dstruct.BiStringMap
 }
 
 var starlarkSys = &starlarkstruct.Module{
 	Name: "sys",
 	Members: starlark.StringDict{
-		"os":   starlark.String(runtime.GOOS),
-		"arch": starlark.String(runtime.GOARCH),
+		"os":   starlark.String(stdruntime.GOOS),
+		"arch": starlark.String(stdruntime.GOARCH),
 	},
 }
 
-func (rt *Runtime) NewBuilder(rootless bool) *bramblebuild.Builder {
-	return rt.store.NewBuilder(rootless, rt.project.lockFile.URLHashes)
+type ExecModuleInput struct {
+	Command   string
+	Arguments []string
+
+	ProjectInput ProjectInput
 }
 
-func (rt *Runtime) ExecFromArguments(cmd string, args []string) (drvs []*bramblebuild.Derivation, err error) {
+type ProjectInput struct {
+	WorkingDirectory string
+	ProjectLocation  string
+	ModuleName       string
+}
+
+type ExecModuleOutput struct {
+	Output         []Derivation
+	AllDerivations []Derivation
+}
+
+func REPL(projectInput ProjectInput) {
+	t := &runtime{
+		workingDirectory: projectInput.WorkingDirectory,
+		projectLocation:  projectInput.ProjectLocation,
+		moduleName:       projectInput.ModuleName,
+	}
+	t.init()
+	repl.REPL(t.newThread("repl"), t.predeclared)
+}
+
+func ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
+	// TODO: validate input
+
+	cmd, args := input.Command, input.Arguments
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
 		return
 	}
 
-	// parse something like ./tests:foo into the correct module and function
-	// name
-	module, fn, err := rt.project.parseModuleFuncArgument(args)
+	rt := &runtime{
+		workingDirectory: input.ProjectInput.WorkingDirectory,
+		projectLocation:  input.ProjectInput.ProjectLocation,
+		moduleName:       input.ProjectInput.ModuleName,
+	}
+	rt.init()
+
+	module, fn, err := rt.parseModuleFuncArgument(args)
 	if err != nil {
 		return
 	}
 	logger.Debug("resolving module", module)
 	// parse the module and all of its imports, return available functions
-	globals, err := rt.resolveModule(module)
+	globals, err := rt.execModule(module)
 	if err != nil {
 		return
 	}
+
 	toCall, ok := globals[fn]
 	if !ok {
 		err = errors.Errorf("function %q not found in module %q", fn, module)
@@ -114,7 +143,7 @@ func (rt *Runtime) ExecFromArguments(cmd string, args []string) (drvs []*bramble
 	}
 
 	logger.Debug("Calling function ", fn)
-	values, err := starlark.Call(&starlark.Thread{}, toCall, nil, nil)
+	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
 	if err != nil {
 		err = errors.Wrap(err, "error running")
 		return
@@ -123,45 +152,152 @@ func (rt *Runtime) ExecFromArguments(cmd string, args []string) (drvs []*bramble
 	// The function must return a single derivation or a list of derivations, or
 	// a tuple of derivations. We turn them into an array.
 	derivations := valuesToDerivations(values)
-
+	_ = derivations
 	// Pull store derivations out of the project derivations
-	for _, drv := range derivations {
-		drvs = append(drvs, &drv.Derivation)
-	}
+	// for _, drv := range derivations {
+	// 	drvs = append(drvs, &drv.Derivation)
+	// }
+	// _ = drvs
 	return
 }
 
-func (rt *Runtime) REPL() {
-	repl.REPL(rt.thread, rt.predeclared)
-}
-
-func (rt *Runtime) newDerivation() *Derivation {
-	return &Derivation{Derivation: *rt.store.NewDerivation()}
-}
-
-func (rt *Runtime) resolveModule(module string) (globals starlark.StringDict, err error) {
-	if _, ok := rt.moduleCache[module]; ok {
-		filename, exists := rt.filenameCache.LoadInverse(module)
-		if !exists {
-			return nil, errors.Errorf("module %q returns no matching filename", module)
-		}
-		return rt.starlarkExecFile(module, filename)
+func (rt *runtime) parseModuleFuncArgument(args []string) (module, function string, err error) {
+	if len(args) == 0 {
+		logger.Print(`"bramble build" requires 1 argument`)
+		return "", "", flag.ErrHelp
 	}
 
-	path, err := rt.project.ResolveModule(module)
+	firstArgument := args[0]
+	lastIndex := strings.LastIndex(firstArgument, ":")
+	if lastIndex < 0 {
+		logger.Print("module and function argument is not properly formatted")
+		return "", "", flag.ErrHelp
+	}
+
+	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
+	module, err = rt.moduleFromPath(path)
+	return
+}
+
+func (rt *runtime) moduleFromPath(path string) (thisModule string, err error) {
+	thisModule = (rt.moduleName + "/" + rt.relativePathFromConfig())
+
+	// See if this path is actually the name of a module, for now we just
+	// support one module.
+	// TODO: search through all modules in scope for this config
+	if strings.HasPrefix(path, rt.moduleName) {
+		return path, nil
+	}
+
+	// if the relative path is nothing, we've already added the slash above
+	if !strings.HasSuffix(thisModule, "/") {
+		thisModule += "/"
+	}
+
+	// support things like bar/main.bramble:foo
+	if strings.HasSuffix(path, BrambleExtension) &&
+		fileutil.FileExists(filepath.Join(rt.workingDirectory, path)) {
+		return thisModule + path[:len(path)-len(BrambleExtension)], nil
+	}
+
+	fullName := path + BrambleExtension
+	if !fileutil.FileExists(filepath.Join(rt.workingDirectory, fullName)) {
+		if !fileutil.FileExists(filepath.Join(rt.workingDirectory, path+"/default.bramble")) {
+			return "", errors.Errorf("%q: no such file or directory", path)
+		}
+	}
+	// we found it, return
+	thisModule += filepath.Join(path)
+	return strings.TrimSuffix(thisModule, "/"), nil
+}
+
+func (rt *runtime) relativePathFromConfig() string {
+	relativePath, _ := filepath.Rel(rt.projectLocation, rt.workingDirectory)
+	if relativePath == "." {
+		// don't add a dot to the path
+		return ""
+	}
+	return relativePath
+}
+
+type entry struct {
+	globals starlark.StringDict
+	err     error
+}
+
+func (rt *runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
+	return rt.execModule(module)
+}
+
+func (rt *runtime) execModule(module string) (globals starlark.StringDict, err error) {
+	if rt.predeclared == nil {
+		return nil, errors.New("thread is not initialized")
+	}
+
+	e, ok := rt.cache[module]
+	// If we've loaded the module already, return the cached values
+	if e != nil {
+		return e.globals, e.err
+	}
+
+	// If e == nil and we have a cache value then we've tried to import a module
+	// while we're still loading it.
+	if ok {
+		return nil, fmt.Errorf("cycle in load graph")
+	}
+
+	// Add a placeholder to indicate "load in progress".
+	rt.cache[module] = nil
+
+	path, err := rt.moduleToPath(module)
 	if err != nil {
 		return nil, err
 	}
-
-	return rt.starlarkExecFile(module, path)
+	// Load and initialize the module in a new thread.
+	globals, err = rt.starlarkExecFile(rt.newThread("module "+module), path)
+	rt.cache[module] = &entry{globals: globals, err: err}
+	return globals, err
 }
 
-func (rt *Runtime) starlarkExecFile(moduleName, filename string) (globals starlark.StringDict, err error) {
-	prog, err := rt.sourceStarlarkProgram(moduleName, filename)
+func (rt *runtime) moduleToPath(module string) (path string, err error) {
+	if !strings.HasPrefix(module, rt.moduleName) {
+		// TODO: support other modules
+		debug.PrintStack()
+		err = errors.Errorf("We don't support other projects yet! %s", module)
+		return
+	}
+
+	path = module[len(rt.moduleName):]
+	path = filepath.Join(rt.projectLocation, path)
+
+	directoryWithNameExists := fileutil.PathExists(path)
+
+	var directoryHasDefaultDotBramble bool
+	if directoryWithNameExists {
+		directoryHasDefaultDotBramble = fileutil.FileExists(path + "/default.bramble")
+	}
+
+	fileWithNameExists := fileutil.FileExists(path + BrambleExtension)
+
+	switch {
+	case directoryWithNameExists && directoryHasDefaultDotBramble:
+		path += "/default.bramble"
+	case fileWithNameExists:
+		path += BrambleExtension
+	default:
+		return "", errors.Errorf("Module %q not found, %q is not a directory and %q does not exist",
+			module, path, path+BrambleExtension)
+	}
+
+	return path, nil
+}
+
+func (rt *runtime) starlarkExecFile(thread *starlark.Thread, filename string) (globals starlark.StringDict, err error) {
+	prog, err := rt.sourceStarlarkProgram(filename)
 	if err != nil {
 		return
 	}
-	g, err := prog.Init(rt.thread, rt.predeclared)
+	g, err := prog.Init(thread, rt.predeclared)
 	for name := range g {
 		// no importing or calling of underscored methods
 		if strings.HasPrefix(name, "_") {
@@ -172,68 +308,22 @@ func (rt *Runtime) starlarkExecFile(moduleName, filename string) (globals starla
 	return g, err
 }
 
-func (rt *Runtime) compileStarlarkPath(name string) (prog *starlark.Program, err error) {
-	compiledProgram, err := rt.filecache.Open(name)
-	if err != nil {
-		return nil, errors.Wrap(err, "error opening moduleCache storeLocation")
-	}
-	return starlark.CompiledProgram(compiledProgram)
-}
-
-func (rt *Runtime) sourceStarlarkProgram(moduleName, filename string) (prog *starlark.Program, err error) {
-	logger.Debugw("sourceStarlarkProgram", "moduleName", moduleName, "file", filename)
-	rt.filenameCache.Store(filename, moduleName)
-	inputHash, ok := rt.moduleCache[moduleName]
-	if ok {
-		// we have a cached binary location in the cache map, so we just use that
-		return rt.compileStarlarkPath(inputHash)
-	}
-
+func (rt *runtime) sourceStarlarkProgram(filename string) (prog *starlark.Program, err error) {
 	// hash the file input
 	f, err := os.Open(filename)
 	if err != nil {
 		return
 	}
 	defer func() { _ = f.Close() }()
-	hshr := hasher.NewHasher()
-	if _, err = io.Copy(hshr, f); err != nil {
-		return nil, err
-	}
-	inputHash = hshr.String()
 
-	if exists, _ := rt.filecache.Exists(inputHash); exists {
-		rt.moduleCache[moduleName] = inputHash
-		return rt.compileStarlarkPath(inputHash)
-	}
-
-	// if we're this far we don't have a cache of the program, process it directly
-	if _, err = f.Seek(0, 0); err != nil {
-		return
-	}
 	_, prog, err = starlark.SourceProgram(filename, f, rt.predeclared.Has)
-	if err != nil {
-		return
-	}
-
-	var buf bytes.Buffer
-	if err = prog.Write(&buf); err != nil {
-		return nil, err
-	}
-	if err := rt.filecache.Write(inputHash, buf.Bytes()); err != nil {
-		return nil, err
-	}
-	rt.moduleCache[moduleName] = inputHash
-	return prog, nil
+	return prog, err
 }
 
-func (rt *Runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
-	globals, err := starlark.ExecFile(rt.thread, filepath.Join(wd, "foo.bramble"), script, rt.predeclared)
+func (rt *runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
+	globals, err := starlark.ExecFile(rt.newThread("test"), filepath.Join(wd, "foo.bramble"), script, rt.predeclared)
 	if err != nil {
 		return nil, err
 	}
-	return starlark.Call(rt.thread, globals["test"], nil, nil)
-}
-
-func (rt *Runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	return rt.resolveModule(module)
+	return starlark.Call(rt.newThread("test"), globals["test"], nil, nil)
 }

@@ -60,3 +60,65 @@ Store is a storage of various derivations and files
 Build takes derivation inputs in graph form and the builds them into the store
 Project handles project structure
 Lang handles starlark files, code execution, modules, dependencies, imports
+
+-----------------
+
+can we eval and return all derivations without using the store/project?
+do we ever need hashes during script evaulation?
+
+runtime is overloaded, can we just pass the config to the language runtime?
+
+-----------------
+Anatomy of a build:
+
+run `build ./lib:foo`
+
+1. Confirm that a bramble store exists and is set up.
+2. Confirm that we're within a project and that the project config is valid
+3. Search within the project for the path and function name that are listed.
+    - Needs project config module name and project location
+4. Execute the starlark code
+   - Will read all of the project
+   - Will also need access to any modules we have locally
+   - Doesn't need the store unless we expect it to write sources to the store in this step
+   - problem: we do need to inject template string values into derivations and these are innacurate without the source files
+   - they are also innacurate if they are unbuilt, so consider accepting that they are innacurate
+5. Get all returned derivations that were parsed along with the specific thing we want to build
+6. Build the final derivation and any dependent derivations, ensure that we patch up the graph at the same time
+   - Need access to store, source files
+   - Need hashmap of url hashes from config
+7. Store any new hashes in config
+
+Possible "interface", just to illustrate boundaries and ergonomics
+```go
+type ExecModuleInput struct {
+    WorkingDirectory string
+    Command          string
+	Arguments        []string
+	ProjectLocation  string
+	ModuleName       string
+}
+
+type ExecModuleOutput struct {
+	Output         []Derivation
+	AllDerivations []Derivation
+}
+
+type BuildInput struct {
+	Build        []Derivation
+	Dependencies []Derivation
+	URLHashes    map[string]string
+}
+
+type BuildOutput struct {
+	BuiltDerivations []Derivation
+	NewURLHashes     map[string]string
+}
+
+type Bramble interface {
+    NewProject(wd string) (*Project, error)
+    NewStore(bramblePath string) (*Store, error)
+    ExecModule(input ExecModuleInput) (ExecModuleOutput, error)
+    Build(input BuildInput) (BuildOutput, error)
+}
+```

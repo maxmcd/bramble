@@ -1,0 +1,2 @@
+load("github.com/maxmcd/bramble/pkg/brambleproject/testdata/circular/a")
+

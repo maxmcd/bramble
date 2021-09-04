@@ -26,38 +26,38 @@ var (
 func createAndParseCLI(args []string) (*ffcli.Command, error) {
 	var ()
 	subcommands := []*ffcli.Command{
-		&ffcli.Command{
+		{
 			Name:       "build",
 			ShortUsage: "bramble build [options] [module]:<function> [args...]",
 			ShortHelp:  "Build a function",
 			LongHelp:   "Build a function",
-			Exec:       func(ctx context.Context, args []string) error { err := build(ctx, args); return err },
+			Exec:       func(ctx context.Context, args []string) error { err := build(ctx, args, false); return err },
 		},
-		&ffcli.Command{
+		{
 			Name:       "shell",
 			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 			ShortHelp:  "Open a shell from a derivation",
 			LongHelp:   "Open a shell from a derivation",
 			Exec:       func(ctx context.Context, args []string) error { _, err := shell(ctx, args); return err },
 		},
-		&ffcli.Command{
+		{
 			Name:       "repl",
 			ShortUsage: "bramble repl",
 			ShortHelp:  "Run an interactive shell",
 			Exec:       func(ctx context.Context, args []string) error { return repl(args) },
 		},
-		&ffcli.Command{
+		{
 			Name:       "derivation",
 			ShortUsage: "bramble derivation <subcomand>",
 			ShortHelp:  "Work with derivations directly",
-			Subcommands: []*ffcli.Command{&ffcli.Command{
+			Subcommands: []*ffcli.Command{{
 				Name:       "build",
 				ShortUsage: "bramble derivation build ~/bramble/store/3orpqhjdgtvfbqbhpecro3qe6heb3jvq-simple.drv",
 				Exec:       func(ctx context.Context, args []string) error { return nil },
 			}},
 			Exec: func(ctx context.Context, args []string) error { return flag.ErrHelp },
 		},
-		&ffcli.Command{
+		{
 			Name:       "store",
 			ShortUsage: "bramble store <subcommand>",
 			ShortHelp:  "Interact with the store",
@@ -133,9 +133,6 @@ func RunCLI() {
 
 	log.SetOutput(ioutil.Discard)
 	handleErr := func(err error) {
-		if err == errQuiet {
-			os.Exit(1)
-		}
 		if err == flag.ErrHelp {
 			os.Exit(127)
 		}
@@ -208,7 +205,7 @@ func newDefaultRuntimeAndStore() (rt *brambleproject.Runtime, err error) {
 	return rt, err
 }
 
-func build(ctx context.Context, args []string) error {
+func build(ctx context.Context, args []string, rootLess bool) error {
 	rt, err := newDefaultRuntimeAndStore()
 	if err != nil {
 		return err
@@ -218,7 +215,7 @@ func build(ctx context.Context, args []string) error {
 		return err
 	}
 
-	builder := rt.NewBuilder(false)
+	builder := rt.NewBuilder(rootLess)
 	_, err = builder.BuildDerivations(ctx, drvs, nil)
 	// REFAC: write config metadata
 	return err

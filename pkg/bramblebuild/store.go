@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/maxmcd/bramble/pkg/dstruct"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )
 
@@ -315,4 +319,113 @@ func (s *Store) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *D
 	replacedJSON := replacer.Replace(string(drv.JSON()))
 	err = json.Unmarshal([]byte(replacedJSON), &copy)
 	return copy, err
+}
+
+func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
+	result []BuildResult, err error) {
+	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
+	// derivation and then just merge the graphs with a fake root
+
+	graphs := []*dstruct.AcyclicGraph{}
+	for _, drv := range derivations {
+		derivationsMap.Store(drv.Filename(), drv)
+		graph, err := drv.BuildDependencyGraph()
+		if err != nil {
+			return nil, err
+		}
+		graphs = append(graphs, graph)
+	}
+	graph := dstruct.MergeGraphs(graphs...)
+	if graph == nil || len(graph.Vertices()) == 0 {
+		return
+	}
+	if err = graph.Validate(); err != nil {
+		err = errors.WithStack(err)
+		return
+	}
+	var wg sync.WaitGroup
+	errChan := make(chan error)
+	semaphore := make(chan struct{}, 1)
+	var errored bool
+	if err = graph.Validate(); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		graph.Walk(func(v dag.Vertex) (_ error) {
+			if errored {
+				return
+			}
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			// serial for now
+
+			// Skip the rake root
+			if v == dstruct.FakeDAGRoot {
+				return
+			}
+			do := v.(DerivationOutput)
+			// REFAC: see comment below
+			drv := derivationsMap.Load(do.Filename)
+			drv.lock.Lock()
+			defer drv.lock.Unlock()
+
+			if skipDerivation != nil && skipDerivation == drv {
+				// Is this enough of an equality check?
+				return
+			}
+			wg.Add(1)
+			didBuild, err := b.buildDerivationIfNew(ctx, drv)
+			if err != nil {
+				// Passing the error might block, so we need an explicit Done
+				// call here.
+				wg.Done()
+				errored = true
+				logger.Print(err)
+				errChan <- err
+				return
+			}
+
+			// Post build processing of dependencies template values:
+			{
+				// We construct the template value using the DerivationOutput which
+				// uses the initial derivation output value
+				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
+
+				newTemplateName := drv.OutputTemplateString(do.OutputName)
+
+				for _, edge := range graph.EdgesTo(v) {
+					if edge.Source() == dstruct.FakeDAGRoot {
+						continue
+					}
+					childDO := edge.Source().(DerivationOutput)
+
+					// REFAC: consider moving this cache to just within the builder, can be the context for rebuilding the tree
+					childDRV := derivationsMap.Load(childDO.Filename)
+					for i, input := range childDRV.InputDerivations {
+						// Add the output to the derivation input
+						if input.Filename == do.Filename && input.OutputName == do.OutputName {
+							childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
+						}
+					}
+					if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
+						panic(err)
+					}
+				}
+			}
+
+			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
+			wg.Done()
+			return
+		})
+		errChan <- nil
+	}()
+	err = <-errChan
+	cancel() // Call cancel on the context, no-op if nothing is running
+	if err != nil {
+		// If we receive an error cancel the context and wait for any jobs that
+		// are running.
+		wg.Wait()
+	}
+	return result, err
 }

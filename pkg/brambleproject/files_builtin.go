@@ -26,8 +26,12 @@ func (fl FilesList) String() string        { return fmt.Sprint([]string(fl.files
 func (fl FilesList) Type() string          { return "file_list" }
 func (fl FilesList) Truth() starlark.Bool  { return true }
 
-func (r *Runtime) starlarkGlobListFiles(includeDirectories bool, fileDirectory string, list *starlark.List) (map[string]struct{}, error) {
-	projFilesystem := os.DirFS(r.project.Location)
+type filesBuiltin struct {
+	projectLocation string
+}
+
+func (fb filesBuiltin) starlarkGlobListFiles(includeDirectories bool, fileDirectory string, list *starlark.List) (map[string]struct{}, error) {
+	projFilesystem := os.DirFS(fb.projectLocation)
 	out := map[string]struct{}{}
 	for _, glob := range starutil.ListToValueList(list) {
 		s, ok := glob.(starlark.String)
@@ -41,7 +45,7 @@ func (r *Runtime) starlarkGlobListFiles(includeDirectories bool, fileDirectory s
 		}
 
 		searchGlob := filepath.Join(fileDirectory, strValue)
-		searchGlob, err := filepath.Rel(r.project.Location, searchGlob)
+		searchGlob, err := filepath.Rel(fb.projectLocation, searchGlob)
 		if err != nil || strings.Contains(searchGlob, "..") {
 			return nil, errors.Errorf("file search path %q searches outside of the project directory", strValue)
 		}
@@ -61,7 +65,7 @@ func (r *Runtime) starlarkGlobListFiles(includeDirectories bool, fileDirectory s
 	}
 	return out, nil
 }
-func (r *Runtime) filesBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (out starlark.Value, err error) {
+func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (out starlark.Value, err error) {
 	var (
 		include            *starlark.List
 		exclude            *starlark.List
@@ -82,13 +86,13 @@ func (r *Runtime) filesBuiltin(thread *starlark.Thread, fn *starlark.Builtin, ar
 	file := thread.CallStack().At(1).Pos.Filename()
 	fileDirectory := filepath.Dir(file)
 
-	inclSet, err := r.starlarkGlobListFiles(bool(includeDirectories), fileDirectory, include)
+	inclSet, err := fb.starlarkGlobListFiles(bool(includeDirectories), fileDirectory, include)
 	if err != nil {
 		return nil, err
 	}
 	exclSet := map[string]struct{}{}
 	if exclude != nil {
-		if exclSet, err = r.starlarkGlobListFiles(bool(includeDirectories), fileDirectory, exclude); err != nil {
+		if exclSet, err = fb.starlarkGlobListFiles(bool(includeDirectories), fileDirectory, exclude); err != nil {
 			return nil, err
 		}
 	}

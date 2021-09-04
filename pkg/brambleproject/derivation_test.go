@@ -17,7 +17,7 @@ def foo():
 	return derivation("", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)})
 b = foo()
 `,
-			respContains: `{{ tmb75glr3iqxaso2gn27ytrmr4ufkv6d-.drv:out }}`},
+			respContains: `{{ c5fe3g7zmbryvrqwo5nbqsgfysgypgq5:out }}`},
 	}
 	runDerivationTest(t, tests)
 }
