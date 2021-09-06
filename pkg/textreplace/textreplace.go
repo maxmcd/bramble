@@ -12,8 +12,8 @@ var (
 )
 
 // ReplaceStringsPrefix replaces the prefix of matching strings in a byte
-// stream. All values to be replaced must have the same prefix and that
-// prefix must be the same length as the new value.
+// stream. All values to be replaced must have the same prefix and that prefix
+// must be the same length as the new value.
 func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, old string, new string) (
 	replacements int, matches map[string]struct{}, err error) {
 	if len(old) != len(new) {
@@ -56,8 +56,8 @@ func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, o
 	return
 }
 
-// replaceStringsPrefixReplacer uses the strings.Replacer to replace the
-// values, currently just used as a benchmark comparison
+// replaceStringsPrefixReplacer uses the strings.Replacer to replace the values,
+// currently just used as a benchmark comparison
 func replaceStringsPrefixReplacer(source io.Reader, output io.Writer, values []string, old string, new string) (
 	err error) {
 	if len(old) != len(new) {
@@ -84,8 +84,8 @@ func replaceStringsPrefixReplacer(source io.Reader, output io.Writer, values []s
 
 // CopyWithFrames copies data between two sources. As data is copied it is
 // loaded into a byte buffer that overlaps with the previous buffer. This
-// ensures that bytes of a certain width will not be split over the boundary
-// of a frame.
+// ensures that bytes of a certain width will not be split over the boundary of
+// a frame.
 func CopyWithFrames(src io.Reader, dst io.Writer, buf []byte, overlapSize int, transform func(b []byte) error) (
 	written int64, err error) {
 	if buf == nil {

@@ -100,8 +100,8 @@ type ExecModuleInput struct {
 }
 
 type ExecModuleOutput struct {
-	Output         []Derivation
-	AllDerivations []Derivation
+	Output         []project.Derivation
+	AllDerivations []project.Derivation
 }
 
 type BuildInput struct {
@@ -119,6 +119,10 @@ type Bramble interface {
     NewProject(wd string) (*Project, error)
     NewStore(bramblePath string) (*Store, error)
     ExecModule(input ExecModuleInput) (ExecModuleOutput, error)
+    // replace a dependency hash value with another hash value
+    ReplaceDerivationHash(drv project.Derivation, hash string) error
+    // Convert derivation arguments into a built or unbuilt derivation
+    NewDerivation(args DerivationArgs) (drv build.Derivation, err error)
     Build(input BuildInput) (BuildOutput, error)
 }
 ```

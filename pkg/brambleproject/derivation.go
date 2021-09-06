@@ -24,9 +24,9 @@ func init() {
 	// It's easier to start giving away free coffee than it is to take away
 	// free coffee.
 
-	// I think this would allow storing arbitrary state in function closures
-	// and make the codebase much harder to reason about. Maybe we want this
-	// level of complexity at some point, but nice to avoid for now.
+	// I think this would allow storing arbitrary state in function closures and make the codebase
+	// much harder to reason about. Maybe we want this level of complexity at some point, but nice
+	// to avoid for now.
 	resolve.AllowLambda = false
 	resolve.AllowNestedDef = false
 
@@ -41,16 +41,14 @@ func init() {
 	resolve.AllowFloat = false
 }
 
-// fields are in alphabetical order to attempt to provide consistency to
-// hashmap key ordering
+// fields are in alphabetical order to attempt to provide consistency to hashmap key ordering
 
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
 	// Args are arguments that are passed to the builder
 	Args []string
-	// Builder will either be set to a string constant to signify an internal
-	// builder (like "fetch_url"), or it will be set to the path of an
-	// executable in the bramble store
+	// Builder will either be set to a string constant to signify an internal builder (like
+	// "fetch_url"), or it will be set to the path of an executable in the bramble store
 	Builder string
 
 	Dependencies []Dependency
@@ -147,16 +145,16 @@ func valuesToDerivations(values starlark.Value) (derivations []Derivation) {
 
 func isTopLevel(thread *starlark.Thread) bool {
 	if thread.CallStackDepth() == 0 {
-		// TODO: figure out what we should actually do here, so far this is
-		// only for tests
+		// TODO: figure out what we should actually do here, so far this is only
+		// for tests
 		return false
 	}
 	return thread.CallStack().At(1).Name == "<toplevel>"
 }
 
 func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// TODO: we should be able to cache derivation builds using some kind of hash
-	// of the input values
+	// TODO: we should be able to cache derivation builds using some kind of
+	// hash of the input values
 
 	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
@@ -233,8 +231,8 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 
 // makeConsistentNullJSONValues ensures that we null any empty arrays, some of
 // these values will be initialized with zero-length arrays above, we want to
-// make sure we remove this inconsistency from our hashed json output. To us
-// an empty array is null.
+// make sure we remove this inconsistency from our hashed json output. To us an
+// empty array is null.
 func makeConsistentNullJSONValues(drv Derivation) Derivation {
 	if len(drv.Args) == 0 {
 		drv.Args = nil
@@ -293,66 +291,3 @@ func sortAndUniqueDependencies(deps []Dependency) []Dependency {
 	}
 	return deps[:j+1]
 }
-
-// REFAC, move to post-lang stage (??? check notes)
-// func (rt *Runtime) calculateDerivationInputSources(ctx context.Context, drv *Derivation) (err error) {
-// 	region := trace.StartRegion(ctx, "calculateDerivationInputSources")
-// 	defer region.End()
-
-// 	if len(drv.sources.files) == 0 {
-// 		return
-// 	}
-
-// 	// TODO: should extend reptar to handle hasing the files before moving
-// 	// them to a tempdir
-// 	tmpDir, err := rt.store.TempDir()
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	sources := drv.sources
-// 	drv.sources.files = []string{}
-// 	absDir, err := filepath.Abs(drv.sources.location)
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	// get absolute paths for all sources
-// 	for i, src := range sources.files {
-// 		sources.files[i] = filepath.Join(rt.project.Location, src)
-// 	}
-// 	prefix := fileutil.CommonFilepathPrefix(append(sources.files, absDir))
-// 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
-// 	if err != nil {
-// 		return
-// 	}
-// 	if err = fileutil.CopyFilesByPath(prefix, sources.files, tmpDir); err != nil {
-// 		return
-// 	}
-// 	// sometimes the location the derivation runs from is not present
-// 	// in the structure of the copied source files. ensure that we add it
-// 	runLocation := filepath.Join(tmpDir, relBramblefileLocation)
-// 	if err = os.MkdirAll(runLocation, 0755); err != nil {
-// 		return
-// 	}
-
-// 	hshr := hasher.NewHasher()
-// 	if err = reptar.Reptar(tmpDir, hshr); err != nil {
-// 		return
-// 	}
-// 	storeLocation := rt.store.JoinStorePath(hshr.String())
-// 	if fileutil.PathExists(storeLocation) {
-// 		if err = os.RemoveAll(tmpDir); err != nil {
-// 			return
-// 		}
-// 	} else {
-// 		if err = os.Rename(tmpDir, storeLocation); err != nil {
-// 			return
-// 		}
-// 	}
-// 	drv.BuildContextSource = hshr.String()
-// 	drv.BuildContextRelativePath = relBramblefileLocation
-// 	drv.SourcePaths = append(drv.SourcePaths, hshr.String())
-// 	sort.Strings(drv.SourcePaths)
-// 	return
-// }

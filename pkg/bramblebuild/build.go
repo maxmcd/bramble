@@ -435,8 +435,8 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 		}
 	}()
 
-	// replace all the bramble store path prefixes with a known fixed value
-	// also write this byte stream out as a tar to unpack later as the final output
+	// replace all the bramble store path prefixes with a known fixed value also
+	// write this byte stream out as a tar to unpack later as the final output
 	go func() {
 		new := BramblePrefixOfRecord
 		_, matches, err := textreplace.ReplaceStringsPrefix(
@@ -453,8 +453,8 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	}()
 
 	// swap out references in the output to itself with null bytes so that
-	// builds with a different randomly named build directory will still
-	// match the hash of this one
+	// builds with a different randomly named build directory will still match
+	// the hash of this one
 	go func() {
 		if _, err := textreplace.ReplaceBytes(
 			pipeReader2, hashOutput,

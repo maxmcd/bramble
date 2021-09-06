@@ -9,7 +9,7 @@ package brambleproject
 // 	"sync"
 
 // 	"github.com/maxmcd/bramble/pkg/bramblebuild"
-// 	"github.com/maxmcd/bramble/pkg/dstruct"
+// 	ds "github.com/maxmcd/bramble/pkg/data_structures"
 // 	"github.com/maxmcd/bramble/pkg/fileutil"
 // 	"github.com/maxmcd/bramble/pkg/logger"
 // 	"github.com/maxmcd/dag"
@@ -23,7 +23,7 @@ package brambleproject
 // 		return
 // 	}
 // 	pathsToKeep := map[string]struct{}{}
-// 	graphs := []*dstruct.AcyclicGraph{}
+// 	graphs := []*ds.AcyclicGraph{}
 // 	for _, drv := range derivations {
 // 		graph, err := drv.BuildDependencyGraph()
 // 		if err != nil {
@@ -31,12 +31,12 @@ package brambleproject
 // 		}
 // 		graphs = append(graphs, graph)
 // 	}
-// 	graph := dstruct.MergeGraphs(graphs...)
+// 	graph := ds.MergeGraphs(graphs...)
 // 	var lock sync.Mutex
 // 	errors := graph.Walk(func(v dag.Vertex) error {
 // 		lock.Lock() // Serialize
 // 		defer lock.Unlock()
-// 		if v == dstruct.FakeDAGRoot {
+// 		if v == ds.FakeDAGRoot {
 // 			return nil
 // 		}
 // 		do := v.(DerivationOutput)
@@ -61,7 +61,7 @@ package brambleproject
 // 		oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
 // 		newTemplateName := drv.String()
 // 		for _, edge := range graph.EdgesTo(v) {
-// 			if edge.Source() == dstruct.FakeDAGRoot {
+// 			if edge.Source() == ds.FakeDAGRoot {
 // 				continue
 // 			}
 // 			childDO := edge.Source().(DerivationOutput)
