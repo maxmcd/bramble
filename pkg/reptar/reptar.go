@@ -17,8 +17,8 @@ var zeroTime time.Time
 // http://h2.jaguarpaw.co.uk/posts/reproducible-tar/
 // https://reproducible-builds.org/docs/archives/
 
-// Reptar creates a tar of a location. Reptar stands for reproducible tar and
-// is intended to replicate the following gnu tar command:
+// Reptar creates a tar of a location. Reptar stands for reproducible tar and is
+// intended to replicate the following gnu tar command:
 //
 //    tar - \
 //    --sort=name \
@@ -59,8 +59,8 @@ func Reptar(location string, out io.Writer) (err error) {
 		}
 
 		// Setting an explicit unix epoch using time.Date(1970, time.January..)
-		// resulted in zeros in the timestamp and not null, so we explicitly
-		// use a null time
+		// resulted in zeros in the timestamp and not null, so we explicitly use
+		// a null time
 		hdr.ModTime = zeroTime
 		hdr.AccessTime = zeroTime
 		hdr.ChangeTime = zeroTime
@@ -103,8 +103,7 @@ func Reptar(location string, out io.Writer) (err error) {
 	return tw.Close()
 }
 
-// GzipReptar just wraps reptar in gzip. This seems like a good place for a
-// godzilla pun but I couldn't think of anything. Contributions welcome
+// GzipReptar just wraps reptar in gzip.
 func GzipReptar(location string, out io.Writer) (err error) {
 	w := gzip.NewWriter(out)
 	defer w.Close()

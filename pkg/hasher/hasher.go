@@ -46,7 +46,7 @@ func HashString(input string) string {
 
 // BytesToBase32Hash copies nix here
 // https://nixos.org/nixos/nix-pills/nix-store-paths.html
-// Finally the comments tell us to compute the base32 representation of the
+// The comments tell us to compute the base32 representation of the
 // first 160 bits (truncation) of a sha256 of the above string:
 func BytesToBase32Hash(b []byte) string {
 	var buf bytes.Buffer

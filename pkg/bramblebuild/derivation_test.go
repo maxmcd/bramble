@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/dstruct"
+	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/dag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,7 +51,7 @@ func TestDerivationOutputChange(t *testing.T) {
 	// We pretend to build
 	counter := 1
 	graph.Walk(func(v dag.Vertex) error {
-		if v == dstruct.FakeDAGRoot {
+		if v == ds.FakeDAGRoot {
 			return nil
 		}
 		do := v.(DerivationOutput)
@@ -83,7 +83,7 @@ func TestDerivationOutputChange(t *testing.T) {
 
 		newTemplateName := drv.TemplateString()
 		for _, edge := range graph.EdgesTo(v) {
-			if edge.Source() == dstruct.FakeDAGRoot {
+			if edge.Source() == ds.FakeDAGRoot {
 				continue
 			}
 			childDO := edge.Source().(DerivationOutput)

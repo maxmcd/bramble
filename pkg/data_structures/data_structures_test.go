@@ -1,4 +1,4 @@
-package dstruct
+package ds
 
 import (
 	"reflect"
@@ -8,8 +8,8 @@ import (
 	"github.com/maxmcd/dag"
 )
 
-// quickGraph is used like quickGraph("1-2", "2-3"). All values are
-// treated like strings.
+// quickGraph is used like quickGraph("1-2", "2-3"). All values are treated like
+// strings.
 func quickGraph(edges ...string) *AcyclicGraph {
 	out := NewAcyclicGraph()
 	for _, edge := range edges {

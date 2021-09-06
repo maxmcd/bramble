@@ -1,4 +1,4 @@
-package dstruct
+package ds
 
 import (
 	"fmt"
@@ -22,9 +22,12 @@ func NewAcyclicGraph() *AcyclicGraph {
 	return &AcyclicGraph{}
 }
 
-func (ag AcyclicGraph) PrintDot() {
+func PrintDot(ag dag.AcyclicGraph) {
 	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
 	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
+}
+func (ag AcyclicGraph) PrintDot() {
+	PrintDot(ag.AcyclicGraph)
 }
 
 func MergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
@@ -107,4 +110,8 @@ func (b *BiStringMap) LoadInverse(k string) (v string, exists bool) {
 	v, exists = b.inverse[k]
 	b.s.RUnlock()
 	return
+}
+
+func Walk(func(v interface{}, edges []interface{})) {
+
 }

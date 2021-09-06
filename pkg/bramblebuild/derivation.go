@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/maxmcd/bramble/pkg/dstruct"
+	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/dag"
@@ -28,10 +28,10 @@ var (
 	UnbuiltDerivationOutputTemplate = "{{ %s:%s }}"
 	BuiltDerivationOutputTemplate   = "{{ %s }}"
 
-	// UnbuiltTemplateStringRegexp is the regular expression that matches template strings
-	// in our derivations. I assume the ".*" parts won't run away too much because
-	// of the earlier match on "{{ [0-9a-z]{32}" but might be worth further
-	// investigation.
+	// UnbuiltTemplateStringRegexp is the regular expression that matches
+	// template strings in our derivations. I assume the ".*" parts won't run
+	// away too much because of the earlier match on "{{ [0-9a-z]{32}" but might
+	// be worth further investigation.
 	//
 	// TODO: should we limit the content of the derivation name? non-latin would
 	// be good for users but bad for filesystems. What's a sensible limiation
@@ -55,11 +55,12 @@ type Derivation struct {
 	Builder string
 	// Env are environment variables set during the build
 	Env map[string]string
-	// InputDerivations are derivations that are using as imports to this build, outputs
-	// dependencies are tracked in the outputs
+	// InputDerivations are derivations that are using as imports to this build,
+	// outputs dependencies are tracked in the outputs
 	InputDerivations DerivationOutputs
 	// Name is the name of the derivation
 	Name string
+
 	// Outputs are build outputs, a derivation can have many outputs, the
 	// default output is called "out". Multiple outputs are useful when your
 	// build process can produce multiple artifacts, but building them as a
@@ -282,8 +283,8 @@ func (drv *Derivation) Filename() (filename string) {
 	return
 }
 
-func (drv *Derivation) BuildDependencyGraph() (graph *dstruct.AcyclicGraph, err error) {
-	graph = dstruct.NewAcyclicGraph()
+func (drv *Derivation) BuildDependencyGraph() (graph *ds.AcyclicGraph, err error) {
+	graph = ds.NewAcyclicGraph()
 	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
 		graph.Add(do)
@@ -305,9 +306,9 @@ func (drv *Derivation) BuildDependencyGraph() (graph *dstruct.AcyclicGraph, err 
 	// If there are multiple build outputs we'll need to create a fake root and
 	// connect all of the build outputs to our fake root.
 	if len(dos) > 1 {
-		graph.Add(dstruct.FakeDAGRoot)
+		graph.Add(ds.FakeDAGRoot)
 		for _, do := range dos {
-			graph.Connect(dag.BasicEdge(dstruct.FakeDAGRoot, do))
+			graph.Connect(dag.BasicEdge(ds.FakeDAGRoot, do))
 		}
 	}
 	for _, do := range dos {
@@ -320,8 +321,8 @@ func (drv *Derivation) BuildDependencyGraph() (graph *dstruct.AcyclicGraph, err 
 
 // RuntimeDependencyGraph graphs the full dependency graph needed at runtime for
 // all outputs. Includes all immediate dependencies and their dependencies
-func (drv *Derivation) RuntimeDependencyGraph() (graph *dstruct.AcyclicGraph, err error) {
-	graph = dstruct.NewAcyclicGraph()
+func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err error) {
+	graph = ds.NewAcyclicGraph()
 	noOutput := errors.New("outputs missing on derivation when searching for runtime dependencies")
 	if drv.MissingOutput() {
 		return nil, noOutput
@@ -439,8 +440,8 @@ func (drv *Derivation) CopyWithOutputValuesReplaced() (copy *Derivation, err err
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the
-// Derivation hash. The path tracks the output location in the bramble store
-// and Dependencies tracks the bramble outputs that are runtime dependencies.
+// Derivation hash. The path tracks the output location in the bramble store and
+// Dependencies tracks the bramble outputs that are runtime dependencies.
 type Output struct {
 	Path         string
 	Dependencies []string
@@ -453,9 +454,9 @@ func (o Output) Empty() bool {
 	return false
 }
 
-// DerivationOutput is one of the derivation inputs. Path is the location of
-// the derivation, output is the name of the specific output this derivation
-// uses for the build
+// DerivationOutput is one of the derivation inputs. Path is the location of the
+// derivation, output is the name of the specific output this derivation uses
+// for the build
 type DerivationOutput struct {
 	Filename   string
 	OutputName string

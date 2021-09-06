@@ -95,8 +95,8 @@ var (
 	assertErr error
 )
 
-// LoadAssertModule loads the assert module.
-// It is concurrency-safe and idempotent.
+// LoadAssertModule loads the assert module. It is concurrency-safe and
+// idempotent.
 func LoadAssertModule() (starlark.StringDict, error) {
 	once.Do(func() {
 		predeclared := starlark.StringDict{
@@ -112,8 +112,8 @@ func LoadAssertModule() (starlark.StringDict, error) {
 	return assert, assertErr
 }
 
-// catch(f) evaluates f() and returns its evaluation error message
-// if it failed or None if it succeeded.
+// catch(f) evaluates f() and returns its evaluation error message if it failed
+// or None if it succeeded.
 func catch(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var fn starlark.Callable
 	if err := starlark.UnpackArgs("catch", args, kwargs, "fn", &fn); err != nil {
@@ -125,7 +125,8 @@ func catch(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kw
 	return starlark.None, nil
 }
 
-// matches(pattern, str) reports whether string str matches the regular expression pattern.
+// matches(pattern, str) reports whether string str matches the regular
+// expression pattern.
 func matches(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var pattern, str string
 	if err := starlark.UnpackArgs("matches", args, kwargs, "pattern", &pattern, "str", &str); err != nil {

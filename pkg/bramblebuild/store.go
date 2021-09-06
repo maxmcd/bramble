@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/maxmcd/bramble/pkg/dstruct"
+	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
@@ -323,10 +323,11 @@ func (s *Store) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *D
 
 func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
-	// TODO: instead of assembling this graph from dos, generate the dependency graph for each
-	// derivation and then just merge the graphs with a fake root
 
-	graphs := []*dstruct.AcyclicGraph{}
+	// TODO: instead of assembling this graph from dos, generate the dependency
+	// graph for each derivation and then just merge the graphs with a fake root
+	derivationsMap := DerivationsMap{}
+	graphs := []*ds.AcyclicGraph{}
 	for _, drv := range derivations {
 		derivationsMap.Store(drv.Filename(), drv)
 		graph, err := drv.BuildDependencyGraph()
@@ -335,7 +336,7 @@ func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation,
 		}
 		graphs = append(graphs, graph)
 	}
-	graph := dstruct.MergeGraphs(graphs...)
+	graph := ds.MergeGraphs(graphs...)
 	if graph == nil || len(graph.Vertices()) == 0 {
 		return
 	}
@@ -361,7 +362,7 @@ func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation,
 			// serial for now
 
 			// Skip the rake root
-			if v == dstruct.FakeDAGRoot {
+			if v == ds.FakeDAGRoot {
 				return
 			}
 			do := v.(DerivationOutput)
@@ -375,27 +376,29 @@ func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation,
 				return
 			}
 			wg.Add(1)
-			didBuild, err := b.buildDerivationIfNew(ctx, drv)
-			if err != nil {
-				// Passing the error might block, so we need an explicit Done
-				// call here.
-				wg.Done()
-				errored = true
-				logger.Print(err)
-				errChan <- err
-				return
-			}
+			// REFAC
+			didBuild := true
+			// didBuild, err := b.buildDerivationIfNew(ctx, drv)
+			// if err != nil {
+			// 	// Passing the error might block, so we need an explicit Done
+			// 	// call here.
+			// 	wg.Done()
+			// 	errored = true
+			// 	logger.Print(err)
+			// 	errChan <- err
+			// 	return
+			// }
 
 			// Post build processing of dependencies template values:
 			{
-				// We construct the template value using the DerivationOutput which
-				// uses the initial derivation output value
+				// We construct the template value using the DerivationOutput
+				// which uses the initial derivation output value
 				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
 
 				newTemplateName := drv.OutputTemplateString(do.OutputName)
 
 				for _, edge := range graph.EdgesTo(v) {
-					if edge.Source() == dstruct.FakeDAGRoot {
+					if edge.Source() == ds.FakeDAGRoot {
 						continue
 					}
 					childDO := edge.Source().(DerivationOutput)
