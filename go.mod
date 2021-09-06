@@ -9,7 +9,6 @@ require (
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054
 	github.com/containerd/console v1.0.0
 	github.com/creack/pty v1.1.11
-	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v1.4.2-0.20191101170500-ac7306503d23
 	github.com/go-git/go-git/v5 v5.3.0
 	github.com/google/go-cmp v0.5.5 // indirect
@@ -31,6 +30,7 @@ require (
 
 replace (
 	github.com/jaguilar/vt100 => github.com/tonistiigi/vt100 v0.0.0-20190402012908-ad4c4a574305
+	github.com/maxmcd/dag => ../dag
 	github.com/mholt/archiver/v3 => github.com/maxmcd/archiver/v3 v3.3.2-0.20200926140316-5fd9d38b8b8b
 	go.starlark.net => github.com/maxmcd/starlark-go v0.0.0-20201021154825-b2f805d0d122
 )

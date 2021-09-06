@@ -89,7 +89,7 @@ func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
 		return
 	}
 
-	if drv, ok := b.(Derivation); ok {
+	if drv, ok := b.(starDerivation); ok {
 		assert.Contains(t, drv.prettyJSON(), tt.respContains)
 		if tt.respDoesntContain != "" {
 			assert.NotContains(t, drv.prettyJSON(), tt.respDoesntContain)

@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -8,6 +9,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/pkg/errors"
 )
 
 type NewDerivationOptions struct {
@@ -44,14 +46,18 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 		sources.Files[i] = filepath.Join(sources.ProjectLocation, src)
 	}
 
+	fmt.Println(sources.Files)
+
 	prefix := fileutil.CommonFilepathPrefix(append(sources.Files, absDir))
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
 		return
 	}
 
+	fmt.Println(prefix, relBramblefileLocation, tmpDir)
+
 	if err = fileutil.CopyFilesByPath(prefix, sources.Files, tmpDir); err != nil {
-		return
+		return errors.Wrap(err, "error copying files from source into temp folder")
 	}
 	// sometimes the location the derivation runs from is not present
 	// in the structure of the copied source files. ensure that we add it

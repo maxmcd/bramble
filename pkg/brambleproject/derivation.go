@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 
+	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -41,10 +43,33 @@ func init() {
 	resolve.AllowFloat = false
 }
 
-// fields are in alphabetical order to attempt to provide consistency to hashmap key ordering
-
-// Derivation is the basic building block of a Bramble build
 type Derivation struct {
+	starDerivation
+}
+
+func (drv Derivation) Args() []string             { return drv.starDerivation.Args }
+func (drv Derivation) Builder() string            { return drv.starDerivation.Builder }
+func (drv Derivation) Dependencies() []Dependency { return drv.starDerivation.Dependencies }
+func (drv Derivation) Env() map[string]string     { return drv.starDerivation.Env }
+func (drv Derivation) Name() string               { return drv.starDerivation.Name }
+func (drv Derivation) Outputs() []string          { return drv.starDerivation.Outputs }
+func (drv Derivation) Platform() string           { return drv.starDerivation.Platform }
+func (drv Derivation) Sources() FilesList         { return drv.starDerivation.Sources }
+
+func (drv Derivation) JSON() string { return drv.starDerivation.prettyJSON() }
+
+var _ ds.DrvReplacable = Derivation{}
+
+func (drv Derivation) Hash() string { return drv.starDerivation.hash() }
+func (drv Derivation) ReplaceHash(old, new string) {
+	// REFAC: ensure we're replacing the entire pattern, eg: {{ hash:out }} and
+	// not just every string instance of the hash
+	_ = json.Unmarshal(
+		[]byte(strings.ReplaceAll(drv.starDerivation.json(), old, new)),
+		&drv.starDerivation)
+}
+
+type starDerivation struct {
 	// Args are arguments that are passed to the builder
 	Args []string
 	// Builder will either be set to a string constant to signify an internal builder (like
@@ -63,48 +88,53 @@ type Derivation struct {
 	Sources FilesList
 }
 
-type Dependency struct {
-	Hash   string
-	Output string
-}
-
 var (
-	_ starlark.Value    = Derivation{}
-	_ starlark.HasAttrs = Derivation{}
+	_ starlark.Value    = starDerivation{}
+	_ starlark.HasAttrs = starDerivation{}
 )
 
-func (drv Derivation) Freeze()               {}
-func (drv Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("derivation") }
-func (drv Derivation) Truth() starlark.Bool  { return starlark.True }
-func (drv Derivation) Type() string          { return "derivation" }
-func (drv Derivation) String() string        { return drv.templateString(drv.defaultOutput()) }
+func (drv starDerivation) String() string        { return drv.templateString(drv.defaultOutput()) }
+func (drv starDerivation) Type() string          { return "derivation" }
+func (drv starDerivation) Freeze()               {}
+func (drv starDerivation) Truth() starlark.Bool  { return starlark.True }
+func (drv starDerivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("derivation") }
 
-func (drv Derivation) prettyJSON() string {
+func (drv starDerivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
 
-func (drv Derivation) json() string {
+func (drv starDerivation) json() string {
 	b, _ := json.Marshal(drv)
 	return string(b)
 }
 
-func (drv Derivation) hash() string {
+func (drv starDerivation) hash() string {
 	return hasher.HashString(drv.json())
 }
 
-func (drv Derivation) defaultOutput() string {
+func (drv starDerivation) defaultOutput() string {
 	if len(drv.Outputs) > 0 {
 		return drv.Outputs[0]
 	}
 	return "out"
 }
 
-func (drv Derivation) templateString(output string) string {
+func (drv starDerivation) outputsAsDependencies() (deps []Dependency) {
+	for _, o := range drv.Outputs {
+		deps = append(deps, Dependency{
+			hash:   drv.hash(),
+			output: o,
+		})
+	}
+	return
+}
+
+func (drv starDerivation) templateString(output string) string {
 	return fmt.Sprintf(derivationTemplate, drv.hash(), output)
 }
 
-func (drv Derivation) hasOutput(name string) bool {
+func (drv starDerivation) hasOutput(name string) bool {
 	for _, o := range drv.Outputs {
 		if o == name {
 			return true
@@ -113,24 +143,46 @@ func (drv Derivation) hasOutput(name string) bool {
 	return false
 }
 
-func (drv Derivation) Attr(name string) (val starlark.Value, err error) {
+func (drv starDerivation) Attr(name string) (val starlark.Value, err error) {
 	if !drv.hasOutput(name) {
 		return nil, nil
 	}
 	return starlark.String(drv.templateString(name)), nil
 }
 
-func (drv Derivation) AttrNames() (out []string) {
+func (drv starDerivation) AttrNames() (out []string) {
 	if len(drv.Outputs) == 0 {
 		panic(drv.Outputs)
 	}
 	return drv.Outputs
 }
 
+type Dependency struct {
+	hash   string
+	output string
+}
+
+func (ds Dependency) MarshalJSON() ([]byte, error) {
+	type dep struct {
+		Hash   string
+		Output string
+	}
+	return json.Marshal(dep{Hash: ds.hash, Output: ds.output})
+}
+
+func (ds Dependency) Hash() string {
+	return ds.hash
+}
+func (ds Dependency) Output() string {
+	return ds.output
+}
+
+var _ ds.DerivationOutput = Dependency{}
+
 func valuesToDerivations(values starlark.Value) (derivations []Derivation) {
 	switch v := values.(type) {
-	case Derivation:
-		return []Derivation{v}
+	case starDerivation:
+		return []Derivation{{v}}
 	case *starlark.List:
 		for _, v := range starutil.ListToValueList(v) {
 			derivations = append(derivations, valuesToDerivations(v)...)
@@ -169,8 +221,8 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 	return drv, nil
 }
 
-func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
-	drv = Derivation{Outputs: []string{"out"}}
+func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv starDerivation, err error) {
+	drv = starDerivation{Outputs: []string{"out"}}
 	var (
 		name      starlark.String
 		builder   starlark.String
@@ -233,7 +285,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 // these values will be initialized with zero-length arrays above, we want to
 // make sure we remove this inconsistency from our hashed json output. To us an
 // empty array is null.
-func makeConsistentNullJSONValues(drv Derivation) Derivation {
+func makeConsistentNullJSONValues(drv starDerivation) starDerivation {
 	if len(drv.Args) == 0 {
 		drv.Args = nil
 	}
@@ -255,7 +307,7 @@ type runErrorReporter struct{}
 func (e runErrorReporter) Error(err error) {}
 func (e runErrorReporter) FailNow() bool   { return true }
 
-func (rt *runtime) findDependencies(drv Derivation) []Dependency {
+func (rt *runtime) findDependencies(drv starDerivation) []Dependency {
 	s := string(drv.json())
 	out := []Dependency{}
 	for _, match := range derivationTemplateRegexp.FindAllStringSubmatch(s, -1) {
@@ -264,8 +316,8 @@ func (rt *runtime) findDependencies(drv Derivation) []Dependency {
 
 		if _, found := rt.allDerivations[match[1]]; found {
 			out = append(out, Dependency{
-				Hash:   match[1],
-				Output: match[2],
+				hash:   match[1],
+				output: match[2],
 			})
 		}
 	}
@@ -274,7 +326,7 @@ func (rt *runtime) findDependencies(drv Derivation) []Dependency {
 
 func sortAndUniqueDependencies(deps []Dependency) []Dependency {
 	sort.Slice(deps, func(i, j int) bool {
-		return deps[i].Hash+deps[i].Output < deps[j].Hash+deps[j].Output
+		return deps[i].hash+deps[i].output < deps[j].hash+deps[j].output
 	})
 
 	// dedupe
