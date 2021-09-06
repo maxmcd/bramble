@@ -323,11 +323,10 @@ func (s *Store) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *D
 
 func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
 	result []BuildResult, err error) {
-
 	// TODO: instead of assembling this graph from dos, generate the dependency
 	// graph for each derivation and then just merge the graphs with a fake root
 	derivationsMap := DerivationsMap{}
-	graphs := []*ds.AcyclicGraph{}
+	graphs := []*dag.AcyclicGraph{}
 	for _, drv := range derivations {
 		derivationsMap.Store(drv.Filename(), drv)
 		graph, err := drv.BuildDependencyGraph()

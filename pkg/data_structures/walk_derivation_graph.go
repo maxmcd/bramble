@@ -96,14 +96,21 @@ func (dg *derivationGraph) connect(dge DerivationGraphEdge) {
 
 func NewDerivationGraphEdge(dependent, dependency DerivationOutput) DerivationGraphEdge {
 	return DerivationGraphEdge{
-		target: dependency,
 		source: dependent,
+		target: dependency,
+	}
+}
+
+func NewDerivationGraphFakeRoot(dependency DerivationOutput) DerivationGraphEdge {
+	return DerivationGraphEdge{
+		source: FakeDAGRoot,
+		target: dependency,
 	}
 }
 
 type DerivationGraphEdge struct {
-	source DerivationOutput
-	target DerivationOutput
+	source interface{}
+	target interface{}
 }
 
 type WalkDerivationGraphOptions struct {
@@ -145,6 +152,8 @@ func WalkDerivationGraph(options WalkDerivationGraphOptions, fn WalkDerivationGr
 	if err := dg.ag.Validate(); err != nil {
 		return err
 	}
+
+	PrintDot(&dg.ag)
 	cache := map[string]string{}
 	cacheLock := sync.RWMutex{}
 
@@ -171,16 +180,17 @@ func WalkDerivationGraph(options WalkDerivationGraphOptions, fn WalkDerivationGr
 		cacheLock.RLock()
 		newHash, ok := cache[oldHash]
 		cacheLock.RUnlock()
-		if !ok { // cached response not found, make the newHash
+		defer dg.drvs.unlockDrv(oldHash) // free the resource
+		if !ok {                         // cached response not found, make the newHash
 			newHash, err = fn(do, drv) // do work
 			cacheLock.Lock()
 			cache[oldHash] = newHash
 			cacheLock.Unlock()
 			if err != nil {
+				fmt.Println(err)
 				return err
 			}
 		}
-		dg.drvs.unlockDrv(oldHash) // free the resource
 		// Now find all immediate dependents of this output and patch them to
 		// contain the new hash value.
 		for _, edge := range dg.ag.EdgesTo(v) {

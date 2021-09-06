@@ -10,8 +10,8 @@ import (
 
 // quickGraph is used like quickGraph("1-2", "2-3"). All values are treated like
 // strings.
-func quickGraph(edges ...string) *AcyclicGraph {
-	out := NewAcyclicGraph()
+func quickGraph(edges ...string) *dag.AcyclicGraph {
+	out := &dag.AcyclicGraph{}
 	for _, edge := range edges {
 		parts := strings.Split(edge, "-")
 		if len(parts) != 2 {
@@ -27,13 +27,13 @@ func quickGraph(edges ...string) *AcyclicGraph {
 func Test_mergeGraphs(t *testing.T) {
 	tests := []struct {
 		name    string
-		args    []*AcyclicGraph
-		want    *AcyclicGraph
+		args    []*dag.AcyclicGraph
+		want    *dag.AcyclicGraph
 		wantErr bool
 	}{
 		{
 			name: "connected",
-			args: []*AcyclicGraph{
+			args: []*dag.AcyclicGraph{
 				quickGraph("1-2"),
 				quickGraph("2-3"),
 			},
@@ -41,7 +41,7 @@ func Test_mergeGraphs(t *testing.T) {
 		},
 		{
 			name: "disconnected",
-			args: []*AcyclicGraph{
+			args: []*dag.AcyclicGraph{
 				quickGraph("1-2"),
 				quickGraph("3-4"),
 			},
@@ -50,7 +50,7 @@ func Test_mergeGraphs(t *testing.T) {
 		},
 		{
 			name: "already using fakeRoot",
-			args: []*AcyclicGraph{
+			args: []*dag.AcyclicGraph{
 				quickGraph("1-2", FakeDAGRoot+"-1"),
 				quickGraph("3-4"),
 			},

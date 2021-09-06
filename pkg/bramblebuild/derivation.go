@@ -283,8 +283,21 @@ func (drv *Derivation) Filename() (filename string) {
 	return
 }
 
-func (drv *Derivation) BuildDependencyGraph() (graph *ds.AcyclicGraph, err error) {
-	graph = ds.NewAcyclicGraph()
+func (drv *Derivation) Hash() string {
+	copy := drv.copy()
+	copy.Outputs = nil
+	for i, input := range copy.InputDerivations {
+		// Only use the output name and value when hashing and the output is available
+		if input.Output != "" {
+			copy.InputDerivations[i].Filename = ""
+		}
+	}
+	jsonBytesForHashing := copy.JSON()
+	return hasher.HashString(string(jsonBytesForHashing))
+}
+
+func (drv *Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
+	graph = &dag.AcyclicGraph{}
 	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
 	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
 		graph.Add(do)

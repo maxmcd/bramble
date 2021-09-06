@@ -22,17 +22,14 @@ func NewAcyclicGraph() *AcyclicGraph {
 	return &AcyclicGraph{}
 }
 
-func PrintDot(ag dag.AcyclicGraph) {
+func PrintDot(ag *dag.AcyclicGraph) {
 	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
 	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
 }
-func (ag AcyclicGraph) PrintDot() {
-	PrintDot(ag.AcyclicGraph)
-}
 
-func MergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
+func MergeGraphs(graphs ...*dag.AcyclicGraph) *dag.AcyclicGraph {
 	if len(graphs) == 0 {
-		return NewAcyclicGraph()
+		return &dag.AcyclicGraph{}
 	}
 	if len(graphs) == 1 {
 		return graphs[0]
@@ -60,7 +57,7 @@ func MergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
 	return out
 }
 
-func graphRoots(g *AcyclicGraph) []dag.Vertex {
+func graphRoots(g *dag.AcyclicGraph) []dag.Vertex {
 	roots := make([]dag.Vertex, 0, 1)
 	for _, v := range g.Vertices() {
 		if g.UpEdges(v).Len() == 0 {

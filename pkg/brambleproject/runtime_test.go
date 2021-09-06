@@ -61,10 +61,10 @@ func TestExecModule(t *testing.T) {
 
 			reducedOutput := output{}
 			for _, drv := range gotOutput.AllDerivations {
-				reducedOutput.all = append(reducedOutput.all, drv.Name)
+				reducedOutput.all = append(reducedOutput.all, drv.Name())
 			}
 			for _, drv := range gotOutput.Output {
-				reducedOutput.output = append(reducedOutput.output, drv.Name)
+				reducedOutput.output = append(reducedOutput.output, drv.Name())
 			}
 			sort.Strings(reducedOutput.all)
 			sort.Strings(reducedOutput.output)
