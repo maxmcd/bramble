@@ -1,7 +1,6 @@
 package bramblebuild
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,6 +29,9 @@ type SourceFiles struct {
 }
 
 func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err error) {
+	if len(sources.Files) == 0 {
+		return nil
+	}
 	// TODO: could extend reptar to handle hasing the files before moving
 	// them to a tempdir
 	tmpDir, err := s.TempDir()
@@ -37,26 +39,22 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 		return
 	}
 
-	absDir, err := filepath.Abs(sources.Location)
-	if err != nil {
-		return
-	}
+	absDir := filepath.Join(sources.ProjectLocation, sources.Location)
+
+	files := []string{}
+
 	// get absolute paths for all sources
-	for i, src := range sources.Files {
-		sources.Files[i] = filepath.Join(sources.ProjectLocation, src)
+	for _, src := range sources.Files {
+		files = append(files, filepath.Join(sources.ProjectLocation, src))
 	}
 
-	fmt.Println(sources.Files)
-
-	prefix := fileutil.CommonFilepathPrefix(append(sources.Files, absDir))
+	prefix := fileutil.CommonFilepathPrefix(append(files, absDir))
 	relBramblefileLocation, err := filepath.Rel(prefix, absDir)
 	if err != nil {
 		return
 	}
 
-	fmt.Println(prefix, relBramblefileLocation, tmpDir)
-
-	if err = fileutil.CopyFilesByPath(prefix, sources.Files, tmpDir); err != nil {
+	if err = fileutil.CopyFilesByPath(prefix, files, tmpDir); err != nil {
 		return errors.Wrap(err, "error copying files from source into temp folder")
 	}
 	// sometimes the location the derivation runs from is not present

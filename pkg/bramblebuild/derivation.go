@@ -21,6 +21,7 @@ var (
 	// BramblePrefixOfRecord is the prefix we use when hashing the build output
 	// this allows us to get a consistent hash even if we're building in a
 	// different location
+	// TODO: could we make this more obviously fake?
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
 
 	// UnbuiltDerivationOutputTemplate is the template string we use to write
@@ -443,7 +444,12 @@ func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
 
 func (drv *Derivation) CopyWithOutputValuesReplaced() (copy *Derivation, err error) {
 	s := string(drv.JSON())
-	for _, match := range BuiltTemplateStringRegexp.FindAllStringSubmatch(s, -1) {
+
+	// Looking for things like: /home/bramble/bramble/bramble_store_padding/bramb/rb2rveatcti4szdt3s6xc37cpvqxrdmr
+	r := regexp.MustCompile(strings.ReplaceAll(BramblePrefixOfRecord, "/", "\\/") + "/([0-9a-z]{32})")
+
+	for _, match := range r.FindAllStringSubmatch(s, -1) {
+		fmt.Println(match)
 		storePath := drv.store.JoinStorePath(match[1])
 		if fileutil.PathExists(storePath) {
 			s = strings.ReplaceAll(s, match[0], storePath)

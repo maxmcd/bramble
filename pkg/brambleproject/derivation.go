@@ -1,6 +1,7 @@
 package brambleproject
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -44,32 +44,6 @@ func init() {
 }
 
 type Derivation struct {
-	starDerivation
-}
-
-func (drv Derivation) Args() []string             { return drv.starDerivation.Args }
-func (drv Derivation) Builder() string            { return drv.starDerivation.Builder }
-func (drv Derivation) Dependencies() []Dependency { return drv.starDerivation.Dependencies }
-func (drv Derivation) Env() map[string]string     { return drv.starDerivation.Env }
-func (drv Derivation) Name() string               { return drv.starDerivation.Name }
-func (drv Derivation) Outputs() []string          { return drv.starDerivation.Outputs }
-func (drv Derivation) Platform() string           { return drv.starDerivation.Platform }
-func (drv Derivation) Sources() FilesList         { return drv.starDerivation.Sources }
-
-func (drv Derivation) JSON() string { return drv.starDerivation.prettyJSON() }
-
-var _ ds.DrvReplacable = Derivation{}
-
-func (drv Derivation) Hash() string { return drv.starDerivation.hash() }
-func (drv Derivation) ReplaceHash(old, new string) {
-	// REFAC: ensure we're replacing the entire pattern, eg: {{ hash:out }} and
-	// not just every string instance of the hash
-	_ = json.Unmarshal(
-		[]byte(strings.ReplaceAll(drv.starDerivation.json(), old, new)),
-		&drv.starDerivation)
-}
-
-type starDerivation struct {
 	// Args are arguments that are passed to the builder
 	Args []string
 	// Builder will either be set to a string constant to signify an internal builder (like
@@ -89,52 +63,56 @@ type starDerivation struct {
 }
 
 var (
-	_ starlark.Value    = starDerivation{}
-	_ starlark.HasAttrs = starDerivation{}
+	_ starlark.Value    = Derivation{}
+	_ starlark.HasAttrs = Derivation{}
 )
 
-func (drv starDerivation) String() string        { return drv.templateString(drv.defaultOutput()) }
-func (drv starDerivation) Type() string          { return "derivation" }
-func (drv starDerivation) Freeze()               {}
-func (drv starDerivation) Truth() starlark.Bool  { return starlark.True }
-func (drv starDerivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("derivation") }
+func (drv Derivation) String() string        { return drv.templateString(drv.defaultOutput()) }
+func (drv Derivation) Type() string          { return "derivation" }
+func (drv Derivation) Freeze()               {}
+func (drv Derivation) Truth() starlark.Bool  { return starlark.True }
+func (drv Derivation) Hash() (uint32, error) { return 0, starutil.ErrUnhashable("derivation") }
 
-func (drv starDerivation) prettyJSON() string {
+func (drv Derivation) prettyJSON() string {
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
 
-func (drv starDerivation) json() string {
+func (drv Derivation) PrettyJSON() string {
+	return drv.prettyJSON()
+}
+
+func (drv Derivation) json() string {
 	b, _ := json.Marshal(drv)
 	return string(b)
 }
 
-func (drv starDerivation) hash() string {
+func (drv Derivation) hash() string {
 	return hasher.HashString(drv.json())
 }
 
-func (drv starDerivation) defaultOutput() string {
+func (drv Derivation) defaultOutput() string {
 	if len(drv.Outputs) > 0 {
 		return drv.Outputs[0]
 	}
 	return "out"
 }
 
-func (drv starDerivation) outputsAsDependencies() (deps []Dependency) {
+func (drv Derivation) outputsAsDependencies() (deps []Dependency) {
 	for _, o := range drv.Outputs {
 		deps = append(deps, Dependency{
-			hash:   drv.hash(),
-			output: o,
+			Hash:   drv.hash(),
+			Output: o,
 		})
 	}
 	return
 }
 
-func (drv starDerivation) templateString(output string) string {
+func (drv Derivation) templateString(output string) string {
 	return fmt.Sprintf(derivationTemplate, drv.hash(), output)
 }
 
-func (drv starDerivation) hasOutput(name string) bool {
+func (drv Derivation) hasOutput(name string) bool {
 	for _, o := range drv.Outputs {
 		if o == name {
 			return true
@@ -143,46 +121,47 @@ func (drv starDerivation) hasOutput(name string) bool {
 	return false
 }
 
-func (drv starDerivation) Attr(name string) (val starlark.Value, err error) {
+func (drv Derivation) Attr(name string) (val starlark.Value, err error) {
 	if !drv.hasOutput(name) {
 		return nil, nil
 	}
 	return starlark.String(drv.templateString(name)), nil
 }
 
-func (drv starDerivation) AttrNames() (out []string) {
+func (drv Derivation) AttrNames() (out []string) {
 	if len(drv.Outputs) == 0 {
 		panic(drv.Outputs)
 	}
 	return drv.Outputs
 }
 
-type Dependency struct {
-	hash   string
-	output string
-}
-
-func (ds Dependency) MarshalJSON() ([]byte, error) {
-	type dep struct {
-		Hash   string
-		Output string
+func (drv Derivation) patchDepedencyReferences(buildOutputs []BuildOutput) Derivation {
+	var sb strings.Builder
+	j := drv.json()
+	fmt.Fprintln(&sb, "0------------------")
+	fmt.Fprintln(&sb, j)
+	for _, bo := range buildOutputs {
+		fmt.Fprintln(&sb, bo.Dep, bo.OutputPath)
+		j = strings.ReplaceAll(j, fmt.Sprintf(derivationTemplate, bo.Dep.Hash, bo.Dep.Output), bo.OutputPath)
 	}
-	return json.Marshal(dep{Hash: ds.hash, Output: ds.output})
+
+	var out Derivation
+	_ = json.Unmarshal([]byte(j), &out)
+	fmt.Fprintln(&sb, out.json())
+	fmt.Fprintln(&sb, "0------------------")
+	fmt.Println(sb.String())
+	return out
 }
 
-func (ds Dependency) Hash() string {
-	return ds.hash
+type Dependency struct {
+	Hash   string
+	Output string
 }
-func (ds Dependency) Output() string {
-	return ds.output
-}
-
-var _ ds.DerivationOutput = Dependency{}
 
 func valuesToDerivations(values starlark.Value) (derivations []Derivation) {
 	switch v := values.(type) {
-	case starDerivation:
-		return []Derivation{{v}}
+	case Derivation:
+		return []Derivation{v}
 	case *starlark.List:
 		for _, v := range starutil.ListToValueList(v) {
 			derivations = append(derivations, valuesToDerivations(v)...)
@@ -221,8 +200,21 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 	return drv, nil
 }
 
-func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv starDerivation, err error) {
-	drv = starDerivation{Outputs: []string{"out"}}
+func newID() string {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(errors.Wrap(err, "unable to generate secure randomness"))
+	}
+	h := hasher.NewHasher()
+	_, _ = h.Write(b)
+	return h.String()
+}
+
+func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
+	drv = Derivation{
+		Outputs: []string{"out"},
+	}
 	var (
 		name      starlark.String
 		builder   starlark.String
@@ -285,7 +277,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 // these values will be initialized with zero-length arrays above, we want to
 // make sure we remove this inconsistency from our hashed json output. To us an
 // empty array is null.
-func makeConsistentNullJSONValues(drv starDerivation) starDerivation {
+func makeConsistentNullJSONValues(drv Derivation) Derivation {
 	if len(drv.Args) == 0 {
 		drv.Args = nil
 	}
@@ -307,7 +299,7 @@ type runErrorReporter struct{}
 func (e runErrorReporter) Error(err error) {}
 func (e runErrorReporter) FailNow() bool   { return true }
 
-func (rt *runtime) findDependencies(drv starDerivation) []Dependency {
+func (rt *runtime) findDependencies(drv Derivation) []Dependency {
 	s := string(drv.json())
 	out := []Dependency{}
 	for _, match := range derivationTemplateRegexp.FindAllStringSubmatch(s, -1) {
@@ -316,8 +308,8 @@ func (rt *runtime) findDependencies(drv starDerivation) []Dependency {
 
 		if _, found := rt.allDerivations[match[1]]; found {
 			out = append(out, Dependency{
-				hash:   match[1],
-				output: match[2],
+				Hash:   match[1],
+				Output: match[2],
 			})
 		}
 	}
@@ -326,7 +318,7 @@ func (rt *runtime) findDependencies(drv starDerivation) []Dependency {
 
 func sortAndUniqueDependencies(deps []Dependency) []Dependency {
 	sort.Slice(deps, func(i, j int) bool {
-		return deps[i].hash+deps[i].output < deps[j].hash+deps[j].output
+		return deps[i].Hash+deps[i].Output < deps[j].Hash+deps[j].Output
 	})
 
 	// dedupe
