@@ -99,6 +99,7 @@ func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builti
 
 	// Only put the relative location in the derivation
 	relFileDirectory, err := filepath.Rel(fb.projectLocation, fileDirectory)
+
 	if err != nil {
 		return nil, errors.Wrapf(err, "can't compute relative path between %q and %q", fb.projectLocation, fileDirectory)
 	}

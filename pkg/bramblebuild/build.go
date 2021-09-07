@@ -45,11 +45,9 @@ type Builder struct {
 	store     *Store
 	rootless  bool
 	URLHashes map[string]string
-
-	derivationsMap *DerivationsMap
 }
 
-func (b *Builder) buildDerivationIfNew(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
+func (b *Builder) BuildDerivationIfNew(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
 	exists, err := drv.PopulateOutputsFromStore()
 	if err != nil {
 		return false, err
@@ -408,10 +406,12 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	oldStorePath := s.StorePath
 
 	for _, do := range drv.InputDerivations {
+		drv, err := s.LoadDerivation(do.Filename)
+		if err != nil || drv == nil {
+			panic(fmt.Sprint(drv, err, do.Filename))
+		}
 		storeValues = append(storeValues,
-			s.JoinStorePath(
-				s.derivations.Load(do.Filename).Output(do.OutputName).Path,
-			),
+			s.JoinStorePath(drv.Output(do.OutputName).Path),
 		)
 	}
 

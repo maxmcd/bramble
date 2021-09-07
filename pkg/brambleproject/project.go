@@ -94,6 +94,10 @@ func (p *Project) Location() string {
 	return p.location
 }
 
+func (p *Project) URLHashes() map[string]string {
+	return p.lockFile.URLHashes
+}
+
 func (p *Project) AddURLHashesToLockfile(mapping map[string]string) (err error) {
 	p.lockFileLock.Lock()
 	defer p.lockFileLock.Unlock()

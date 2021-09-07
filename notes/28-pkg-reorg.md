@@ -147,3 +147,8 @@ What does Build() take? I guess valid but not completely built derivations.
 So maybe we have a function in the build lib, like "createDerivation" and it takes the derivation details along with the sources and spits out a derivation. We can run our derivations one by one through this and then patch up our hashes and replace them w\ real hashes as needed.
 
 TODO: figure out intentional hash collisions
+
+
+-----------
+
+Ok, rethinking parts of this.

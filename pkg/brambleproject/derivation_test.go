@@ -14,10 +14,10 @@ foo()`,
 		{script: `
 def foo():
 	d = derivation("", builder="fetch_url", env={"url":1});
-	return derivation("", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)})
+	return derivation("", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)}, sources=files(["*"]))
 b = foo()
 `,
-			respContains: `{{ c5fe3g7zmbryvrqwo5nbqsgfysgypgq5:out }}`},
+			respContains: `brambleproject/derivation.go`},
 	}
 	runDerivationTest(t, tests)
 }

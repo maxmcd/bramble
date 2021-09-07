@@ -10,10 +10,8 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/assert"
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
@@ -22,7 +20,7 @@ import (
 
 func (rt *runtime) init() {
 	assertGlobals, _ := assert.LoadAssertModule()
-	rt.allDerivations = map[string]starDerivation{}
+	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
 	rt.predeclared = starlark.StringDict{
 		"derivation": starlark.NewBuiltin("derivation", rt.derivationFunction),
@@ -70,7 +68,7 @@ type runtime struct {
 	projectLocation  string
 	moduleName       string
 
-	allDerivations map[string]starDerivation
+	allDerivations map[string]Derivation
 
 	cache map[string]*entry
 
@@ -86,66 +84,6 @@ var starlarkSys = &starlarkstruct.Module{
 	},
 }
 
-type ExecModuleInput struct {
-	Command   string
-	Arguments []string
-
-	ProjectInput ProjectInput
-}
-
-type ProjectInput struct {
-	WorkingDirectory string
-	ProjectLocation  string
-	ModuleName       string
-}
-
-type ExecModuleOutput struct {
-	Output         []Derivation
-	AllDerivations map[string]Derivation
-}
-
-func (emo ExecModuleOutput) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
-	graph = &dag.AcyclicGraph{}
-	for _, outputDrv := range emo.Output {
-		subGraph := &dag.AcyclicGraph{}
-		var processInputDerivations func(drv Derivation, do Dependency) error
-		processInputDerivations = func(drv Derivation, do Dependency) error {
-			subGraph.Add(do)
-			for _, id := range drv.Dependencies() {
-				inputDrv, found := emo.AllDerivations[id.hash]
-				if !found {
-					return errors.Errorf("Can't find derivation with hash %s from output %s", id.hash, id.output)
-				}
-				if err != nil {
-					return err
-				}
-				subGraph.Add(id)
-				subGraph.Connect(dag.BasicEdge(do, id))
-				if err := processInputDerivations(inputDrv, id); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		// If there are multiple build outputs we'll need to create a fake root and
-		// connect all of the build outputs to our fake root.
-		outputs := outputDrv.outputsAsDependencies()
-		if len(outputs) > 1 {
-			subGraph.Add(ds.FakeDAGRoot)
-			for _, o := range outputs {
-				subGraph.Connect(dag.BasicEdge(ds.FakeDAGRoot, o))
-			}
-		}
-		for _, do := range outputs {
-			if err = processInputDerivations(outputDrv, do); err != nil {
-				return nil, err
-			}
-		}
-		ds.MergeGraphs(graph, subGraph)
-	}
-	return graph, nil
-}
-
 func REPL(projectInput ProjectInput) {
 	t := &runtime{
 		workingDirectory: projectInput.WorkingDirectory,
@@ -154,73 +92,6 @@ func REPL(projectInput ProjectInput) {
 	}
 	t.init()
 	repl.REPL(t.newThread("repl"), t.predeclared)
-}
-
-func ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
-	// TODO: validate input
-
-	cmd, args := input.Command, input.Arguments
-	if len(args) == 0 {
-		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
-		err = flag.ErrHelp
-		return
-	}
-
-	rt := &runtime{
-		workingDirectory: input.ProjectInput.WorkingDirectory,
-		projectLocation:  input.ProjectInput.ProjectLocation,
-		moduleName:       input.ProjectInput.ModuleName,
-	}
-	rt.init()
-
-	module, fn, err := rt.parseModuleFuncArgument(args)
-	if err != nil {
-		return output, err
-	}
-	logger.Debug("resolving module", module)
-	// parse the module and all of its imports, return available functions
-	globals, err := rt.execModule(module)
-	if err != nil {
-		return output, err
-	}
-
-	toCall, ok := globals[fn]
-	if !ok {
-		return output, errors.Errorf("function %q not found in module %q", fn, module)
-	}
-
-	logger.Debug("Calling function ", fn)
-	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
-	if err != nil {
-		return output, errors.Wrap(err, "error running")
-	}
-
-	// The function must return a single derivation or a list of derivations, or
-	// a tuple of derivations. We turn them into an array.
-	output.Output = valuesToDerivations(values)
-	output.AllDerivations = rt.allDerivationDependencies(output.Output)
-	return
-}
-
-func (rt *runtime) allDerivationDependencies(in []Derivation) map[string]Derivation {
-	staging := map[string]Derivation{}
-	queue := make(chan string, len(rt.allDerivations))
-	for _, drv := range in {
-		queue <- drv.starDerivation.hash()
-	}
-	for {
-		select {
-		case hash := <-queue:
-			drv := rt.allDerivations[hash]
-			staging[hash] = Derivation{drv}
-			for _, dep := range drv.Dependencies {
-				queue <- dep.hash
-			}
-		default:
-			// Nothing left in the queue
-			return staging
-		}
-	}
 }
 
 func (rt *runtime) parseModuleFuncArgument(args []string) (module, function string, err error) {
