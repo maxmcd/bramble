@@ -15,19 +15,55 @@ import (
 type ExecModuleInput struct {
 	Command   string
 	Arguments []string
-
-	ProjectInput ProjectInput
-}
-
-type ProjectInput struct {
-	WorkingDirectory string
-	ProjectLocation  string
-	ModuleName       string
 }
 
 type ExecModuleOutput struct {
 	Output         []Derivation
 	AllDerivations map[string]Derivation
+}
+
+func (project *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
+	cmd, args := input.Command, input.Arguments
+	if len(args) == 0 {
+		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
+		err = flag.ErrHelp
+		return
+	}
+
+	rt := &runtime{
+		workingDirectory: project.wd,
+		projectLocation:  project.location,
+		moduleName:       project.config.Module.Name,
+	}
+	rt.init()
+
+	module, fn, err := rt.parseModuleFuncArgument(args)
+	if err != nil {
+		return output, err
+	}
+	logger.Debug("resolving module", module)
+	// parse the module and all of its imports, return available functions
+	globals, err := rt.execModule(module)
+	if err != nil {
+		return output, err
+	}
+
+	toCall, ok := globals[fn]
+	if !ok {
+		return output, errors.Errorf("function %q not found in module %q", fn, module)
+	}
+
+	logger.Debug("Calling function ", fn)
+	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
+	if err != nil {
+		return output, errors.Wrap(err, "error running")
+	}
+
+	// The function must return a single derivation or a list of derivations, or
+	// a tuple of derivations. We turn them into an array.
+	output.Output = valuesToDerivations(values)
+	output.AllDerivations = rt.allDerivationDependencies(output.Output)
+	return
 }
 
 func (emo ExecModuleOutput) buildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
@@ -83,7 +119,7 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 		return err
 	}
 
-	ds.PrintDot(graph)
+	// ds.PrintDot(graph)
 
 	drvMap := newDrvReplaceableMap()
 	for _, drv := range emo.AllDerivations {
@@ -133,52 +169,6 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 	return nil
 }
 
-func ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
-	// TODO: validate input
-
-	cmd, args := input.Command, input.Arguments
-	if len(args) == 0 {
-		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
-		err = flag.ErrHelp
-		return
-	}
-
-	rt := &runtime{
-		workingDirectory: input.ProjectInput.WorkingDirectory,
-		projectLocation:  input.ProjectInput.ProjectLocation,
-		moduleName:       input.ProjectInput.ModuleName,
-	}
-	rt.init()
-
-	module, fn, err := rt.parseModuleFuncArgument(args)
-	if err != nil {
-		return output, err
-	}
-	logger.Debug("resolving module", module)
-	// parse the module and all of its imports, return available functions
-	globals, err := rt.execModule(module)
-	if err != nil {
-		return output, err
-	}
-
-	toCall, ok := globals[fn]
-	if !ok {
-		return output, errors.Errorf("function %q not found in module %q", fn, module)
-	}
-
-	logger.Debug("Calling function ", fn)
-	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
-	if err != nil {
-		return output, errors.Wrap(err, "error running")
-	}
-
-	// The function must return a single derivation or a list of derivations, or
-	// a tuple of derivations. We turn them into an array.
-	output.Output = valuesToDerivations(values)
-	output.AllDerivations = rt.allDerivationDependencies(output.Output)
-	return
-}
-
 func (rt *runtime) allDerivationDependencies(in []Derivation) map[string]Derivation {
 	staging := map[string]Derivation{}
 	queue := make(chan string, len(rt.allDerivations))
@@ -219,7 +209,6 @@ func newDrvReplaceableMap() *drvReplaceableMap {
 
 func (drm *drvReplaceableMap) add(drv Derivation) {
 	drm.lock.Lock()
-	fmt.Println(drv.hash())
 	drm.drvs[drv.hash()] = drv
 	drm.lock.Unlock()
 }

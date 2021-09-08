@@ -34,7 +34,7 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 	}
 	// TODO: could extend reptar to handle hasing the files before moving
 	// them to a tempdir
-	tmpDir, err := s.TempDir()
+	tmpDir, err := s.tempDir()
 	if err != nil {
 		return
 	}
@@ -67,7 +67,7 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 	if err = reptar.Reptar(tmpDir, hshr); err != nil {
 		return
 	}
-	storeLocation := s.JoinStorePath(hshr.String())
+	storeLocation := s.joinStorePath(hshr.String())
 	if fileutil.PathExists(storeLocation) {
 		if err = os.RemoveAll(tmpDir); err != nil {
 			return
@@ -84,8 +84,8 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 	return
 }
 
-func (s *Store) NewDerivation2(options NewDerivationOptions) (exists bool, drv *Derivation, err error) {
-	drv = s.NewDerivation()
+func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv *Derivation, err error) {
+	drv = s.newDerivation()
 	if err = s.hashAndStoreSources(drv, options.Sources); err != nil {
 		return
 	}
@@ -98,6 +98,6 @@ func (s *Store) NewDerivation2(options NewDerivationOptions) (exists bool, drv *
 	drv.Platform = options.Platform
 	drv.OutputNames = options.Outputs // TODO: Validate, and others
 
-	exists, err = drv.PopulateOutputsFromStore()
+	exists, err = drv.populateOutputsFromStore()
 	return exists, drv, err
 }

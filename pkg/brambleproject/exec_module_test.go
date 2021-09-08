@@ -1,7 +1,6 @@
 package brambleproject
 
 import (
-	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -10,9 +9,8 @@ import (
 )
 
 func TestExecModule(t *testing.T) {
-	projectLocation, err := filepath.Abs("./testdata/project")
+	project, err := NewProject("./testdata/project")
 	require.NoError(t, err)
-
 	type output struct {
 		output []string
 		all    []string
@@ -40,14 +38,9 @@ func TestExecModule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotOutput, err := ExecModule(ExecModuleInput{
+			gotOutput, err := project.ExecModule(ExecModuleInput{
 				Command:   "build",
 				Arguments: tt.args,
-				ProjectInput: ProjectInput{
-					WorkingDirectory: projectLocation,
-					ProjectLocation:  projectLocation,
-					ModuleName:       "testproject",
-				},
 			})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ExecModule() error = %v, wantErr %v", err, tt.wantErr)
@@ -72,17 +65,12 @@ func TestExecModule(t *testing.T) {
 }
 
 func TestExecModuleAndWalk(t *testing.T) {
-	projectLocation, err := filepath.Abs("../..")
+	project, err := NewProject("./testdata/project")
 	require.NoError(t, err)
 
-	gotOutput, err := ExecModule(ExecModuleInput{
+	gotOutput, err := project.ExecModule(ExecModuleInput{
 		Command:   "build",
-		Arguments: []string{"github.com/maxmcd/bramble/tests/simple/simple:simple"},
-		ProjectInput: ProjectInput{
-			WorkingDirectory: projectLocation,
-			ProjectLocation:  projectLocation,
-			ModuleName:       "github.com/maxmcd/bramble",
-		},
+		Arguments: []string{"github.com/maxmcd/bramble/all:all"},
 	})
 	require.NoError(t, err)
 

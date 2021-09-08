@@ -10,13 +10,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
 	"github.com/maxmcd/bramble/pkg/brambleproject"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -31,14 +29,14 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			ShortUsage: "bramble build [options] [module]:<function> [args...]",
 			ShortHelp:  "Build a function",
 			LongHelp:   "Build a function",
-			Exec:       func(ctx context.Context, args []string) error { err := build(ctx, args, false); return err },
+			Exec:       func(ctx context.Context, args []string) error { err := buildCommand(ctx, args, false); return err },
 		},
 		{
 			Name:       "shell",
 			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 			ShortHelp:  "Open a shell from a derivation",
 			LongHelp:   "Open a shell from a derivation",
-			Exec:       func(ctx context.Context, args []string) error { _, err := shell(ctx, args); return err },
+			Exec:       func(ctx context.Context, args []string) error { err := shell(ctx, args); return err },
 		},
 		{
 			Name:       "repl",
@@ -144,7 +142,6 @@ func RunCLI() {
 	if err != nil {
 		handleErr(err)
 	}
-	// TODO, use context to handle interrupt
 	if err := command.Run(context.Background()); err != nil {
 		handleErr(err)
 	}
@@ -192,70 +189,19 @@ func countFlags(fs *flag.FlagSet) (n int) {
 	return n
 }
 
-func newDefaultRuntimeAndStore() (rt *brambleproject.Runtime, err error) {
-	store, err := bramblebuild.NewStore("")
-	if err != nil {
-		return nil, err
-	}
-	project, err := brambleproject.NewProject(".")
-	if err != nil {
-		return nil, err
-	}
-	rt, err = brambleproject.NewRuntime(project, store)
-	return rt, err
+func buildCommand(ctx context.Context, args []string, rootLess bool) error {
+	return runBuild("build", args)
 }
 
-func build(ctx context.Context, args []string, rootLess bool) error {
-	rt, err := newDefaultRuntimeAndStore()
-	if err != nil {
-		return err
-	}
-	drvs, err := rt.ExecFromArguments("build", args)
-	if err != nil {
-		return err
-	}
-
-	builder := rt.NewBuilder(rootLess)
-	_, err = builder.BuildDerivations(ctx, drvs, nil)
-	// REFAC: write config metadata
-	return err
-}
-
-func shell(ctx context.Context, args []string) (result []bramblebuild.BuildResult, err error) {
-	rt, err := newDefaultRuntimeAndStore()
-	if err != nil {
-		return
-	}
-	drvs, err := rt.ExecFromArguments("shell", args)
-	if err != nil {
-		return
-	}
-
-	if len(drvs) > 1 {
-		return nil, errors.New(`cannot run "bramble shell" with a function that returns multiple derivations`)
-	}
-	shellDerivation := drvs[0]
-
-	builder := rt.NewBuilder(false)
-	result, err = builder.BuildDerivations(ctx, drvs, shellDerivation)
-	if err != nil {
-		return
-	}
-	// REFAC: write config metadata
-	filename := shellDerivation.Filename()
-	logger.Print("Launching shell for derivation", filename)
-	logger.Debugw(shellDerivation.PrettyJSON())
-	if err = builder.BuildDerivation(ctx, shellDerivation, true); err != nil {
-		return nil, errors.Wrap(err, "error spawning "+filename)
-	}
+func shell(ctx context.Context, args []string) (err error) {
 	return
 }
 
 func repl(_ []string) (err error) {
-	rt, err := newDefaultRuntimeAndStore()
+	project, err := brambleproject.NewProject(".")
 	if err != nil {
 		return err
 	}
-	rt.REPL()
+	project.REPL()
 	return nil
 }

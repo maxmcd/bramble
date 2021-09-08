@@ -84,11 +84,11 @@ var starlarkSys = &starlarkstruct.Module{
 	},
 }
 
-func REPL(projectInput ProjectInput) {
+func (p *Project) REPL() {
 	t := &runtime{
-		workingDirectory: projectInput.WorkingDirectory,
-		projectLocation:  projectInput.ProjectLocation,
-		moduleName:       projectInput.ModuleName,
+		workingDirectory: p.wd,
+		projectLocation:  p.location,
+		moduleName:       p.config.Module.Name,
 	}
 	t.init()
 	repl.REPL(t.newThread("repl"), t.predeclared)
