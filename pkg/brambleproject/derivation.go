@@ -136,20 +136,13 @@ func (drv Derivation) AttrNames() (out []string) {
 }
 
 func (drv Derivation) patchDepedencyReferences(buildOutputs []BuildOutput) Derivation {
-	var sb strings.Builder
 	j := drv.json()
-	fmt.Fprintln(&sb, "0------------------")
-	fmt.Fprintln(&sb, j)
 	for _, bo := range buildOutputs {
-		fmt.Fprintln(&sb, bo.Dep, bo.OutputPath)
 		j = strings.ReplaceAll(j, fmt.Sprintf(derivationTemplate, bo.Dep.Hash, bo.Dep.Output), bo.OutputPath)
 	}
 
 	var out Derivation
 	_ = json.Unmarshal([]byte(j), &out)
-	fmt.Fprintln(&sb, out.json())
-	fmt.Fprintln(&sb, "0------------------")
-	fmt.Println(sb.String())
 	return out
 }
 

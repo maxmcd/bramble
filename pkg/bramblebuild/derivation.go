@@ -1,10 +1,8 @@
 package bramblebuild
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,29 +13,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
-)
-
-var (
-	// BramblePrefixOfRecord is the prefix we use when hashing the build output
-	// this allows us to get a consistent hash even if we're building in a
-	// different location
-	// TODO: could we make this more obviously fake?
-	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb"
-
-	// UnbuiltDerivationOutputTemplate is the template string we use to write
-	// derivation outputs into other derivations.
-	UnbuiltDerivationOutputTemplate = "{{ %s:%s }}"
-	BuiltDerivationOutputTemplate   = "{{ %s }}"
-
-	// UnbuiltTemplateStringRegexp is the regular expression that matches
-	// template strings in our derivations. I assume the ".*" parts won't run
-	// away too much because of the earlier match on "{{ [0-9a-z]{32}" but might
-	// be worth further investigation.
-	//
-	// TODO: should we limit the content of the derivation name? non-latin would
-	// be good for users but bad for filesystems. What's a sensible limiation
-	UnbuiltTemplateStringRegexp *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}-.*?\.drv):(.+?) \}\}`)
-	BuiltTemplateStringRegexp   *regexp.Regexp = regexp.MustCompile(`\{\{ ([0-9a-z]{32}) \}\}`)
 )
 
 // Derivation is the basic building block of a Bramble build
@@ -77,22 +52,17 @@ type Derivation struct {
 
 	// internal fields
 	store *Store
-	lock  sync.Mutex
 }
 
-func (store *Store) NewDerivation() *Derivation {
+func (s *Store) newDerivation() *Derivation {
 	return &Derivation{
 		OutputNames: []string{"out"},
 		Env:         map[string]string{},
-		store:       store,
+		store:       s,
 	}
 }
 
-func (drv *Derivation) TemplateString() string {
-	return drv.OutputTemplateString(drv.MainOutput())
-}
-
-func (drv *Derivation) DerivationOutputs() (dos DerivationOutputs) {
+func (drv *Derivation) derivationOutputs() (dos DerivationOutputs) {
 	filename := drv.Filename()
 	for _, name := range drv.OutputNames {
 		dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
@@ -121,7 +91,7 @@ func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
 	return dos[:j+1]
 }
 
-func (drv *Derivation) MissingOutput() bool {
+func (drv *Derivation) missingOutput() bool {
 	if len(drv.Outputs) == 0 {
 		return true
 	}
@@ -133,7 +103,7 @@ func (drv *Derivation) MissingOutput() bool {
 	return false
 }
 
-func (drv *Derivation) HasOutput(name string) bool {
+func (drv *Derivation) hasOutput(name string) bool {
 	for _, o := range drv.OutputNames {
 		if o == name {
 			return true
@@ -142,7 +112,7 @@ func (drv *Derivation) HasOutput(name string) bool {
 	return false
 }
 
-func (drv *Derivation) Output(name string) Output {
+func (drv *Derivation) output(name string) Output {
 	for i, o := range drv.OutputNames {
 		if o == name {
 			if len(drv.Outputs) > i {
@@ -153,7 +123,7 @@ func (drv *Derivation) Output(name string) Output {
 	return Output{}
 }
 
-func (drv *Derivation) SetOutput(name string, o Output) {
+func (drv *Derivation) setOutput(name string, o Output) {
 	for i, on := range drv.OutputNames {
 		if on == name {
 			// grow if we need to
@@ -168,17 +138,8 @@ func (drv *Derivation) SetOutput(name string, o Output) {
 	panic("unable to set output with name: " + name)
 }
 
-func (drv *Derivation) OutputTemplateString(output string) string {
-	outputPath := drv.Output(output).Path
-	if drv.Output(output).Path != "" {
-		return fmt.Sprintf(BuiltDerivationOutputTemplate, outputPath)
-	}
-	fn := drv.Filename()
-	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, fn, output)
-}
-
-func (drv *Derivation) MainOutput() string {
-	if out := drv.Output("out"); out.Path != "" || len(drv.OutputNames) == 0 {
+func (drv *Derivation) mainOutput() string {
+	if out := drv.output("out"); out.Path != "" || len(drv.OutputNames) == 0 {
 		return "out"
 	}
 	return drv.OutputNames[0]
@@ -195,33 +156,6 @@ func (drv *Derivation) PrettyJSON() string {
 	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
-}
-
-// REFAC, this was used in lang to populate the inputDerivations, this needs to be added in a post-lang process
-// PopulateUnbuiltInputDerivations matches on the derivation input template and
-// adds those candidates to the inputderivations
-func (drv *Derivation) PopulateUnbuiltInputDerivations() {
-	drv.InputDerivations = drv._matchedUnbuiltDerivationInputs()
-}
-
-func (drv *Derivation) _matchedUnbuiltDerivationInputs() DerivationOutputs {
-	s := string(drv.JSON())
-	out := DerivationOutputs{}
-	for _, match := range UnbuiltTemplateStringRegexp.FindAllStringSubmatch(s, -1) {
-		// We must validate that the derivation exists and this isn't just an
-		// errant template string
-		if drv.store.derivations.Load(match[1]) != nil {
-			out = append(out, DerivationOutput{
-				Filename:   match[1],
-				OutputName: match[2],
-			})
-		}
-	}
-	return sortAndUniqueInputDerivations(out)
-}
-
-func (drv *Derivation) containsUnbuiltDerivationTemplateStrings() bool {
-	return len(drv._matchedUnbuiltDerivationInputs()) > 0
 }
 
 func (drv *Derivation) makeConsistentNullJSONValues() {
@@ -245,7 +179,7 @@ func (drv *Derivation) makeConsistentNullJSONValues() {
 	}
 }
 
-func (drv *Derivation) JSON() []byte {
+func (drv *Derivation) json() []byte {
 	drv.makeConsistentNullJSONValues()
 	b, err := json.Marshal(drv)
 	if err != nil {
@@ -256,35 +190,16 @@ func (drv *Derivation) JSON() []byte {
 
 func (drv *Derivation) copy() *Derivation {
 	out := &Derivation{}
-	if err := json.Unmarshal(drv.JSON(), &out); err != nil {
+	if err := json.Unmarshal(drv.json(), &out); err != nil {
 		panic(err)
 	}
 	return out
 }
 func (drv *Derivation) Filename() (filename string) {
-	// Content is hashed without derivation outputs.
-
-	// TODO: why is this here?
-	drv.CopyWithOutputValuesReplaced()
-	copy := drv.copy()
-	copy.Outputs = nil
-	for i, input := range copy.InputDerivations {
-		// Only use the output name and value when hashing and the output is available
-		if input.Output != "" {
-			copy.InputDerivations[i].Filename = ""
-		}
-	}
-	jsonBytesForHashing := copy.JSON()
-
-	fileName := fmt.Sprintf("%s.drv", drv.Name)
-	_, filename, err := hasher.HashFile(fileName, ioutil.NopCloser(bytes.NewBuffer(jsonBytesForHashing)))
-	if err != nil {
-		panic(err) // shouldn't ever happen
-	}
-	return
+	return fmt.Sprintf("%s-%s.drv", drv.hash(), drv.Name)
 }
 
-func (drv *Derivation) Hash() string {
+func (drv *Derivation) hash() string {
 	copy := drv.copy()
 	copy.Outputs = nil
 	for i, input := range copy.InputDerivations {
@@ -293,7 +208,7 @@ func (drv *Derivation) Hash() string {
 			copy.InputDerivations[i].Filename = ""
 		}
 	}
-	jsonBytesForHashing := copy.JSON()
+	jsonBytesForHashing := copy.json()
 	return hasher.HashString(string(jsonBytesForHashing))
 }
 
@@ -315,7 +230,7 @@ func (drv *Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err erro
 		}
 		return nil
 	}
-	dos := drv.DerivationOutputs()
+	dos := drv.derivationOutputs()
 
 	// If there are multiple build outputs we'll need to create a fake root and
 	// connect all of the build outputs to our fake root.
@@ -338,7 +253,7 @@ func (drv *Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err erro
 func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err error) {
 	graph = ds.NewAcyclicGraph()
 	noOutput := errors.New("outputs missing on derivation when searching for runtime dependencies")
-	if drv.MissingOutput() {
+	if drv.missingOutput() {
 		return nil, noOutput
 	}
 	var processDerivationOutputs func(do DerivationOutput) error
@@ -347,7 +262,7 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err err
 		if err != nil {
 			return err
 		}
-		if drv.MissingOutput() {
+		if drv.missingOutput() {
 			return noOutput
 		}
 		dependencies, err := drv.runtimeDependencies()
@@ -364,7 +279,7 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err err
 		}
 		return nil
 	}
-	for _, do := range drv.DerivationOutputs() {
+	for _, do := range drv.derivationOutputs() {
 		if err := processDerivationOutputs(do); err != nil {
 			return nil, err
 		}
@@ -414,10 +329,10 @@ func (drv *Derivation) inputFiles() []string {
 }
 
 func (drv *Derivation) runtimeFiles(outputName string) []string {
-	return []string{drv.Filename(), drv.Output(outputName).Path}
+	return []string{drv.Filename(), drv.output(outputName).Path}
 }
 
-func (drv *Derivation) PopulateOutputsFromStore() (exists bool, err error) {
+func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
 	filename := drv.Filename()
 	var outputs []Output
 	outputs, exists, err = drv.store.checkForBuiltDerivationOutputs(filename)
@@ -426,14 +341,14 @@ func (drv *Derivation) PopulateOutputsFromStore() (exists bool, err error) {
 	}
 	if exists {
 		drv.Outputs = outputs
-		drv.store.derivations.Store(filename, drv)
+		drv.store.derivationCache.Store(drv)
 	}
 	return
 }
 
 func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
 	var dummyDrv Derivation
-	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(drv.JSON()), old, new)), &dummyDrv); err != nil {
+	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(drv.json()), old, new)), &dummyDrv); err != nil {
 		return err
 	}
 	drv.Args = dummyDrv.Args
@@ -442,15 +357,15 @@ func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
 	return nil
 }
 
-func (drv *Derivation) CopyWithOutputValuesReplaced() (copy *Derivation, err error) {
-	s := string(drv.JSON())
+func (drv *Derivation) copyWithOutputValuesReplaced() (copy *Derivation, err error) {
+	s := string(drv.json())
 
 	// Looking for things like: /home/bramble/bramble/bramble_store_padding/bramb/rb2rveatcti4szdt3s6xc37cpvqxrdmr
 	r := regexp.MustCompile(strings.ReplaceAll(BramblePrefixOfRecord, "/", "\\/") + "/([0-9a-z]{32})")
 
 	for _, match := range r.FindAllStringSubmatch(s, -1) {
 		fmt.Println(match)
-		storePath := drv.store.JoinStorePath(match[1])
+		storePath := drv.store.joinStorePath(match[1])
 		if fileutil.PathExists(storePath) {
 			s = strings.ReplaceAll(s, match[0], storePath)
 		}
@@ -482,10 +397,6 @@ type DerivationOutput struct {
 	Output     string
 }
 
-func (do DerivationOutput) templateString() string {
-	return fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
-}
-
 type DerivationOutputs []DerivationOutput
 
 func (dos DerivationOutputs) Len() int      { return len(dos) }
@@ -494,27 +405,31 @@ func (dos DerivationOutputs) Less(i, j int) bool {
 	return dos[i].Filename+dos[i].OutputName < dos[j].Filename+dos[j].OutputName
 }
 
-type DerivationsMap struct {
+type derivationsMap struct {
 	d    map[string]*Derivation
 	lock sync.RWMutex
 }
 
-func (dm *DerivationsMap) Load(filename string) *Derivation {
+func newDerivationsMap() *derivationsMap {
+	return &derivationsMap{d: map[string]*Derivation{}}
+}
+
+func (dm *derivationsMap) Load(filename string) *Derivation {
 	dm.lock.RLock()
 	defer dm.lock.RUnlock()
 	return dm.d[filename]
 }
 
-func (dm *DerivationsMap) Has(filename string) bool {
+func (dm *derivationsMap) Has(filename string) bool {
 	return dm.Load(filename) != nil
 }
-func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
+func (dm *derivationsMap) Store(drv *Derivation) {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
-	dm.d[filename] = drv
+	dm.d[drv.Filename()] = drv
 }
 
-func (dm *DerivationsMap) Range(cb func(map[string]*Derivation)) {
+func (dm *derivationsMap) Range(cb func(map[string]*Derivation)) {
 	dm.lock.Lock()
 	cb(dm.d)
 	dm.lock.Unlock()

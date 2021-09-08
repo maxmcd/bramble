@@ -2,27 +2,31 @@ package bramble
 
 import (
 	"context"
-	"fmt"
-	"testing"
 
 	build "github.com/maxmcd/bramble/pkg/bramblebuild"
 	project "github.com/maxmcd/bramble/pkg/brambleproject"
+
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/require"
 )
 
-func TestAll(t *testing.T) {
+func runBuild(command string, args []string) error {
 	p, err := project.NewProject(".")
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 
 	output, err := p.ExecModule(project.ExecModuleInput{
-		Command:   "build",
-		Arguments: []string{"all:all"},
+		Command:   command,
+		Arguments: args,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 
 	store, err := build.NewStore("")
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 
 	builder := store.NewBuilder(false, p.URLHashes())
 
@@ -78,12 +82,13 @@ func TestAll(t *testing.T) {
 		}
 		return
 	})
-	require.NoError(t, err)
-
-	for _, drv := range allDerivations {
-		fmt.Println(drv.PrettyJSON())
+	if err != nil {
+		return err
 	}
 
 	err = p.AddURLHashesToLockfile(builder.URLHashes)
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
+	return nil
 }

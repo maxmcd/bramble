@@ -1,36 +1,33 @@
 package bramblebuild
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
 
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
-	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )
 
 var (
-	BuildDirPattern       = "bramble_build_directory*" // TODO: does this ensure the same length always?
 	PathPaddingCharacters = "bramble_store_padding"
 	PathPaddingLength     = 50
 
-	ErrStoreDoesNotExist = errors.New("calculated store path doesn't exist, did the location change?")
+	// BramblePrefixOfRecord is the prefix we use when hashing the build output
+	// this allows us to get a consistent hash even if we're building in a
+	// different location
+	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb" // TODO: could we make this more obviously fake?
+
+	buildDirPattern = "bramble_build_directory*"
 )
 
 func NewStore(bramblePath string) (*Store, error) {
-	s := &Store{derivations: &DerivationsMap{
-		d: map[string]*Derivation{},
-	}}
+	s := &Store{derivationCache: newDerivationsMap()}
 	return s, ensureBramblePath(s, bramblePath)
 }
 
@@ -38,23 +35,16 @@ type Store struct {
 	BramblePath string
 	StorePath   string
 
-	derivations *DerivationsMap
+	derivationCache *derivationsMap
 }
 
-func (s *Store) IsEmpty() bool {
-	return s.BramblePath == "" || s.StorePath == ""
-}
-
-func (s *Store) TempDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir(s.StorePath, BuildDirPattern)
+func (s *Store) tempDir() (tempDir string, err error) {
+	tempDir, err = ioutil.TempDir(s.StorePath, buildDirPattern)
 	if err != nil {
 		return
 	}
+	// TODO: sus
 	return tempDir, os.Chmod(tempDir, 0777)
-}
-
-func (s *Store) TempBuildDir() (tempDir string, err error) {
-	return ioutil.TempDir(filepath.Join(s.BramblePath, "var/builds"), "build-")
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
@@ -67,17 +57,17 @@ func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Outpu
 		return nil, false, nil
 	}
 	// It's not built if it doesn't have the outputs we need
-	return existingDrv.Outputs, !existingDrv.MissingOutput(), err
+	return existingDrv.Outputs, !existingDrv.missingOutput(), err
 }
 
 func (s *Store) LoadDerivation(filename string) (drv *Derivation, err error) {
 	defer logger.Debug("loadDerivation ", filename, " ", drv)
-	drv = s.derivations.Load(filename)
-	if drv != nil && !drv.MissingOutput() {
+	drv = s.derivationCache.Load(filename)
+	if drv != nil && !drv.missingOutput() {
 		// if it has outputs return now
 		return
 	}
-	loc := s.JoinStorePath(filename)
+	loc := s.joinStorePath(filename)
 	if !fileutil.FileExists(loc) {
 		// If we have the derivation in memory just return it
 		if drv != nil {
@@ -95,7 +85,7 @@ func (s *Store) LoadDerivation(filename string) (drv *Derivation, err error) {
 	if err = json.NewDecoder(f).Decode(&drv); err != nil {
 		return
 	}
-	s.derivations.Store(filename, drv)
+	s.derivationCache.Store(drv)
 	return drv, nil
 }
 
@@ -137,7 +127,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 		}
 
 		// Specifically check for files in the var folder.
-		files, _ = ioutil.ReadDir(s.JoinBramblePath("var"))
+		files, _ = ioutil.ReadDir(s.joinBramblePath("var"))
 		if len(files) > 0 {
 			for _, file := range files {
 				fileMap["var/"+file.Name()] = struct{}{}
@@ -150,7 +140,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 		return err
 	}
 
-	s.StorePath = s.JoinBramblePath(storeDirectoryName)
+	s.StorePath = s.joinBramblePath(storeDirectoryName)
 
 	// Add store folder with the correct padding and add a convenience symlink
 	// in the bramble folder.
@@ -158,7 +148,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 		if err = os.MkdirAll(s.StorePath, 0755); err != nil {
 			return err
 		}
-		if err = os.Symlink("."+storeDirectoryName, s.JoinBramblePath("store")); err != nil {
+		if err = os.Symlink("."+storeDirectoryName, s.joinBramblePath("store")); err != nil {
 			return err
 		}
 	}
@@ -183,7 +173,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 
 	for _, folder := range folders {
 		if _, ok := fileMap[folder]; !ok {
-			if err = os.Mkdir(s.JoinBramblePath(folder), 0755); err != nil {
+			if err = os.Mkdir(s.joinBramblePath(folder), 0755); err != nil {
 				return errors.Wrap(err, fmt.Sprintf("error creating bramble folder %q", folder))
 			}
 		}
@@ -191,22 +181,22 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 
 	// otherwise, check if the exact store path we need exists
 	if !fileutil.PathExists(s.StorePath) {
-		return ErrStoreDoesNotExist
+		return errors.New("calculated store path doesn't exist, did the location change?")
 	}
 
 	return
 }
 
-func (s *Store) JoinStorePath(v ...string) string {
+func (s *Store) joinStorePath(v ...string) string {
 	return filepath.Join(append([]string{s.StorePath}, v...)...)
 }
-func (s *Store) JoinBramblePath(v ...string) string {
+func (s *Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.BramblePath}, v...)...)
 }
 
-func (s *Store) WriteReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
+func (s *Store) writeReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
 	hshr := hasher.NewHasher()
-	file, err := ioutil.TempFile(s.JoinBramblePath("tmp"), "")
+	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a write to the store")
 		return
@@ -223,7 +213,7 @@ func (s *Store) WriteReader(src io.Reader, name string, validateHash string) (co
 	if name != "" {
 		fileName += ("-" + name)
 	}
-	path = s.JoinStorePath(fileName)
+	path = s.joinStorePath(fileName)
 	if err = file.Close(); err != nil {
 		return "", "", err
 	}
@@ -237,8 +227,8 @@ func (s *Store) WriteReader(src io.Reader, name string, validateHash string) (co
 	return hshr.Sha256Hex(), path, nil
 }
 
-func (s *Store) CreateTmpFile() (f *os.File, err error) {
-	return ioutil.TempFile(s.StorePath, BuildDirPattern)
+func (s *Store) tmpFile() (f *os.File, err error) {
+	return ioutil.TempFile(s.StorePath, buildDirPattern)
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {
@@ -246,7 +236,7 @@ func (s *Store) WriteConfigLink(location string) (err error) {
 	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
 	}
-	reg := s.JoinBramblePath("var/config-registry")
+	reg := s.joinBramblePath("var/config-registry")
 	hash := hshr.String()
 	configFileLocation := filepath.Join(reg, hash)
 	return ioutil.WriteFile(configFileLocation, []byte(location), 0644)
@@ -278,156 +268,7 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 
 func (s *Store) WriteDerivation(drv *Derivation) error {
 	filename := drv.Filename()
-	fileLocation := s.JoinStorePath(filename)
+	fileLocation := s.joinStorePath(filename)
 
-	return ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
-}
-
-func (s *Store) StoreDerivation(drv *Derivation) {
-	s.derivations.Store(drv.Filename(), drv)
-}
-
-func (s *Store) stringsReplacerForOutputs(outputs DerivationOutputs) (replacer *strings.Replacer, err error) {
-	// Find all the replacements we need to make, template strings need to
-	// become filesystem paths
-	replacements := []string{}
-	for _, do := range outputs {
-		d := s.derivations.Load(do.Filename)
-		if d == nil {
-			return nil, errors.Errorf(
-				"couldn't find a derivation with the filename %q in our cache. have we built it yet?", do.Filename)
-		}
-		path := filepath.Join(
-			s.StorePath,
-			d.Output(do.OutputName).Path,
-		)
-		replacements = append(replacements, do.templateString(), path)
-	}
-	// Replace the content using the json body and then convert it back into a
-	// new derivation
-	return strings.NewReplacer(replacements...), nil
-}
-
-func (s *Store) copyDerivationWithOutputValuesReplaced(drv *Derivation) (copy *Derivation, err error) {
-	// Find all derivation output template strings within the derivation
-	outputs := drv.InputDerivations
-
-	replacer, err := s.stringsReplacerForOutputs(outputs)
-	if err != nil {
-		return
-	}
-	replacedJSON := replacer.Replace(string(drv.JSON()))
-	err = json.Unmarshal([]byte(replacedJSON), &copy)
-	return copy, err
-}
-
-func (s *Store) BuildDerivations(ctx context.Context, derivations []*Derivation, skipDerivation *Derivation) (
-	result []BuildResult, err error) {
-	// TODO: instead of assembling this graph from dos, generate the dependency
-	// graph for each derivation and then just merge the graphs with a fake root
-	derivationsMap := DerivationsMap{}
-	graphs := []*dag.AcyclicGraph{}
-	for _, drv := range derivations {
-		derivationsMap.Store(drv.Filename(), drv)
-		graph, err := drv.BuildDependencyGraph()
-		if err != nil {
-			return nil, err
-		}
-		graphs = append(graphs, graph)
-	}
-	graph := ds.MergeGraphs(graphs...)
-	if graph == nil || len(graph.Vertices()) == 0 {
-		return
-	}
-	if err = graph.Validate(); err != nil {
-		err = errors.WithStack(err)
-		return
-	}
-	var wg sync.WaitGroup
-	errChan := make(chan error)
-	semaphore := make(chan struct{}, 1)
-	var errored bool
-	if err = graph.Validate(); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	go func() {
-		graph.Walk(func(v dag.Vertex) (_ error) {
-			if errored {
-				return
-			}
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			// serial for now
-
-			// Skip the rake root
-			if v == ds.FakeDAGRoot {
-				return
-			}
-			do := v.(DerivationOutput)
-			// REFAC: see comment below
-			drv := derivationsMap.Load(do.Filename)
-			drv.lock.Lock()
-			defer drv.lock.Unlock()
-
-			if skipDerivation != nil && skipDerivation == drv {
-				// Is this enough of an equality check?
-				return
-			}
-			wg.Add(1)
-			// REFAC
-			didBuild := true
-			// didBuild, err := b.buildDerivationIfNew(ctx, drv)
-			// if err != nil {
-			// 	// Passing the error might block, so we need an explicit Done
-			// 	// call here.
-			// 	wg.Done()
-			// 	errored = true
-			// 	logger.Print(err)
-			// 	errChan <- err
-			// 	return
-			// }
-
-			// Post build processing of dependencies template values:
-			{
-				// We construct the template value using the DerivationOutput
-				// which uses the initial derivation output value
-				oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
-
-				newTemplateName := drv.OutputTemplateString(do.OutputName)
-
-				for _, edge := range graph.EdgesTo(v) {
-					if edge.Source() == ds.FakeDAGRoot {
-						continue
-					}
-					childDO := edge.Source().(DerivationOutput)
-
-					// REFAC: consider moving this cache to just within the builder, can be the context for rebuilding the tree
-					childDRV := derivationsMap.Load(childDO.Filename)
-					for i, input := range childDRV.InputDerivations {
-						// Add the output to the derivation input
-						if input.Filename == do.Filename && input.OutputName == do.OutputName {
-							childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
-						}
-					}
-					if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {
-						panic(err)
-					}
-				}
-			}
-
-			result = append(result, BuildResult{Derivation: drv, DidBuild: didBuild})
-			wg.Done()
-			return
-		})
-		errChan <- nil
-	}()
-	err = <-errChan
-	cancel() // Call cancel on the context, no-op if nothing is running
-	if err != nil {
-		// If we receive an error cancel the context and wait for any jobs that
-		// are running.
-		wg.Wait()
-	}
-	return result, err
+	return ioutil.WriteFile(fileLocation, drv.json(), 0644)
 }
