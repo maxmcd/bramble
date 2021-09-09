@@ -2,23 +2,16 @@
 
 # Bramble
 
-* [Intro](#bramble)
-* [Project Status](#project-status)
-* [Hello World](#hello-world)
+- [Bramble](#bramble)
+  - [Project Status](#project-status)
+    - [Feature Status](#feature-status)
+  - [Hello World](#hello-world)
 
 <hr>
 
 Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
 
-*First, some background...*
-
-Shell scripting has frustrated me for some time. While I don't think I'll ever really get the handle of all the various tricks I think the real issue is the uncertainty. What programs are on this system, what features do they have, how can I use them, etc. I think this is the "works on my machine" problem. If I have something working I still don't know how to get it working elsewhere.
-
-Docker felt like a hint of a solution. At least now if I want something to run somewhere else I can pack it up into a Docker image. This isn't a general purpose solution though, and unless you're using complicated tools the docker build process is not reproducible.
-
-Nix was exciting to discover. All of your dependencies are assembled in a graph. Every dependency lives in a folder that is assigned a hash. Many different versions of software can exist on the same system and you can compose them into whatever combination you want. You can define a build, send it off to someone, and more often than not, it'll work for them too.
-
-Bramble is my attempt at taking it one step further. Bramble is a functional build system that intends to be a user-frendly, robust, and reliable way to build software. Here are some if the ideas behind it:
+Bramble is a functional build system that intends to be a user-frendly, robust, and reliable way to build software. Here are some if the ideas behind it:
 
 - **Project Based**: Every project has a `bramble.toml` and `bramble.lock` file that track dependencies and other metadata needed to build the project reliably.
 - **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break things.
@@ -26,9 +19,9 @@ Bramble is my attempt at taking it one step further. Bramble is a functional bui
 - **Dependencies**: Dependencies are stored in repositories. You might reference them with `load("github.com/maxmcd/bramble")` in a build file or `bramble build bitbucket.org/maxm/foo:foo` from the command line. Dependencies are project specific.
 - **Content-Addressible Store**: Build outputs and build inputs are stored in directories that are named with the hash of their contents.
 - **Store Content Relocation**: Build outputs naturally contain references to other build outputs. These locations are usually specific to the system that originally built the software. Build references are rewritten so that outputs can be shared with different systems. These values are also replaced with a known default when hashing so that there is consistency between different build environments when possible.
-- **Remote Build**: Support for various remote build options, build clusters, and potentially more exotic things like P2P build cache sharing, bittorrent support, etc..
+- **Remote Build**: Future support for various remote build options, build clusters, and potentially more exotic things like P2P build cache sharing, bittorrent support, etc..
 - **Starlark**: The configuration language [starlark](https://github.com/google/starlark-go) is used to define builds.
-- **Diverse Build Environment Support**: First class support for all major operating systems and potentially even support for the browser, webassembly, FAAS, and others. (Bramble is Linux-only at the moment).
+- **Diverse Build Environment Support**: Will have first class support for all major operating systems and potentially even support for the browser, webassembly, FAAS, and others. (Bramble is Linux-only at the moment).
 
 ## Project Status
 

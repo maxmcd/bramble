@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/maxmcd/bramble/pkg/brambleproject"
 	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -20,93 +21,80 @@ var (
 	BrambleFunctionBuildHiddenCommand = "__bramble-function-build"
 )
 
-func (b *Bramble) createAndParseCLI(args []string) (*ffcli.Command, error) {
-	var (
-		root            *ffcli.Command
-		repl            *ffcli.Command
-		shell           *ffcli.Command
-		build           *ffcli.Command
-		store           *ffcli.Command
-		storeGC         *ffcli.Command
-		storeAudit      *ffcli.Command
-		derivation      *ffcli.Command
-		derivationBuild *ffcli.Command
-		rootFlagSet     = flag.NewFlagSet("bramble", flag.ExitOnError)
-		version         = rootFlagSet.Bool("version", false, "version")
-	)
-
-	build = &ffcli.Command{
-		Name:       "build",
-		ShortUsage: "bramble build [options] [module]:<function> [args...]",
-		ShortHelp:  "Build a function",
-		LongHelp:   "Build a function",
-		Exec:       func(ctx context.Context, args []string) error { _, _, err := b.Build(ctx, args); return err },
-	}
-
-	shell = &ffcli.Command{
-		Name:       "shell",
-		ShortUsage: "bramble shell [options] [module]:<function> [args...]",
-		ShortHelp:  "Open a shell from a derivation",
-		LongHelp:   "Open a shell from a derivation",
-		Exec:       func(ctx context.Context, args []string) error { _, err := b.Shell(ctx, args); return err },
-	}
-
-	repl = &ffcli.Command{
-		Name:       "repl",
-		ShortUsage: "bramble repl",
-		ShortHelp:  "Run an interactive shell",
-		Exec:       func(ctx context.Context, args []string) error { return b.repl(args) },
-	}
-
-	storeGC = &ffcli.Command{
-		Name:       "gc",
-		ShortUsage: "bramble store gc",
-		ShortHelp:  "Run the bramble garbage collector against the store",
-		LongHelp: `    Collect garbage
-
-	'Bramble gc' will clean up unused files and dependencies from the bramble
-	store. This includes cache files, artifacts, and derivations that were used as
-	build inputs that are no longer needed to run resulting programs.
-	`,
-		Exec: func(ctx context.Context, args []string) error {
-			return b.GC(args)
+func createAndParseCLI(args []string) (*ffcli.Command, error) {
+	var ()
+	subcommands := []*ffcli.Command{
+		{
+			Name:       "build",
+			ShortUsage: "bramble build [options] [module]:<function> [args...]",
+			ShortHelp:  "Build a function",
+			LongHelp:   "Build a function",
+			Exec:       func(ctx context.Context, args []string) error { err := buildCommand(ctx, args, false); return err },
+		},
+		{
+			Name:       "shell",
+			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
+			ShortHelp:  "Open a shell from a derivation",
+			LongHelp:   "Open a shell from a derivation",
+			Exec:       func(ctx context.Context, args []string) error { err := shell(ctx, args); return err },
+		},
+		{
+			Name:       "repl",
+			ShortUsage: "bramble repl",
+			ShortHelp:  "Run an interactive shell",
+			Exec:       func(ctx context.Context, args []string) error { return repl(args) },
+		},
+		{
+			Name:       "derivation",
+			ShortUsage: "bramble derivation <subcomand>",
+			ShortHelp:  "Work with derivations directly",
+			Subcommands: []*ffcli.Command{{
+				Name:       "build",
+				ShortUsage: "bramble derivation build ~/bramble/store/3orpqhjdgtvfbqbhpecro3qe6heb3jvq-simple.drv",
+				Exec:       func(ctx context.Context, args []string) error { return nil },
+			}},
+			Exec: func(ctx context.Context, args []string) error { return flag.ErrHelp },
+		},
+		{
+			Name:       "store",
+			ShortUsage: "bramble store <subcommand>",
+			ShortHelp:  "Interact with the store",
+			Exec:       func(ctx context.Context, args []string) error { return flag.ErrHelp },
+			// Subcommands: []*ffcli.Command{storeGC, storeAudit},
 		},
 	}
 
-	storeAudit = &ffcli.Command{
-		Name:       "audit",
-		ShortUsage: "bramble store audit",
-		ShortHelp:  "",
-		LongHelp:   "",
-		Exec: func(ctx context.Context, args []string) error {
-			return b.GC(args)
-		},
-	}
+	// storeGC = &ffcli.Command{
+	// 	Name:       "gc",
+	// 	ShortUsage: "bramble store gc",
+	// 	ShortHelp:  "Run the bramble garbage collector against the store",
+	// 	LongHelp: `    Collect garbage
 
-	store = &ffcli.Command{
-		Name:        "store",
-		ShortUsage:  "bramble store <subcommand>",
-		ShortHelp:   "Interact with the store",
-		Exec:        func(ctx context.Context, args []string) error { return flag.ErrHelp },
-		Subcommands: []*ffcli.Command{storeGC, storeAudit},
-	}
+	// 'Bramble gc' will clean up unused files and dependencies from the bramble
+	// store. This includes cache files, artifacts, and derivations that were used as
+	// build inputs that are no longer needed to run resulting programs.
+	// `,
+	// 	Exec: func(ctx context.Context, args []string) error {
+	// 		return b.GC(args)
+	// 	},
+	// }
 
-	derivationBuild = &ffcli.Command{
-		Name:       "build",
-		ShortUsage: "bramble derivation build ~/bramble/store/3orpqhjdgtvfbqbhpecro3qe6heb3jvq-simple.drv",
-		Exec:       func(ctx context.Context, args []string) error { return b.derivationBuild(args) },
-	}
-	derivation = &ffcli.Command{
-		Name:        "derivation",
-		ShortUsage:  "bramble derivation <subcomand>",
-		ShortHelp:   "Work with derivations directly",
-		Subcommands: []*ffcli.Command{derivationBuild},
-		Exec:        func(ctx context.Context, args []string) error { return flag.ErrHelp },
-	}
+	// storeAudit = &ffcli.Command{
+	// 	Name:       "audit",
+	// 	ShortUsage: "bramble store audit",
+	// 	ShortHelp:  "",
+	// 	LongHelp:   "",
+	// 	Exec: func(ctx context.Context, args []string) error {
+	// 		return b.GC(args)
+	// 	},
+	// }
 
-	root = &ffcli.Command{
+	rootFlagSet := flag.NewFlagSet("bramble", flag.ExitOnError)
+	version := rootFlagSet.Bool("version", false, "version")
+
+	root := &ffcli.Command{
 		ShortUsage:  "bramble [flags] <command> [<args>]",
-		Subcommands: []*ffcli.Command{build, repl, store, shell, derivation},
+		Subcommands: subcommands,
 		FlagSet:     rootFlagSet,
 		UsageFunc:   DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -143,9 +131,6 @@ func RunCLI() {
 
 	log.SetOutput(ioutil.Discard)
 	handleErr := func(err error) {
-		if err == errQuiet {
-			os.Exit(1)
-		}
 		if err == flag.ErrHelp {
 			os.Exit(127)
 		}
@@ -153,16 +138,10 @@ func RunCLI() {
 		os.Exit(1)
 	}
 
-	b, err := NewBramble(".")
-	// TODO: no wd for certain commands
+	command, err := createAndParseCLI(os.Args[1:])
 	if err != nil {
 		handleErr(err)
 	}
-	command, err := b.createAndParseCLI(os.Args[1:])
-	if err != nil {
-		handleErr(err)
-	}
-	// TODO, use context to handle interrupt
 	if err := command.Run(context.Background()); err != nil {
 		handleErr(err)
 	}
@@ -208,4 +187,21 @@ func DefaultUsageFunc(c *ffcli.Command) string {
 func countFlags(fs *flag.FlagSet) (n int) {
 	fs.VisitAll(func(*flag.Flag) { n++ })
 	return n
+}
+
+func buildCommand(ctx context.Context, args []string, rootLess bool) error {
+	return runBuild("build", args)
+}
+
+func shell(ctx context.Context, args []string) (err error) {
+	return
+}
+
+func repl(_ []string) (err error) {
+	project, err := brambleproject.NewProject(".")
+	if err != nil {
+		return err
+	}
+	project.REPL()
+	return nil
 }
