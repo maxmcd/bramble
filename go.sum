@@ -267,6 +267,8 @@ github.com/mattn/goveralls v0.0.2/go.mod h1:8d1ZMHsd7fW6IRPKQh46F2WRpyib5/X4FOpe
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/maxmcd/archiver/v3 v3.3.2-0.20200926140316-5fd9d38b8b8b h1:15C098O6LZ6+6bQT0aR8xsihI/E9wOnTdx4BDWsq5uY=
 github.com/maxmcd/archiver/v3 v3.3.2-0.20200926140316-5fd9d38b8b8b/go.mod h1:wZCaCDpKnb7vsqOlgW3WO756DciCRSCOZCVMkXkrxfs=
+github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95 h1:tBGx3z+FLew3L1BOuklkzm2UEIBcOZCgFa58VcJR9xk=
+github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95/go.mod h1:pYGWUsNzYvkcdAOr2py4zGskjw/wdqSGUUwi8jwcikk=
 github.com/maxmcd/starlark-go v0.0.0-20201021154825-b2f805d0d122 h1:5ntUQ6qQLi3wcHdxEVWud2Q5z11Pj6cQFA6OHbCvbRU=
 github.com/maxmcd/starlark-go v0.0.0-20201021154825-b2f805d0d122/go.mod h1:f0znQkUKRrkk36XxWbGjMqQM8wGv/xHBVE2qc3B5oFU=
 github.com/miekg/dns v1.0.14/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
