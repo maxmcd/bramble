@@ -3,6 +3,7 @@ package brambleproject
 import (
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -75,8 +76,11 @@ func TestExecModuleAndWalk(t *testing.T) {
 	require.NoError(t, err)
 
 	allDerivations := []Derivation{}
+	allDrvLock := sync.Mutex{}
 	require.NoError(t, gotOutput.WalkAndPatch(0, func(dep Dependency, drv Derivation) (buildOutputs []BuildOutput, err error) {
+		allDrvLock.Lock()
 		allDerivations = append(allDerivations, drv)
+		allDrvLock.Unlock()
 		for _, name := range drv.Outputs {
 			buildOutputs = append(buildOutputs, BuildOutput{Dep: Dependency{
 				Hash:   dep.Hash,
