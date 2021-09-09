@@ -1,4 +1,4 @@
-package bramble
+package ds
 
 import (
 	"fmt"
@@ -7,32 +7,6 @@ import (
 
 	"github.com/maxmcd/dag"
 )
-
-type DerivationsMap struct {
-	d    map[string]*Derivation
-	lock sync.RWMutex
-}
-
-func (dm *DerivationsMap) Load(filename string) *Derivation {
-	dm.lock.RLock()
-	defer dm.lock.RUnlock()
-	return dm.d[filename]
-}
-
-func (dm *DerivationsMap) Has(filename string) bool {
-	return dm.Load(filename) != nil
-}
-func (dm *DerivationsMap) Store(filename string, drv *Derivation) {
-	dm.lock.Lock()
-	defer dm.lock.Unlock()
-	dm.d[filename] = drv
-}
-
-func (dm *DerivationsMap) Range(cb func(map[string]*Derivation)) {
-	dm.lock.Lock()
-	cb(dm.d)
-	dm.lock.Unlock()
-}
 
 // FakeDAGRoot is used when we have multiple build outputs, or "roots" in our
 // graph so we need to tie them to a single fake root so that we still have a
@@ -48,14 +22,14 @@ func NewAcyclicGraph() *AcyclicGraph {
 	return &AcyclicGraph{}
 }
 
-func (ag AcyclicGraph) PrintDot() {
+func PrintDot(ag *dag.AcyclicGraph) {
 	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
 	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
 }
 
-func mergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
+func MergeGraphs(graphs ...*dag.AcyclicGraph) *dag.AcyclicGraph {
 	if len(graphs) == 0 {
-		return NewAcyclicGraph()
+		return &dag.AcyclicGraph{}
 	}
 	if len(graphs) == 1 {
 		return graphs[0]
@@ -83,7 +57,7 @@ func mergeGraphs(graphs ...*AcyclicGraph) *AcyclicGraph {
 	return out
 }
 
-func graphRoots(g *AcyclicGraph) []dag.Vertex {
+func graphRoots(g *dag.AcyclicGraph) []dag.Vertex {
 	roots := make([]dag.Vertex, 0, 1)
 	for _, v := range g.Vertices() {
 		if g.UpEdges(v).Len() == 0 {
@@ -133,4 +107,8 @@ func (b *BiStringMap) LoadInverse(k string) (v string, exists bool) {
 	v, exists = b.inverse[k]
 	b.s.RUnlock()
 	return
+}
+
+func Walk(func(v interface{}, edges []interface{})) {
+
 }

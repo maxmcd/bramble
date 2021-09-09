@@ -1,0 +1,23 @@
+def fetch_url(url):
+    return derivation(name=url.split("/")[-1], builder="fetch_url", env={"url": url})
+
+
+def foo():
+    eg = fetch_url("example.com")
+    print(files(["*.bramble"]))
+    return derivation(
+        "name",
+        builder="foo",
+        args=["bar", "baz"],
+        env={"eg": eg},
+        platform=sys.platform,
+        sources=files(["*.bramble"]),
+    )
+
+
+def chain():
+    a = derivation("a", "a")
+    b = derivation("b", a.out, args=[a.out])
+    c = derivation("c", b.out, args=[a.out])
+    return c
+

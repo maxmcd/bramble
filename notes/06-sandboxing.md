@@ -31,3 +31,17 @@ Support docker as an option, would work only for linux or just for running thing
 - Default mounts: https://github.com/opencontainers/runtime-tools/blob/a7974a4078764ec41acf5feaa05f07854af44aa6/generate/generate.go#L174-L211
 - Create dev/null https://www.commandlinefu.com/commands/view/24199/create-devnull-if-accidentally-deleted-or-for-a-chroot
 - container linux with mknod examples https://github.com/cloudify-incubator/cloudify-rest-go-client/blob/f8139d8e38b0909fae3e4212eb05497483c0e5b8/container/container_linux.go
+- https://proot-me.github.io/ - (quite a performance hit)
+- https://github.com/proot-me/proot
+- https://unix.stackexchange.com/questions/68956/block-network-access-of-a-process
+- https://rootlesscontaine.rs/
+- https://www.sciencedirect.com/science/article/pii/S0010465518302042 - good overview
+- https://events.static.linuxfound.org/sites/events/files/slides/rootless-containers-2016.pdf
+- https://pkg.go.dev/github.com/opencontainers/runc
+
+
+### Runc
+
+- non-root uid mapping https://github.com/opencontainers/runc/issues/1800
+
+

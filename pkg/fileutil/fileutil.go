@@ -84,8 +84,8 @@ func CP(wd string, paths ...string) (err error) {
 
 	toCopy := absPaths[:len(absPaths)-1]
 
-	// "cp foo.txt bar.txt" or "cp ./foo ./bar" is a special case if it's just two
-	// paths and they don't exist yet
+	// "cp foo.txt bar.txt" or "cp ./foo ./bar" is a special case if it's just
+	// two paths and they don't exist yet
 	if len(toCopy) == 1 && !PathExists(dest) {
 		f := toCopy[0]
 		if IsDir(f) {
@@ -134,7 +134,8 @@ func ReplaceAll(filepath, old, new string) (err error) {
 	)
 }
 
-// copy directory will copy all of the contents of one directory into another directory
+// copy directory will copy all of the contents of one directory into another
+// directory
 func CopyDirectory(scrDir, dest string) error {
 	entries, err := ioutil.ReadDir(scrDir)
 	if err != nil {
@@ -189,8 +190,8 @@ func CopyDirectory(scrDir, dest string) error {
 // TODO: combine the duplicate logic in these two
 
 // CopyFiles takes a list of absolute paths to files and copies them into
-// another directory, maintaining structure. Importantly it doesn't copy
-// all the files in these directories, just the specific named paths.
+// another directory, maintaining structure. Importantly it doesn't copy all the
+// files in these directories, just the specific named paths.
 func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 	files, err = ExpandPathDirectories(files)
 	if err != nil {
@@ -310,6 +311,15 @@ func FileExists(path string) bool {
 		return false
 	}
 	return !fi.IsDir()
+}
+
+// DirExists will only return true if the path exists and is a directory
+func DirExists(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fi.IsDir()
 }
 
 func IsDir(file string) bool {

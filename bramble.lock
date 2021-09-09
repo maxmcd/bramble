@@ -1,4 +1,5 @@
 [URLHashes]
+  "http://s.minos.io/archive/bifrost/x86_64/git-2.7.2-2.tar.gz" = "654146e3a239fef2e79511bf596098b36ebfe583f28cd0dea0c3f5f52f1a89d5"
   "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz" = "a5ce9c155ed09397614646c9717fc7cd94b1023d7b76b618d409e4fefd6e9d39"
   "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1"
   "https://brmbl.s3.amazonaws.com/file-links.tar.gz" = "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a"
@@ -6,3 +7,4 @@
   "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz" = "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52"
   "https://maxmcd.com/" = "c0c11d3923e78f8c103985e2035df7b146e9946bf7eabcd38d71459d94063a7a"
   "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz" = "22e83ec5f2483bb0d9a861346c883b4b2f7f572595f3453d1131b31898e98a33"
+  "https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab.tar.xz" = "a06f5c964121d979021b18d3c55d8390c6fda03dc380c6a65ab2bc283084ae3a"

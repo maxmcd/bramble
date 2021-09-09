@@ -37,9 +37,9 @@ func firstArgMatchesStep() bool {
 
 // Entrypoint must be run at the beginning of your executable. When the sandbox
 // runs it re-runs the same binary with various arguments to indicate that we
-// want the process to be run as a sandbox. If this function detects that it
-// is needed it will run what it needs and then os.Exit the process, otherwise
-// it will be a no-op.
+// want the process to be run as a sandbox. If this function detects that it is
+// needed it will run what it needs and then os.Exit the process, otherwise it
+// will be a no-op.
 func Entrypoint() {
 	if !firstArgMatchesStep() {
 		return
@@ -87,13 +87,13 @@ type Sandbox struct {
 	GroupID int
 
 	// Bind mounts or directories the process should have access too. These
-	// should be absolute paths. If a mount is intended to be readonly add
-	// ":ro" to the end of the path like `/tmp:ro`
+	// should be absolute paths. If a mount is intended to be readonly add ":ro"
+	// to the end of the path like `/tmp:ro`
 	Mounts []string
 	// DisableNetwork will remove network access within the sandbox process
 	DisableNetwork bool
-	// SetUIDBinary can be used if you want the parent process to call out
-	// first to a different binary
+	// SetUIDBinary can be used if you want the parent process to call out first
+	// to a different binary
 	SetUIDBinary string // TODO
 }
 
@@ -122,8 +122,8 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 		return err
 	}
 	logger.Debugw("newSanbox", "execpath", path)
-	// interrupt will be caught be the child process and the process
-	// will exiting, causing this process to exit
+	// interrupt will be caught be the child process and the process will
+	// exiting, causing this process to exit
 	ignoreInterrupt()
 	cmd := &exec.Cmd{
 		Path:   path,
@@ -146,7 +146,8 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 				return err
 			}
 		}
-		// TODO: do this for all of them? Stop ignoring the interrupt in the children?
+		// TODO: do this for all of them? Stop ignoring the interrupt in the
+		// children?
 	case err = <-errChan:
 		if err == nil && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() != 0 {
 			return errors.New("ah!a")
@@ -183,8 +184,8 @@ func (s Sandbox) newNamespaceStep() (err error) {
 		cloneFlags |= syscall.CLONE_NEWNET
 	}
 
-	// interrupt will be caught be the child process and the process
-	// will exiting, causing this process to exit
+	// interrupt will be caught be the child process and the process will
+	// exiting, causing this process to exit
 	ignoreInterrupt()
 
 	cmd := &exec.Cmd{
@@ -198,9 +199,10 @@ func (s Sandbox) newNamespaceStep() (err error) {
 	}
 
 	// We must use a pty here to enable interactive input. If we naively pass
-	// os.Stdin to an exec.Cmd then we run into issues with the parent and
-	// child terminals getting confused about who is supposed to process various
+	// os.Stdin to an exec.Cmd then we run into issues with the parent and child
+	// terminals getting confused about who is supposed to process various
 	// control signals.
+	//
 	// We can then just set to raw and copy the bytes across. We could remove
 	// the pty entirely for jobs that don't pass a terminal as a stdin.
 	ptmx, err := pty.Start(cmd)
@@ -319,8 +321,8 @@ func (s Sandbox) runExecStep() {
 		Args: append([]string{s.Path}, s.Args...),
 		Env:  os.Environ(),
 
-		// We don't use the passed sandbox stdio because
-		// it's been passed to the very first run command
+		// We don't use the passed sandbox stdio because it's been passed to the
+		// very first run command
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
