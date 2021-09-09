@@ -13,7 +13,7 @@ require (
 	github.com/go-git/go-git/v5 v5.3.0
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
-	github.com/maxmcd/dag v0.0.0-20210316172417-f02e4b03c6e9
+	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
 	github.com/mholt/archiver/v3 v3.3.1-0.20200626164424-d44471c49aa7
 	github.com/minio/sha256-simd v1.0.0
 	github.com/morikuni/aec v1.0.0
