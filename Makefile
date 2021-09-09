@@ -3,8 +3,12 @@
 test: go_test \
 	integration_test
 
+test_sandbox:
+	cd pkg/sandbox/cmd/libcontainer/ && go run .
+
 ci_test: go_ci_test \
-	integration_ci_test
+	integration_ci_test \
+	test_sandbox
 
 gotestsum:
 	go get gotest.tools/gotestsum
