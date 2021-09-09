@@ -2,6 +2,7 @@ package bramble
 
 import (
 	"context"
+	"sync"
 
 	build "github.com/maxmcd/bramble/pkg/bramblebuild"
 	project "github.com/maxmcd/bramble/pkg/brambleproject"
@@ -32,19 +33,25 @@ func runBuild(command string, args []string) error {
 
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
 	allDerivations := []project.Derivation{}
+	derivationDataLock := sync.Mutex{}
 
 	err = output.WalkAndPatch(1, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
+		derivationDataLock.Lock()
 		allDerivations = append(allDerivations, drv)
+		derivationDataLock.Unlock()
 		inputDerivations := []build.DerivationOutput{}
 
+		derivationDataLock.Lock()
 		// Populate the input derivation from previous buids
 		for _, dep := range drv.Dependencies {
 			do, found := derivationIDUpdates[dep]
 			if !found {
+				derivationDataLock.Unlock()
 				return nil, errors.Errorf("Missing build output for dep %q but we should have it", dep)
 			}
 			inputDerivations = append(inputDerivations, do)
 		}
+		derivationDataLock.Unlock()
 
 		_, buildDrv, err := store.NewDerivation(build.NewDerivationOptions{
 			Args:             drv.Args,
@@ -68,6 +75,7 @@ func runBuild(command string, args []string) error {
 		}
 		// Store the derivation outputs in the map for reference when building
 		// input derivations later. Also populate the buildOutputs
+		derivationDataLock.Lock()
 		for i, o := range buildDrv.OutputNames {
 			out := buildDrv.Outputs[i]
 			derivationIDUpdates[project.Dependency{
@@ -83,6 +91,7 @@ func runBuild(command string, args []string) error {
 				OutputPath: build.BramblePrefixOfRecord + "/" + out.Path,
 			})
 		}
+		derivationDataLock.Unlock()
 		return
 	})
 	if err != nil {
