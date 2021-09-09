@@ -68,7 +68,6 @@ func (s *Store) LoadDerivation(filename string) (drv Derivation, found bool, err
 		return drv, found, nil
 	}
 	loc := s.joinStorePath(filename)
-	fmt.Println(loc)
 	if !fileutil.FileExists(loc) {
 		// If we have the derivation in memory just return it
 		if found {
@@ -91,6 +90,9 @@ func (s *Store) LoadDerivation(filename string) (drv Derivation, found bool, err
 }
 
 func ensureBramblePath(s *Store, bramblePath string) (err error) {
+	if p, ok := os.LookupEnv("BRAMBLE_PATH"); ok {
+		bramblePath = p
+	}
 	if bramblePath == "" {
 		var home string
 		home, err = os.UserHomeDir()
