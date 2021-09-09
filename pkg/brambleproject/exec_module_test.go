@@ -65,7 +65,7 @@ func TestExecModule(t *testing.T) {
 }
 
 func TestExecModuleAndWalk(t *testing.T) {
-	project, err := NewProject("./testdata/project")
+	project, err := NewProject(".")
 	require.NoError(t, err)
 
 	gotOutput, err := project.ExecModule(ExecModuleInput{
