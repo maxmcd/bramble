@@ -14,9 +14,9 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: Run all tests
-        run: |
-          make -j ci_test
       # for your debugging needs
       # - name: Setup tmate session
       #   uses: mxschmitt/action-tmate@v3
+      - name: Run all tests
+        run: |
+          make -j ci_test
