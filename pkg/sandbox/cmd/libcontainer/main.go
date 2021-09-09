@@ -167,7 +167,7 @@ func main() {
 		panic(err)
 	}
 	process := &libcontainer.Process{
-		Args: []string{"sh"},
+		Args: []string{"sh", "-c", "echo hi | md5sum"},
 		Env: []string{
 			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			"TERM=xterm",
