@@ -37,4 +37,11 @@ Support docker as an option, would work only for linux or just for running thing
 - https://rootlesscontaine.rs/
 - https://www.sciencedirect.com/science/article/pii/S0010465518302042 - good overview
 - https://events.static.linuxfound.org/sites/events/files/slides/rootless-containers-2016.pdf
-- https://pkg.go.dev/github.com/opencontainers/runc?utm_source=godoc
+- https://pkg.go.dev/github.com/opencontainers/runc
+
+
+### Runc
+
+- non-root uid mapping https://github.com/opencontainers/runc/issues/1800
+
+

@@ -247,6 +247,11 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 		err = errors.Wrap(err, fmt.Sprintf("error making request to download %q", url))
 		return
 	}
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated:
+	default:
+		return "", errors.Errorf("Unexpected http status code %d when fetching url %q", resp.StatusCode, url)
+	}
 	defer resp.Body.Close()
 	contentHash, path, err := b.store.writeReader(resp.Body, filepath.Base(url), hash)
 	if err == hasher.ErrHashMismatch {

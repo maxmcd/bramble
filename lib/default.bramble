@@ -22,7 +22,7 @@ def git():
 
 def zig():
     b = std.fetch_url(
-        "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz"
+        "https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab.tar.xz"
     )
     return derivation(
         name="zig",
@@ -32,7 +32,7 @@ def zig():
             "-c",
             """
             set -ex
-            cp -r $src/zig-linux-x86_64-0.8.0-dev.1431+c760532be/* $out
+            cp -r $src/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab/* $out
             ls -lah $out/
             #$out/zig init-lib
             mkdir $out/bin
