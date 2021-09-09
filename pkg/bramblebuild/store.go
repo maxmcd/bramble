@@ -48,45 +48,46 @@ func (s *Store) tempDir() (tempDir string, err error) {
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
-	existingDrv, err := s.LoadDerivation(filename)
+	existingDrv, exists, err := s.LoadDerivation(filename)
 	if err != nil {
 		return
 	}
 	// It's not built if it doesn't exist
-	if existingDrv == nil {
+	if !exists {
 		return nil, false, nil
 	}
 	// It's not built if it doesn't have the outputs we need
 	return existingDrv.Outputs, !existingDrv.missingOutput(), err
 }
 
-func (s *Store) LoadDerivation(filename string) (drv *Derivation, err error) {
+func (s *Store) LoadDerivation(filename string) (drv Derivation, found bool, err error) {
 	defer logger.Debug("loadDerivation ", filename, " ", drv)
-	drv = s.derivationCache.Load(filename)
-	if drv != nil && !drv.missingOutput() {
+	drv, found = s.derivationCache.Load(filename)
+	if found && !drv.missingOutput() {
 		// if it has outputs return now
-		return
+		return drv, found, nil
 	}
 	loc := s.joinStorePath(filename)
+	fmt.Println(loc)
 	if !fileutil.FileExists(loc) {
 		// If we have the derivation in memory just return it
-		if drv != nil {
-			return drv, nil
+		if found {
+			return drv, true, nil
 		}
 		// Doesn't exist
-		return nil, nil
+		return drv, false, nil
 	}
 	f, err := os.Open(loc)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return drv, false, errors.WithStack(err)
 	}
 	defer func() { _ = f.Close() }()
-	drv = &Derivation{store: s}
+	drv = s.newDerivation()
 	if err = json.NewDecoder(f).Decode(&drv); err != nil {
 		return
 	}
 	s.derivationCache.Store(drv)
-	return drv, nil
+	return drv, true, nil
 }
 
 func ensureBramblePath(s *Store, bramblePath string) (err error) {
@@ -266,9 +267,8 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 	return storeDirectoryName, nil
 }
 
-func (s *Store) WriteDerivation(drv *Derivation) error {
+func (s *Store) WriteDerivation(drv Derivation) error {
 	filename := drv.Filename()
 	fileLocation := s.joinStorePath(filename)
-
 	return ioutil.WriteFile(fileLocation, drv.json(), 0644)
 }

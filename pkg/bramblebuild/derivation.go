@@ -54,15 +54,15 @@ type Derivation struct {
 	store *Store
 }
 
-func (s *Store) newDerivation() *Derivation {
-	return &Derivation{
+func (s *Store) newDerivation() Derivation {
+	return Derivation{
 		OutputNames: []string{"out"},
 		Env:         map[string]string{},
 		store:       s,
 	}
 }
 
-func (drv *Derivation) derivationOutputs() (dos DerivationOutputs) {
+func (drv Derivation) derivationOutputs() (dos DerivationOutputs) {
 	filename := drv.Filename()
 	for _, name := range drv.OutputNames {
 		dos = append(dos, DerivationOutput{Filename: filename, OutputName: name})
@@ -91,7 +91,7 @@ func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
 	return dos[:j+1]
 }
 
-func (drv *Derivation) missingOutput() bool {
+func (drv Derivation) missingOutput() bool {
 	if len(drv.Outputs) == 0 {
 		return true
 	}
@@ -103,7 +103,7 @@ func (drv *Derivation) missingOutput() bool {
 	return false
 }
 
-func (drv *Derivation) hasOutput(name string) bool {
+func (drv Derivation) hasOutput(name string) bool {
 	for _, o := range drv.OutputNames {
 		if o == name {
 			return true
@@ -112,7 +112,7 @@ func (drv *Derivation) hasOutput(name string) bool {
 	return false
 }
 
-func (drv *Derivation) output(name string) Output {
+func (drv Derivation) output(name string) Output {
 	for i, o := range drv.OutputNames {
 		if o == name {
 			if len(drv.Outputs) > i {
@@ -123,42 +123,43 @@ func (drv *Derivation) output(name string) Output {
 	return Output{}
 }
 
-func (drv *Derivation) setOutput(name string, o Output) {
-	for i, on := range drv.OutputNames {
-		if on == name {
-			// grow if we need to
-			for len(drv.Outputs) <= i {
-				drv.Outputs = append(drv.Outputs, Output{})
-			}
-			drv.Outputs[i] = o
-			return
-		}
+func outputsToOutput(names []string, outputs map[string]Output) ([]Output, error) {
+	if len(names) != len(outputs) {
+		return nil, errors.Errorf("can't construct outputs with names %q, "+
+			"incorrect numbers of outputs in %q", names, outputs)
 	}
-	// TODO
-	panic("unable to set output with name: " + name)
+	out := make([]Output, len(names))
+	for i, name := range names {
+		o, ok := outputs[name]
+		if !ok {
+			return nil, errors.Errorf("can't find output with name %q in outputs map", name)
+		}
+		out[i] = o
+	}
+	return out, nil
 }
 
-func (drv *Derivation) mainOutput() string {
+func (drv Derivation) mainOutput() string {
 	if out := drv.output("out"); out.Path != "" || len(drv.OutputNames) == 0 {
 		return "out"
 	}
 	return drv.OutputNames[0]
 }
 
-func (drv *Derivation) env() (env []string) {
+func (drv Derivation) env() (env []string) {
 	for k, v := range drv.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	return
 }
 
-func (drv *Derivation) PrettyJSON() string {
+func (drv Derivation) PrettyJSON() string {
 	drv.makeConsistentNullJSONValues()
 	b, _ := json.MarshalIndent(drv, "", "  ")
 	return string(b)
 }
 
-func (drv *Derivation) makeConsistentNullJSONValues() {
+func (drv Derivation) makeConsistentNullJSONValues() Derivation {
 	if len(drv.Args) == 0 {
 		drv.Args = nil
 	}
@@ -177,9 +178,10 @@ func (drv *Derivation) makeConsistentNullJSONValues() {
 	if len(drv.InputDerivations) == 0 {
 		drv.InputDerivations = nil
 	}
+	return drv
 }
 
-func (drv *Derivation) json() []byte {
+func (drv Derivation) json() []byte {
 	drv.makeConsistentNullJSONValues()
 	b, err := json.Marshal(drv)
 	if err != nil {
@@ -188,18 +190,18 @@ func (drv *Derivation) json() []byte {
 	return b
 }
 
-func (drv *Derivation) copy() *Derivation {
-	out := &Derivation{}
+func (drv Derivation) copy() Derivation {
+	out := Derivation{}
 	if err := json.Unmarshal(drv.json(), &out); err != nil {
 		panic(err)
 	}
 	return out
 }
-func (drv *Derivation) Filename() (filename string) {
+func (drv Derivation) Filename() (filename string) {
 	return fmt.Sprintf("%s-%s.drv", drv.hash(), drv.Name)
 }
 
-func (drv *Derivation) hash() string {
+func (drv Derivation) hash() string {
 	copy := drv.copy()
 	copy.Outputs = nil
 	for i, input := range copy.InputDerivations {
@@ -212,15 +214,18 @@ func (drv *Derivation) hash() string {
 	return hasher.HashString(string(jsonBytesForHashing))
 }
 
-func (drv *Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
+func (drv Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
 	graph = &dag.AcyclicGraph{}
-	var processInputDerivations func(drv *Derivation, do DerivationOutput) error
-	processInputDerivations = func(drv *Derivation, do DerivationOutput) error {
+	var processInputDerivations func(drv Derivation, do DerivationOutput) error
+	processInputDerivations = func(drv Derivation, do DerivationOutput) error {
 		graph.Add(do)
 		for _, id := range drv.InputDerivations {
-			inputDrv, err := drv.store.LoadDerivation(id.Filename)
+			inputDrv, found, err := drv.store.LoadDerivation(id.Filename)
 			if err != nil {
 				return err
+			}
+			if !found {
+				return errors.Errorf("derivation not found with name %s", id.Filename)
 			}
 			graph.Add(id)
 			graph.Connect(dag.BasicEdge(do, id))
@@ -250,7 +255,7 @@ func (drv *Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err erro
 
 // RuntimeDependencyGraph graphs the full dependency graph needed at runtime for
 // all outputs. Includes all immediate dependencies and their dependencies
-func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err error) {
+func (drv Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err error) {
 	graph = ds.NewAcyclicGraph()
 	noOutput := errors.New("outputs missing on derivation when searching for runtime dependencies")
 	if drv.missingOutput() {
@@ -258,9 +263,12 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err err
 	}
 	var processDerivationOutputs func(do DerivationOutput) error
 	processDerivationOutputs = func(do DerivationOutput) error {
-		drv, err := drv.store.LoadDerivation(do.Filename)
+		drv, found, err := drv.store.LoadDerivation(do.Filename)
 		if err != nil {
 			return err
+		}
+		if !found {
+			return errors.Errorf("derivation not found with name %s", do.Filename)
 		}
 		if drv.missingOutput() {
 			return noOutput
@@ -287,7 +295,7 @@ func (drv *Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err err
 	return graph, nil
 }
 
-func (drv *Derivation) runtimeDependencies() (dependencies map[string][]DerivationOutput, err error) {
+func (drv Derivation) runtimeDependencies() (dependencies map[string][]DerivationOutput, err error) {
 	inputDerivations, err := drv.loadInputDerivations()
 	if err != nil {
 		return nil, err
@@ -312,29 +320,31 @@ func (drv *Derivation) runtimeDependencies() (dependencies map[string][]Derivati
 	return dependencies, err
 }
 
-func (drv *Derivation) loadInputDerivations() (inputDerivations map[DerivationOutput]*Derivation, err error) {
-	inputDerivations = make(map[DerivationOutput]*Derivation)
+func (drv Derivation) loadInputDerivations() (inputDerivations map[DerivationOutput]Derivation, err error) {
+	inputDerivations = make(map[DerivationOutput]Derivation)
 	for _, do := range drv.InputDerivations {
-		inputDrv, err := drv.store.LoadDerivation(do.Filename)
+		inputDrv, found, err := drv.store.LoadDerivation(do.Filename)
 		if err != nil {
 			return nil, err
+		}
+		if !found {
+			return nil, errors.Errorf("derivation not found with name %s", do.Filename)
 		}
 		inputDerivations[do] = inputDrv
 	}
 	return
 }
 
-func (drv *Derivation) inputFiles() []string {
+func (drv Derivation) inputFiles() []string {
 	return append([]string{drv.Filename()}, drv.SourcePaths...)
 }
 
-func (drv *Derivation) runtimeFiles(outputName string) []string {
+func (drv Derivation) runtimeFiles(outputName string) []string {
 	return []string{drv.Filename(), drv.output(outputName).Path}
 }
 
-func (drv *Derivation) populateOutputsFromStore() (exists bool, err error) {
+func (drv Derivation) populateOutputsFromStore() (exists bool, outputs []Output, err error) {
 	filename := drv.Filename()
-	var outputs []Output
 	outputs, exists, err = drv.store.checkForBuiltDerivationOutputs(filename)
 	if err != nil {
 		return
@@ -357,14 +367,13 @@ func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
 	return nil
 }
 
-func (drv *Derivation) copyWithOutputValuesReplaced() (copy *Derivation, err error) {
+func (drv *Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {
 	s := string(drv.json())
 
 	// Looking for things like: /home/bramble/bramble/bramble_store_padding/bramb/rb2rveatcti4szdt3s6xc37cpvqxrdmr
 	r := regexp.MustCompile(strings.ReplaceAll(BramblePrefixOfRecord, "/", "\\/") + "/([0-9a-z]{32})")
 
 	for _, match := range r.FindAllStringSubmatch(s, -1) {
-		fmt.Println(match)
 		storePath := drv.store.joinStorePath(match[1])
 		if fileutil.PathExists(storePath) {
 			s = strings.ReplaceAll(s, match[0], storePath)
@@ -406,30 +415,32 @@ func (dos DerivationOutputs) Less(i, j int) bool {
 }
 
 type derivationsMap struct {
-	d    map[string]*Derivation
+	d    map[string]Derivation
 	lock sync.RWMutex
 }
 
 func newDerivationsMap() *derivationsMap {
-	return &derivationsMap{d: map[string]*Derivation{}}
+	return &derivationsMap{d: map[string]Derivation{}}
 }
 
-func (dm *derivationsMap) Load(filename string) *Derivation {
+func (dm *derivationsMap) Load(filename string) (drv Derivation, found bool) {
 	dm.lock.RLock()
 	defer dm.lock.RUnlock()
-	return dm.d[filename]
+	drv, found = dm.d[filename]
+	return
 }
 
 func (dm *derivationsMap) Has(filename string) bool {
-	return dm.Load(filename) != nil
+	_, found := dm.Load(filename)
+	return found
 }
-func (dm *derivationsMap) Store(drv *Derivation) {
+func (dm *derivationsMap) Store(drv Derivation) {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
 	dm.d[drv.Filename()] = drv
 }
 
-func (dm *derivationsMap) Range(cb func(map[string]*Derivation)) {
+func (dm *derivationsMap) Range(cb func(map[string]Derivation)) {
 	dm.lock.Lock()
 	cb(dm.d)
 	dm.lock.Unlock()

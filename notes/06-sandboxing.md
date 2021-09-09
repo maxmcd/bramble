@@ -34,3 +34,7 @@ Support docker as an option, would work only for linux or just for running thing
 - https://proot-me.github.io/ - (quite a performance hit)
 - https://github.com/proot-me/proot
 - https://unix.stackexchange.com/questions/68956/block-network-access-of-a-process
+- https://rootlesscontaine.rs/
+- https://www.sciencedirect.com/science/article/pii/S0010465518302042 - good overview
+- https://events.static.linuxfound.org/sites/events/files/slides/rootless-containers-2016.pdf
+- https://pkg.go.dev/github.com/opencontainers/runc?utm_source=godoc

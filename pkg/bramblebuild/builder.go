@@ -47,54 +47,59 @@ type Builder struct {
 	URLHashes map[string]string
 }
 
-func (b *Builder) BuildDerivation(ctx context.Context, drv *Derivation) (didBuild bool, err error) {
-	exists, err := drv.populateOutputsFromStore()
+func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation) (builtDrv Derivation, didBuild bool, err error) {
+	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
+	drv = drv.makeConsistentNullJSONValues()
+
+	exists, outputs, err := drv.populateOutputsFromStore()
+	drv.Outputs = outputs
 	if err != nil {
-		return false, err
+		return drv, false, err
 	}
 	filename := drv.Filename()
 	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
 	if exists {
-		return false, nil
+		return drv, false, nil
 	}
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
-	if err = b.buildDerivation(ctx, drv, false); err != nil {
-		return false, errors.Wrap(err, "error building "+filename)
+	if drv, err = b.buildDerivation(ctx, drv, false); err != nil {
+		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
 	// TODO: lock store on write
-	return true, b.store.WriteDerivation(drv)
+	return drv, true, b.store.WriteDerivation(drv)
 }
 
-func (b *Builder) buildDerivation(ctx context.Context, drv *Derivation, shell bool) (err error) {
+func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {
+	var err error
 	var task *trace.Task
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
 
 	buildDir, err := b.store.tempDir()
 	if err != nil {
-		return
+		return drv, err
 	}
 	if drv.BuildContextSource != "" {
 		if err = fileutil.CopyDirectory(b.store.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
 			err = errors.Wrap(err, "error copying sources into build dir")
-			return
+			return drv, err
 		}
 	}
 	outputPaths := map[string]string{}
 	for _, name := range drv.OutputNames {
 		// TODO: use directory within store instead so that we can rewrite self-referential paths
 		if outputPaths[name], err = b.store.tempDir(); err != nil {
-			return
+			return drv, err
 		}
 	}
 	drvCopy, err := drv.copyWithOutputValuesReplaced()
 	if err != nil {
-		return
+		return drv, err
 	}
 
 	if shell && (drv.Builder == "fetch_url" || drv.Builder == "fetch_git") {
-		return errors.New("can't spawn a shell with a builtin builder")
+		return drv, errors.New("can't spawn a shell with a builtin builder")
 	}
 
 	switch drv.Builder {
@@ -106,32 +111,42 @@ func (b *Builder) buildDerivation(ctx context.Context, drv *Derivation, shell bo
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
 	if err != nil {
-		return
+		return drv, err
 	}
 
 	if err := os.RemoveAll(buildDir); err != nil {
-		return err
+		return drv, err
 	}
+
+	var outputs map[string]Output
 
 	if drv.Builder == "fetch_url" {
 		// fetch url just hashes the directory and moves it into the output
 		// location, no archiving and byte replacing
-		return b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
+		outputs, err = b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
+	} else {
+		outputs, err = b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths)
+		err = errors.Wrap(err, "hash and move build outputs") // noop if err is nil
 	}
-	return errors.Wrap(b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths), "hash and move build outputs")
+	if err != nil {
+		return drv, err
+	}
+
+	drv.Outputs, err = outputsToOutput(drv.OutputNames, outputs)
+	return drv, err
 }
 
-func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outputPath string) (err error) {
+func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outputPath string) (outputs map[string]Output, err error) {
 	region := trace.StartRegion(ctx, "hashAndMoveFetchUrl")
 	defer region.End()
 
 	hshr := hasher.NewHasher()
 	_, err = b.store.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hshr, drv, filepath.Base(outputPath))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	outputFolderName := hshr.String()
-	drv.setOutput("out", Output{Path: outputFolderName})
+	outputs = map[string]Output{"out": Output{Path: outputFolderName}}
 	outputStorePath := b.store.joinStorePath(outputFolderName)
 	if fileutil.PathExists(outputStorePath) {
 		err = os.RemoveAll(outputPath)
@@ -141,10 +156,10 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv *Derivation, outp
 	if err == nil {
 		logger.Print("Output at", outputStorePath)
 	}
-	return
+	return outputs, err
 }
 
-func (b *Builder) fetchURLBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
 	region := trace.StartRegion(ctx, "fetchURLBuilder")
 	defer region.End()
 
@@ -246,7 +261,7 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 	return path, nil
 }
 
-func (b *Builder) regularBuilder(ctx context.Context, drv *Derivation, buildDir string,
+func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
 	outputPaths map[string]string, shell bool) (err error) {
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
@@ -304,10 +319,11 @@ func (b *Builder) regularBuilder(ctx context.Context, drv *Derivation, buildDir 
 	return sbx.Run(ctx)
 }
 
-func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string) (outputs map[string]Output, err error) {
 	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
 	defer region.End()
 
+	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
 		hshr := hasher.NewHasher()
 		var reptarFile *os.File
@@ -318,11 +334,11 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, ou
 		outputFolder := filepath.Base(outputPath)
 		matches, err := s.archiveAndScanOutputDirectory(ctx, reptarFile, hshr, drv, outputFolder)
 		if err != nil {
-			return errors.Wrap(err, "error scanning output")
+			return nil, errors.Wrap(err, "error scanning output")
 		}
 		// remove build output, we have it in an archive
 		if err = os.RemoveAll(outputPath); err != nil {
-			return errors.Wrap(err, "error removing build output")
+			return nil, errors.Wrap(err, "error removing build output")
 		}
 
 		hashedFolderName := hshr.String()
@@ -339,17 +355,16 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv *Derivation, ou
 				newPath,
 				outputFolder,
 				hashedFolderName); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if err := os.RemoveAll(reptarFile.Name()); err != nil {
-			return err
+			return nil, err
 		}
-
-		drv.setOutput(outputName, Output{Path: hashedFolderName, Dependencies: matches})
+		outputs[outputName] = Output{Path: hashedFolderName, Dependencies: matches}
 		logger.Print("Output at ", newPath)
 	}
-	return nil
+	return
 }
 func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
 	region := trace.StartRegion(ctx, "unarchiveAndReplaceOutputFolderName")
@@ -389,7 +404,7 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 	return
 }
 
-func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv *Derivation, storeFolder string) (
+func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder string) (
 	matches []string, err error) {
 	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
 	defer region.End()
@@ -397,9 +412,10 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	oldStorePath := s.StorePath
 
 	for _, do := range drv.InputDerivations {
-		drv, err := s.LoadDerivation(do.Filename)
-		if err != nil || drv == nil {
-			panic(fmt.Sprint(drv, err, do.Filename))
+		fmt.Println("-----", do.Filename)
+		drv, found, err := s.LoadDerivation(do.Filename)
+		if err != nil || !found {
+			panic(fmt.Sprint(drv, err, do.Filename, found))
 		}
 		storeValues = append(storeValues,
 			s.joinStorePath(drv.output(do.OutputName).Path),
@@ -471,7 +487,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	return
 }
 
-func (b *Builder) fetchGitBuilder(ctx context.Context, drv *Derivation, outputPaths map[string]string) (err error) {
+func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
 	region := trace.StartRegion(ctx, "fetchGitBuilder")
 	defer region.End()
 
