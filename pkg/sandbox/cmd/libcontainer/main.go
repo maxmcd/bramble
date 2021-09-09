@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/user"
+	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -15,6 +18,19 @@ import (
 )
 
 func contConfig() *configs.Config {
+
+	rootfs, err := filepath.Abs("./rootfs")
+	if err != nil {
+		panic(err)
+	}
+
+	u, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+
 	defaultMountFlags := unix.MS_NOEXEC | unix.MS_NOSUID | unix.MS_NODEV
 	var devices []*devices.Rule
 	for _, device := range specconv.AllowedDevices {
@@ -52,7 +68,7 @@ func contConfig() *configs.Config {
 		},
 		Devices:         specconv.AllowedDevices,
 		NoNewPrivileges: true,
-		Rootfs:          "/home/maxm/go/src/github.com/maxmcd/bramble/pkg/sandbox/cmd/libcontainer/rootfs",
+		Rootfs:          rootfs,
 		Readonlyfs:      true,
 		Hostname:        "runc",
 		Mounts: []*configs.Mount{
@@ -108,14 +124,14 @@ func contConfig() *configs.Config {
 		UidMappings: []configs.IDMap{
 			{
 				ContainerID: 0,
-				HostID:      1000,
+				HostID:      uid,
 				Size:        1,
 			},
 		},
 		GidMappings: []configs.IDMap{
 			{
 				ContainerID: 0,
-				HostID:      100,
+				HostID:      gid,
 				Size:        1,
 			},
 		},
