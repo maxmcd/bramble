@@ -417,7 +417,6 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	oldStorePath := s.StorePath
 
 	for _, do := range drv.InputDerivations {
-		fmt.Println("-----", do.Filename)
 		drv, found, err := s.LoadDerivation(do.Filename)
 		if err != nil || !found {
 			panic(fmt.Sprint(drv, err, do.Filename, found))
