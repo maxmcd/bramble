@@ -121,7 +121,7 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 				}
 			}
 			if !t.Run(module, func(t *testing.T) {
-				if err := build(context.Background(), []string{module}, true); err != nil {
+				if err := buildCommand(context.Background(), []string{module}, true); err != nil {
 					t.Fatal(starutil.AnnotateError(err))
 				}
 			}) {

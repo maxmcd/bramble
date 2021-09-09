@@ -60,7 +60,10 @@ func runBuild(command string, args []string) error {
 				Files:           drv.Sources.Files,
 			},
 		})
-		if _, err := builder.BuildDerivation(context.Background(), buildDrv); err != nil {
+		if err != nil {
+			return nil, err
+		}
+		if buildDrv, _, err = builder.BuildDerivation(context.Background(), buildDrv); err != nil {
 			return nil, err
 		}
 		// Store the derivation outputs in the map for reference when building

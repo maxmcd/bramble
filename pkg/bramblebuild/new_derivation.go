@@ -3,7 +3,6 @@ package bramblebuild
 import (
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
@@ -28,9 +27,9 @@ type SourceFiles struct {
 	Files           []string
 }
 
-func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err error) {
+func (s *Store) hashAndStoreSources(drv Derivation, sources SourceFiles) (out Source, err error) {
 	if len(sources.Files) == 0 {
-		return nil
+		return
 	}
 	// TODO: could extend reptar to handle hasing the files before moving
 	// them to a tempdir
@@ -55,7 +54,8 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 	}
 
 	if err = fileutil.CopyFilesByPath(prefix, files, tmpDir); err != nil {
-		return errors.Wrap(err, "error copying files from source into temp folder")
+		err = errors.Wrap(err, "error copying files from source into temp folder")
+		return
 	}
 	// sometimes the location the derivation runs from is not present
 	// in the structure of the copied source files. ensure that we add it
@@ -77,18 +77,28 @@ func (s *Store) hashAndStoreSources(drv *Derivation, sources SourceFiles) (err e
 			return
 		}
 	}
-	drv.BuildContextSource = hshr.String()
-	drv.BuildContextRelativePath = relBramblefileLocation
-	drv.SourcePaths = append(drv.SourcePaths, hshr.String())
-	sort.Strings(drv.SourcePaths)
+	out.SourcePath = hshr.String()
+	out.RelativeBuildPath = relBramblefileLocation
 	return
 }
 
-func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv *Derivation, err error) {
-	drv = s.newDerivation()
-	if err = s.hashAndStoreSources(drv, options.Sources); err != nil {
+type Source struct {
+	RelativeBuildPath string
+	SourcePath        string
+}
+
+func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv Derivation, err error) {
+	// TODO, break out into its own thing. Sources must be popoulated before building
+	source, err := s.hashAndStoreSources(drv, options.Sources)
+	if err != nil {
 		return
 	}
+
+	drv = s.newDerivation()
+	drv.BuildContextRelativePath = source.RelativeBuildPath
+	drv.SourcePaths = append(drv.SourcePaths, source.SourcePath)
+	drv.BuildContextSource = source.SourcePath
+
 	drv.store = s
 	drv.Args = options.Args
 	drv.Builder = options.Builder
@@ -98,6 +108,7 @@ func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv *D
 	drv.Platform = options.Platform
 	drv.OutputNames = options.Outputs // TODO: Validate, and others
 
-	exists, err = drv.populateOutputsFromStore()
+	exists, outputs, err := drv.populateOutputsFromStore()
+	drv.Outputs = outputs
 	return exists, drv, err
 }
