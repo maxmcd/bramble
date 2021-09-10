@@ -14,8 +14,8 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/docker/docker/pkg/term"
 	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/moby/term"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )

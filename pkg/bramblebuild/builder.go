@@ -21,9 +21,6 @@ import (
 
 	"github.com/certifi/gocertifi"
 
-	git "github.com/go-git/go-git/v5"
-	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
@@ -105,8 +102,6 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	switch drv.Builder {
 	case "fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
-	case "fetch_git":
-		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	default:
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
@@ -489,39 +484,4 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	}
 	wg.Wait()
 	return
-}
-
-func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	region := trace.StartRegion(ctx, "fetchGitBuilder")
-	defer region.End()
-
-	certPool, err := gocertifi.CACerts()
-	customClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: certPool},
-		},
-	}
-
-	// Override http(s) default protocol to use our custom client
-	gitclient.InstallProtocol("https", githttp.NewClient(customClient))
-	_, _ = git.PlainClone("", false, &git.CloneOptions{})
-
-	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
-		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
-	}
-	url, ok := drv.Env["url"]
-	if !ok {
-		return errors.New("fetch_url requires the environment variable 'url' to be set")
-	}
-	// derivation can provide a hash, but usually this is just in the lockfile
-	hash := drv.Env["hash"]
-	path, err := b.downloadFile(ctx, url, hash)
-	if err != nil {
-		return err
-	}
-	// TODO: what if this package changes?
-	if err = archiver.Unarchive(path, outputPaths["out"]); err != nil {
-		return errors.Wrap(err, "error unpacking url archive")
-	}
-	return nil
 }
