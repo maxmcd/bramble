@@ -10,35 +10,45 @@ import (
 	"github.com/pkg/errors"
 )
 
-func runBuild(command string, args []string) error {
+func runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
+	return runBuild(func(p *project.Project) (project.ExecModuleOutput, error) {
+		return output, nil
+	})
+}
+
+func runBuildFromCLI(command string, args []string) (outputDerivations []build.Derivation, err error) {
+	return runBuild(func(p *project.Project) (output project.ExecModuleOutput, err error) {
+		return p.ExecModule(project.ExecModuleInput{
+			Command:   command,
+			Arguments: args,
+		})
+	})
+}
+
+func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
 	p, err := project.NewProject(".")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	output, err := p.ExecModule(project.ExecModuleInput{
-		Command:   command,
-		Arguments: args,
-	})
+	output, err := execModule(p)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	store, err := build.NewStore("")
 	if err != nil {
-		return err
+		return nil, err
 	}
+	store.RegisterGetGit(getGit)
 
 	builder := store.NewBuilder(false, p.URLHashes())
 
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
-	allDerivations := []project.Derivation{}
+	// allDerivations := []build.Derivation{}
 	derivationDataLock := sync.Mutex{}
 
 	err = output.WalkAndPatch(1, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
-		derivationDataLock.Lock()
-		allDerivations = append(allDerivations, drv)
-		derivationDataLock.Unlock()
 		inputDerivations := []build.DerivationOutput{}
 
 		derivationDataLock.Lock()
@@ -73,9 +83,11 @@ func runBuild(command string, args []string) error {
 		if buildDrv, _, err = builder.BuildDerivation(context.Background(), buildDrv); err != nil {
 			return nil, err
 		}
+
+		derivationDataLock.Lock()
+		// allDerivations = append(allDerivations, buildDrv)
 		// Store the derivation outputs in the map for reference when building
 		// input derivations later. Also populate the buildOutputs
-		derivationDataLock.Lock()
 		for i, o := range buildDrv.OutputNames {
 			out := buildDrv.Outputs[i]
 			derivationIDUpdates[project.Dependency{
@@ -91,16 +103,21 @@ func runBuild(command string, args []string) error {
 				OutputPath: build.BramblePrefixOfRecord + "/" + out.Path,
 			})
 		}
+		for hash := range output.Output {
+			if hash == dep.Hash {
+				outputDerivations = append(outputDerivations, buildDrv)
+			}
+		}
 		derivationDataLock.Unlock()
 		return
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = p.AddURLHashesToLockfile(builder.URLHashes)
 	if err != nil {
-		return err
+		return outputDerivations, err
 	}
-	return nil
+	return outputDerivations, err
 }

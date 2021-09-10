@@ -18,7 +18,7 @@ type ExecModuleInput struct {
 }
 
 type ExecModuleOutput struct {
-	Output         []Derivation
+	Output         map[string]Derivation
 	AllDerivations map[string]Derivation
 }
 
@@ -61,7 +61,11 @@ func (project *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutp
 
 	// The function must return a single derivation or a list of derivations, or
 	// a tuple of derivations. We turn them into an array.
-	output.Output = valuesToDerivations(values)
+
+	output.Output = map[string]Derivation{}
+	for _, d := range valuesToDerivations(values) {
+		output.Output[d.hash()] = d
+	}
 	output.AllDerivations = rt.allDerivationDependencies(output.Output)
 	return
 }
@@ -169,7 +173,7 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 	return nil
 }
 
-func (rt *runtime) allDerivationDependencies(in []Derivation) map[string]Derivation {
+func (rt *runtime) allDerivationDependencies(in map[string]Derivation) map[string]Derivation {
 	staging := map[string]Derivation{}
 	queue := make(chan string, len(rt.allDerivations))
 	for _, drv := range in {
