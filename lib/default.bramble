@@ -20,6 +20,9 @@ def git():
     )
 
 
+def git_test():
+    return derivation("git-test", "fetch_git", env=dict(url="git@github.com:maxmcd/bramble.git"))
+
 def zig():
     b = std.fetch_url(
         "https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab.tar.xz"

@@ -29,7 +29,7 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			ShortUsage: "bramble build [options] [module]:<function> [args...]",
 			ShortHelp:  "Build a function",
 			LongHelp:   "Build a function",
-			Exec:       func(ctx context.Context, args []string) error { err := buildCommand(ctx, args, false); return err },
+			Exec:       func(ctx context.Context, args []string) error { _, err := runBuildFromCLI("build", args); return err },
 		},
 		{
 			Name:       "shell",
@@ -45,14 +45,21 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			Exec:       func(ctx context.Context, args []string) error { return repl(args) },
 		},
 		{
+			Name:       "print-build-input",
+			ShortUsage: "bramble print-build-input",
+			Exec:       func(ctx context.Context, args []string) error { return printBuildInput(args) },
+		},
+		{
 			Name:       "derivation",
 			ShortUsage: "bramble derivation <subcomand>",
 			ShortHelp:  "Work with derivations directly",
-			Subcommands: []*ffcli.Command{{
-				Name:       "build",
-				ShortUsage: "bramble derivation build ~/bramble/store/3orpqhjdgtvfbqbhpecro3qe6heb3jvq-simple.drv",
-				Exec:       func(ctx context.Context, args []string) error { return nil },
-			}},
+			Subcommands: []*ffcli.Command{
+				{
+					Name:       "build",
+					ShortUsage: "bramble derivation build ~/bramble/store/3orpqhjdgtvfbqbhpecro3qe6heb3jvq-simple.drv",
+					Exec:       func(ctx context.Context, args []string) error { return nil },
+				},
+			},
 			Exec: func(ctx context.Context, args []string) error { return flag.ErrHelp },
 		},
 		{
@@ -66,7 +73,7 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 
 	// storeGC = &ffcli.Command{
 	// 	Name:       "gc",
-	// 	ShortUsage: "bramble store gc",
+	// 	ShortUsage: "bramble gc",
 	// 	ShortHelp:  "Run the bramble garbage collector against the store",
 	// 	LongHelp: `    Collect garbage
 
@@ -81,7 +88,7 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 
 	// storeAudit = &ffcli.Command{
 	// 	Name:       "audit",
-	// 	ShortUsage: "bramble store audit",
+	// 	ShortUsage: "bramble verify||check", #TODO
 	// 	ShortHelp:  "",
 	// 	LongHelp:   "",
 	// 	Exec: func(ctx context.Context, args []string) error {
@@ -187,10 +194,6 @@ func DefaultUsageFunc(c *ffcli.Command) string {
 func countFlags(fs *flag.FlagSet) (n int) {
 	fs.VisitAll(func(*flag.Flag) { n++ })
 	return n
-}
-
-func buildCommand(ctx context.Context, args []string, rootLess bool) error {
-	return runBuild("build", args)
 }
 
 func shell(ctx context.Context, args []string) (err error) {
