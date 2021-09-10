@@ -77,8 +77,8 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	if err != nil {
 		return drv, err
 	}
-	if drv.BuildContextSource != "" {
-		if err = fileutil.CopyDirectory(b.store.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
+	if drv.Source.Path != "" {
+		if err = fileutil.CopyDirectory(b.store.joinStorePath(drv.Source.Path), buildDir); err != nil {
 			err = errors.Wrap(err, "error copying sources into build dir")
 			return drv, err
 		}
@@ -328,7 +328,7 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 			Args:   append([]string{builderLocation}, drv.Args...),
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
-			Dir:    filepath.Join(buildDir, drv.BuildContextRelativePath),
+			Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
 			Env:    env,
 		}
 		return cmd.Run()
@@ -354,7 +354,7 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		GroupID:    gid,
 		Env:        env,
 		ChrootPath: chrootDir,
-		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),
+		Dir:        filepath.Join(buildDir, drv.Source.RelativeBuildPath),
 		Mounts:     mounts,
 	}
 	if shell {
