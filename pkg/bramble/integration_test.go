@@ -2,7 +2,6 @@ package bramble
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -121,7 +120,7 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 				}
 			}
 			if !t.Run(module, func(t *testing.T) {
-				if err := buildCommand(context.Background(), []string{module}, true); err != nil {
+				if _, err := runBuildFromCLI("test", []string{module}); err != nil {
 					t.Fatal(starutil.AnnotateError(err))
 				}
 			}) {
