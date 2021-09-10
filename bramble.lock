@@ -3,6 +3,7 @@
   "http://s.minos.io/archive/bifrost/x86_64/git-2.7.2-2.tar.gz" = "654146e3a239fef2e79511bf596098b36ebfe583f28cd0dea0c3f5f52f1a89d5"
   "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz" = "a5ce9c155ed09397614646c9717fc7cd94b1023d7b76b618d409e4fefd6e9d39"
   "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1"
+  "https://brmbl.s3.amazonaws.com/ca-certificates.crt" = "c61418dc5563f4498af272feab598ef7e1ee0f81babfcdd21c7f344894283439"
   "https://brmbl.s3.amazonaws.com/file-links.tar.gz" = "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a"
   "https://brmbl.s3.amazonaws.com/patchelf.tar.gz" = "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960"
   "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz" = "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52"

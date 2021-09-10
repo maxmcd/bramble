@@ -10,6 +10,7 @@ load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested")
 def all():
     return [
         lib.busybox(),
+        lib.git_fetcher(),
         nested.nested(),
         simple.simple(),
     ]
