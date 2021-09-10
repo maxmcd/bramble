@@ -102,6 +102,8 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	switch drv.Builder {
 	case "fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
+	case "fetch_git":
+		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	default:
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
@@ -154,12 +156,41 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outpu
 	return outputs, err
 }
 
+func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
+	gitDrv, err := b.store.getGit()
+	if err != nil {
+		return errors.Wrap(err, "error trying to install git")
+	}
+	gitDrv.store = b.store // let the other store be gc'd
+
+	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
+		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
+	}
+	url, ok := drv.Env["url"]
+	if !ok {
+		return errors.New("fetch_url requires the environment variable 'url' to be set")
+	}
+	// derivation can provide a hash, but usually this is just in the lockfile
+	hash := drv.Env["hash"]
+
+	outputPath := outputPaths["out"]
+
+	cmd := exec.Command(filepath.Join(b.store.StorePath, gitDrv.Outputs[0].Path, "/bin/git"), "clone", url, outputPath)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	_ = hash
+	return nil
+}
+
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
 	region := trace.StartRegion(ctx, "fetchURLBuilder")
 	defer region.End()
 
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
-		return errors.New("the fetchurl builtin can only have the defalt output \"out\"")
+		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
 	url, ok := drv.Env["url"]
 	if !ok {
@@ -231,6 +262,13 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
+
+	// TODO: this is prob not ok, it's sort of fine for us but hostile against
+	// custom certs. maybe an easy way to fix that? Should just accept available
+	// certs (unless repro???). I think this was also motivated by barebones
+	// docker env and we can just mount in known cert locations, right?
+	//
+	// also yes, we have to make certs work for other software, so surely they can work for us
 	certPool, err := gocertifi.CACerts()
 	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
 
