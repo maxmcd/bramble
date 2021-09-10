@@ -63,6 +63,15 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 		}
 		derivationDataLock.Unlock()
 
+		source, err := store.StoreLocalSources(build.SourceFiles{
+			ProjectLocation: p.Location(),
+			Location:        drv.Sources.Location,
+			Files:           drv.Sources.Files,
+		}) // TODO: delete this if the build fails?
+		if err != nil {
+			return
+		}
+
 		_, buildDrv, err := store.NewDerivation(build.NewDerivationOptions{
 			Args:             drv.Args,
 			Builder:          drv.Builder,
@@ -71,11 +80,7 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 			Name:             drv.Name,
 			Outputs:          drv.Outputs,
 			Platform:         drv.Platform,
-			Sources: build.SourceFiles{
-				ProjectLocation: p.Location(),
-				Location:        drv.Sources.Location,
-				Files:           drv.Sources.Files,
-			},
+			Source:           source,
 		})
 		if err != nil {
 			return nil, err
