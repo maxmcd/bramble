@@ -175,7 +175,12 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 
 	outputPath := outputPaths["out"]
 
-	cmd := exec.Command(filepath.Join(b.store.StorePath, gitDrv.Outputs[0].Path, "/bin/git"), "clone", url, outputPath)
+	gitDir := filepath.Join(b.store.StorePath, gitDrv.Outputs[0].Path)
+	cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GIT_EXEC_PATH=%s", filepath.Join(gitDir, "./libexec/git-core")))
+	// cmd.Env = append(cmd.Env, "GIT_CURL_VERBOSE=1")
+	// TODO: Point to a cacert derivation
+	cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO=/etc/ssl/certs/ca-bundle.crt")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	if err := cmd.Run(); err != nil {
