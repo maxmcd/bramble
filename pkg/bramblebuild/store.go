@@ -36,6 +36,8 @@ type Store struct {
 	StorePath   string
 
 	derivationCache *derivationsMap
+
+	getGit func() (Derivation, error)
 }
 
 func (s *Store) tempDir() (tempDir string, err error) {
@@ -45,6 +47,10 @@ func (s *Store) tempDir() (tempDir string, err error) {
 	}
 	// TODO: sus
 	return tempDir, os.Chmod(tempDir, 0777)
+}
+
+func (s *Store) RegisterGetGit(getGit func() (Derivation, error)) {
+	s.getGit = getGit
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
