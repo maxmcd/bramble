@@ -2,7 +2,7 @@ load("github.com/maxmcd/bramble/lib/std")
 
 
 def git():
-    b = std.fetch_url("http://s.minos.io/archive/bifrost/x86_64/git-2.7.2-2.tar.gz")
+    b = std.fetch_url("http://s.minos.io/archive/bifrost/x86_64/git-2.10.2-1.tar.gz")
     return derivation(
         name="git",
         builder=busybox().out + "/bin/sh",
@@ -20,10 +20,11 @@ def git():
     )
 
 
-def git_test():
-    return derivation(
-        "git-test", "fetch_git", env=dict(url="https://github.com/maxmcd/bramble.git")
-    )
+# Doesn't work yet, let's get it in a sandbox first
+# def git_test():
+#     return derivation(
+#         "git-test", "fetch_git", env=dict(url="https://github.com/maxmcd/bramble.git")
+#     )
 
 
 def zig():
