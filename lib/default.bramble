@@ -1,6 +1,10 @@
 load("github.com/maxmcd/bramble/lib/std")
 
 
+def cacerts():
+    return std.fetch_url("https://brmbl.s3.amazonaws.com/ca-certificates.crt")
+
+
 def git():
     b = std.fetch_url("http://s.minos.io/archive/bifrost/x86_64/git-2.10.2-1.tar.gz")
     return derivation(
@@ -20,10 +24,27 @@ def git():
     )
 
 
-def git_test():
+def git_fetcher():
     return derivation(
-        "git-test", "fetch_git", env=dict(url="https://github.com/maxmcd/bramble.git")
+        name="git_fetcher",
+        builder=busybox().out + "/bin/sh",
+        args=["-c", ""],  # noop
+        env=dict(
+            git=git(),
+            PATH=git().out + "/bin",
+            GIT_EXEC_PATH=git().out + "/libexec/git-core",
+            GIT_SSL_CAINFO=cacerts(),
+        ),
     )
+
+
+# Need better sandboxing
+# def git_test():
+#     return derivation(
+#         "git-test",
+#         "fetch_git",
+#         env=dict(url="https://github.com/maxmcd/bramble.git", cachebust=1),
+#     )
 
 
 def zig():
