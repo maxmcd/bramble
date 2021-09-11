@@ -90,6 +90,10 @@ func newContainer(s Sandbox) (c container, err error) {
 		err = errors.Wrap(err, "error attempting to read current users uid and gid")
 		return
 	}
+
+	cfg.MaskPaths = append(cfg.MaskPaths, s.HiddenPaths...)
+	cfg.ReadonlyPaths = append(cfg.ReadonlyPaths, s.ReadOnlyPaths...)
+
 	cfg.UidMappings[0].HostID = uid
 	cfg.GidMappings[0].HostID = gid
 	if s.DisableNetwork {
