@@ -74,6 +74,9 @@ type RunDerivationOptions struct {
 
 	Stdin io.Reader
 	Dir   string
+
+	HiddenPaths   []string
+	ReadOnlyPaths []string
 }
 
 func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDerivationOptions) (err error) {
@@ -93,6 +96,9 @@ func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDeriv
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
 		Dir:    opts.Dir,
+
+		HiddenPaths:   opts.HiddenPaths,
+		ReadOnlyPaths: opts.ReadOnlyPaths,
 
 		DisableNetwork: false,
 	}

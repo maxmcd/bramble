@@ -23,5 +23,8 @@ func (b bramble) run(args []string) (err error) {
 		Args:   args[1:],
 		Dir:    b.project.WD(),
 		Mounts: []string{b.project.Location()},
+
+		HiddenPaths:   b.project.HiddenPaths(),
+		ReadOnlyPaths: b.project.ReadOnlyPaths(),
 	})
 }

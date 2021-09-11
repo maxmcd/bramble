@@ -50,6 +50,9 @@ type Sandbox struct {
 
 	// DisableNetwork will remove network access within the sandbox process
 	DisableNetwork bool
+
+	ReadOnlyPaths []string
+	HiddenPaths   []string
 }
 
 type ExitError struct {
