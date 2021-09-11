@@ -22,5 +22,5 @@ integration_ci_test: install gotestsum
 	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./pkg/bramble/
 
 integration_test: install
-	env BRAMBLE_INTEGRATION_TEST=truthy go test -v ./pkg/bramble/
+	env BRAMBLE_INTEGRATION_TEST=truthy go test -run=$(run) -v ./pkg/bramble/
 
