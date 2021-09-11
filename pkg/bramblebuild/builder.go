@@ -71,7 +71,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
 
-	buildDir, err := b.store.tempDir()
+	buildDir, err := b.store.storeLengthTempDir()
 	if err != nil {
 		return drv, err
 	}
@@ -83,8 +83,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	}
 	outputPaths := map[string]string{}
 	for _, name := range drv.OutputNames {
-		// TODO: use directory within store instead so that we can rewrite self-referential paths
-		if outputPaths[name], err = b.store.tempDir(); err != nil {
+		if outputPaths[name], err = b.store.storeLengthTempDir(); err != nil {
 			return drv, err
 		}
 	}
@@ -355,7 +354,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	for outputName, outputPath := range outputPaths {
 		hshr := hasher.NewHasher()
 		var reptarFile *os.File
-		reptarFile, err = s.tmpFile()
+		reptarFile, err = s.storeLengthTempFile()
 		if err != nil {
 			return
 		}
@@ -376,6 +375,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 		// different names can share outputs
 		newPath := s.joinStorePath(hashedFolderName)
 
+		fmt.Println(newPath, outputFolder, hashedFolderName)
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
 				ctx,

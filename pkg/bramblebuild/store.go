@@ -25,7 +25,7 @@ var (
 	// different location
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb" // TODO: could we make this more obviously fake?
 
-	buildDirPattern = "bramble_build_directory*"
+	buildDirPrefix = "bramble_build_directory"
 )
 
 func NewStore(bramblePath string) (*Store, error) {
@@ -40,15 +40,6 @@ type Store struct {
 	derivationCache *derivationsMap
 
 	runGit func(RunDerivationOptions) error
-}
-
-func (s *Store) tempDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir(s.StorePath, buildDirPattern)
-	if err != nil {
-		return
-	}
-	// TODO: sus
-	return tempDir, os.Chmod(tempDir, 0777)
 }
 
 func (s *Store) RegisterGetGit(runGit func(RunDerivationOptions) error) {
@@ -273,10 +264,6 @@ func (s *Store) writeReader(src io.Reader, name string, validateHash string) (co
 	}
 
 	return hshr.Sha256Hex(), path, nil
-}
-
-func (s *Store) tmpFile() (f *os.File, err error) {
-	return ioutil.TempFile(s.StorePath, buildDirPattern)
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {
