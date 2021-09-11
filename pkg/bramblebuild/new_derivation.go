@@ -33,7 +33,7 @@ func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
 	}
 	// TODO: could extend reptar to handle hasing the files before moving
 	// them to a tempdir
-	tmpDir, err := s.tempDir()
+	tmpDir, err := s.storeLengthTempDir()
 	if err != nil {
 		return
 	}

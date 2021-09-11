@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"testing"
 
 	"github.com/pkg/errors"
 )
@@ -376,19 +375,4 @@ func FindExecutable(file string) error {
 		return nil
 	}
 	return os.ErrPermission
-}
-
-// TestTmpDir is intended to be used in tests and will remove itself when the
-// test run is over
-func TestTmpDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("", "bramble-test-")
-	if err != nil {
-		panic(err)
-	}
-	if t != nil {
-		t.Cleanup(func() {
-			os.RemoveAll(dir)
-		})
-	}
-	return dir
 }

@@ -345,6 +345,11 @@ func defaultRootlessConfig() *configs.Config {
 		},
 		Devices:         specconv.AllowedDevices,
 		NoNewPrivileges: true,
+
+		// https://github.com/opencontainers/runc/issues/1456#issuecomment-303784735
+		NoNewKeyring: true,
+		NoPivotRoot:  true,
+
 		// Rootfs:          chrootDir,
 		Readonlyfs: false,
 		Hostname:   "runc",
