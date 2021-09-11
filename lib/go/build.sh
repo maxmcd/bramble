@@ -19,6 +19,12 @@ sed -i 's/set -e/set -ex/g' ./make.bash
 # cat ./make.bash
 bash ./make.bash
 
+
+mkdir $out/bin
+cd $out/bin
+ln -s ../go/bin/go ./go
+ln -s ../go/bin/gofmt ./gofmt
+
 # this works for a few things, but has trouble finding the network, resolve.conf
 # syslog, no go in PATH,
 # stat testdata/libmach8db: no such file or directory
