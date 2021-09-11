@@ -33,8 +33,8 @@ type Sandbox struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
-	Path   string
-	Args   []string
+
+	Args []string
 
 	// Dir specifies the working directory of the command. If Dir is the empty
 	// string, Run runs the command in the calling process's current directory.

@@ -82,8 +82,7 @@ func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDeriv
 	sbx := sandbox.Sandbox{
 		Mounts: append([]string{s.StorePath + ":ro"}, opts.Mounts...),
 		Env:    copy.env(),
-		Path:   opts.Args[0],
-		Args:   opts.Args[1:],
+		Args:   opts.Args,
 		Stdin:  opts.Stdin,
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
