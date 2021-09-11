@@ -154,6 +154,7 @@ func TestIntegrationNixSeed(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
+	initIntegrationTest(t)
 	runRun := func(module string, args []string) (output string, exitCode int) {
 		cmd := exec.Command("bramble", append([]string{"run", module}, args...)...)
 		o, _ := cmd.CombinedOutput()
