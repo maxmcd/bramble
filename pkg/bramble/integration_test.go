@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,22 +89,6 @@ func assembleModules(t *testing.T) []string {
 	return modules
 }
 
-// func build(context.Backgound(), args []string) e, truerror {
-// 	// ensure $GOPATH/bin is in PATH
-// 	// we set this so we can use the setuid binary, maybe there is a better way
-// 	path := os.Getenv("PATH")
-// 	gobin := filepath.Join(os.Getenv("GOPATH"), "bin")
-// 	if !strings.Contains(path, gobin) {
-// 		os.Setenv("PATH", path+":"+gobin)
-// 	}
-// 	b, err := NewBramble(".")
-// 	if err != nil {
-// 		return err
-// 	}
-// 	_, _, err = b.Build(context.Background(), args)
-// 	return err
-// }
-
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 	initIntegrationTest(t)
 	modules := assembleModules(t)
@@ -119,41 +104,50 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 					goto SKIP
 				}
 			}
-			if !t.Run(module, func(t *testing.T) {
-				if _, err := runBuildFromCLI("test", []string{module}); err != nil {
-					t.Fatal(starutil.AnnotateError(err))
+			t.Run(module, func(t *testing.T) {
+				if err := runBrambleRun(module); err != nil {
+					t.Fatal(err)
 				}
-			}) {
-				t.Fatal(module, "failed")
-			}
+			})
 		SKIP:
 		}
 	})
 }
 
-// func TestIntegrationSimple(t *testing.T) {
-// 	initIntegrationTest(t)
-// 	runTwiceAndCheck(t, func(t *testing.T) {
-// 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/simple/simple:simple"}); err != nil {
-// 			t.Fatal(starutil.AnnotateError(err))
-// 		}
-// 	})
-// }
+func runBrambleRun(module string) error {
+	// We have to spawn a new process because of how runc/libcontainer creates a
+	// container. We miss test coverage and this means we must always install
+	// bramble first to run integration tests. Would be nice if there was a way
+	// to verify this and error if the bramble version is incorrect.
+	cmd := exec.Command("bramble", "build", module)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
-// func TestIntegrationTutorial(t *testing.T) {
-// 	initIntegrationTest(t)
-// 	runTwiceAndCheck(t, func(t *testing.T) {
-// 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/tests/tutorial:step_1"}); err != nil {
-// 			t.Fatal(starutil.AnnotateError(err))
-// 		}
-// 	})
-// }
+func TestIntegrationSimple(t *testing.T) {
+	initIntegrationTest(t)
+	runTwiceAndCheck(t, func(t *testing.T) {
+		if err := runBrambleRun("github.com/maxmcd/bramble/tests/simple/simple:simple"); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
 
-// func TestIntegrationNixSeed(t *testing.T) {
-// 	initIntegrationTest(t)
-// 	runTwiceAndCheck(t, func(t *testing.T) {
-// 		if err := runBrambleRun([]string{"github.com/maxmcd/bramble/lib/nix-seed:stdenv"}); err != nil {
-// 			t.Fatal(starutil.AnnotateError(err))
-// 		}
-// 	})
-// }
+func TestIntegrationTutorial(t *testing.T) {
+	initIntegrationTest(t)
+	runTwiceAndCheck(t, func(t *testing.T) {
+		if err := runBrambleRun("github.com/maxmcd/bramble/tests/tutorial:step_1"); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}
+
+func TestIntegrationNixSeed(t *testing.T) {
+	initIntegrationTest(t)
+	runTwiceAndCheck(t, func(t *testing.T) {
+		if err := runBrambleRun("github.com/maxmcd/bramble/lib/nix-seed:stdenv"); err != nil {
+			t.Fatal(starutil.AnnotateError(err))
+		}
+	})
+}

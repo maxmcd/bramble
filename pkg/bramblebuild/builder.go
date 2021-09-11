@@ -11,10 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime/trace"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -77,8 +75,8 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	if err != nil {
 		return drv, err
 	}
-	if drv.BuildContextSource != "" {
-		if err = fileutil.CopyDirectory(b.store.joinStorePath(drv.BuildContextSource), buildDir); err != nil {
+	if drv.Source.Path != "" {
+		if err = fileutil.CopyDirectory(b.store.joinStorePath(drv.Source.Path), buildDir); err != nil {
 			err = errors.Wrap(err, "error copying sources into build dir")
 			return drv, err
 		}
@@ -328,34 +326,19 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 			Args:   append([]string{builderLocation}, drv.Args...),
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
-			Dir:    filepath.Join(buildDir, drv.BuildContextRelativePath),
+			Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
 			Env:    env,
 		}
 		return cmd.Run()
 	}
-	chrootDir, err := ioutil.TempDir("", "bramble-chroot-")
-	// TODO: don't put it in tmp, put it in ~/bramble/var
-	// chrootDir, err := b.store.TempBuildDir()
-	if err != nil {
-		return err
-	}
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
 	sbx := sandbox.Sandbox{
-		Path:       builderLocation,
-		Args:       drv.Args,
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
-		UserID:     uid,
-		GroupID:    gid,
-		Env:        env,
-		ChrootPath: chrootDir,
-		Dir:        filepath.Join(buildDir, drv.BuildContextRelativePath),
-		Mounts:     mounts,
+		Path:   builderLocation,
+		Args:   drv.Args,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Env:    env,
+		Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
+		Mounts: mounts,
 	}
 	if shell {
 		sbx.Args = nil
