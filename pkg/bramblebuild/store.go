@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/pkg/errors"
 )
 
@@ -37,7 +39,7 @@ type Store struct {
 
 	derivationCache *derivationsMap
 
-	getGit func() (Derivation, error)
+	runGit func(*Store, RunDerivationOptions) error
 }
 
 func (s *Store) tempDir() (tempDir string, err error) {
@@ -49,8 +51,8 @@ func (s *Store) tempDir() (tempDir string, err error) {
 	return tempDir, os.Chmod(tempDir, 0777)
 }
 
-func (s *Store) RegisterGetGit(getGit func() (Derivation, error)) {
-	s.getGit = getGit
+func (s *Store) RegisterGetGit(runGit func(*Store, RunDerivationOptions) error) {
+	s.runGit = runGit
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
@@ -64,6 +66,32 @@ func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Outpu
 	}
 	// It's not built if it doesn't have the outputs we need
 	return existingDrv.Outputs, !existingDrv.missingOutput(), err
+}
+
+type RunDerivationOptions struct {
+	Args   []string
+	Mounts []string
+
+	Stdin io.Reader
+	Dir   string
+}
+
+func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDerivationOptions) (err error) {
+	copy, _ := drv.copyWithOutputValuesReplaced()
+
+	sbx := sandbox.Sandbox{
+		Mounts: append([]string{s.StorePath + ":ro"}, opts.Mounts...),
+		Env:    copy.env(),
+		Path:   opts.Args[0],
+		Args:   opts.Args[1:],
+		Stdin:  opts.Stdin,
+		Stderr: os.Stderr,
+		Stdout: os.Stdout,
+		Dir:    opts.Dir,
+
+		DisableNetwork: false,
+	}
+	return sbx.Run(ctx)
 }
 
 func (s *Store) LoadDerivation(filename string) (drv Derivation, found bool, err error) {

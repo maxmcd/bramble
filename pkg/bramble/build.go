@@ -40,7 +40,7 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 	if err != nil {
 		return nil, err
 	}
-	store.RegisterGetGit(getGit)
+	store.RegisterGetGit(runGit)
 
 	builder := store.NewBuilder(false, p.URLHashes())
 
