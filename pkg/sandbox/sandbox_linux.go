@@ -11,10 +11,14 @@ import (
 	"syscall"
 	"testing/fstest"
 
+	"github.com/moby/term"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/devices"
+	"github.com/opencontainers/runc/libcontainer/utils"
 
+	// Needed or libcontainer entrypoint call won't work
+	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/opencontainers/runc/libcontainer/specconv"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
@@ -23,8 +27,8 @@ import (
 func init() {
 	entrypoint = func() {
 		// Libcontainer will take the "init" are we pass as the fake path and
-		// prepend the current working directory. So just check if it ends in the
-		// name we need.
+		// prepend the current working directory. So just check if it ends in
+		// the name we need.
 		if !(len(os.Args) > 1 && strings.HasSuffix(os.Args[0], initArg) && os.Args[1] == initArg) {
 			return
 		}
@@ -137,6 +141,7 @@ func newContainer(s Sandbox) (c container, err error) {
 	if err != nil {
 		err = errors.Wrap(err, "error creating container")
 	}
+
 	return
 }
 
@@ -150,6 +155,11 @@ func userAndGroupIDs() (uid, gid int, err error) {
 	}
 	gid, err = strconv.Atoi(u.Gid)
 	return
+}
+
+func terminate(p *libcontainer.Process) {
+	_ = p.Signal(unix.SIGKILL)
+	_, _ = p.Wait()
 }
 
 func (c container) Run() (err error) {
@@ -167,15 +177,53 @@ func (c container) Run() (err error) {
 		Init:   true,
 		Cwd:    c.sandbox.Dir,
 	}
+	handler := newSignalHandler()
+	t := &tty{}
+	if stdinF, ok := c.sandbox.Stdin.(*os.File); ok && term.IsTerminal(stdinF.Fd()) {
+		if err := t.initHostConsole(); err != nil {
+			return err
+		}
+		parent, child, err := utils.NewSockPair("console")
+		if err != nil {
+			return err
+		}
+		c.process.ConsoleSocket = child
+		t.postStart = append(t.postStart, parent, child)
+		t.consoleC = make(chan error, 1)
+		go func() {
+			t.consoleC <- t.recvtty(c.process, parent)
+		}()
+	} else {
+		uid := c.container.Config().UidMappings[0].HostID
+		gid := c.container.Config().GidMappings[0].HostID
+		t, err = setupProcessPipes(c.process, uid, gid)
+		if err != nil {
+			return err
+		}
+	}
+	defer t.Close()
+	defer func() { _ = c.Destroy() }()
 	if err := c.container.Run(c.process); err != nil {
-		_ = c.Destroy()
 		return err
 	}
-	if _, err := c.process.Wait(); err != nil {
-		_ = c.Destroy()
+	if err = t.waitConsole(); err != nil {
+		terminate(c.process)
 		return err
 	}
-	return nil
+	if err = t.ClosePostStart(); err != nil {
+		terminate(c.process)
+		return err
+	}
+
+	status, err := handler.forward(c.process, t, false)
+	if err != nil {
+		terminate(c.process)
+		return err
+	}
+	if status != 0 {
+		return ExitError{ExitCode: status}
+	}
+	return
 }
 
 func (c container) Stop() (err error) {
@@ -183,13 +231,19 @@ func (c container) Stop() (err error) {
 }
 
 func combineErrors(errs ...error) (err error) {
-	switch len(errs) {
+	var ers []error
+	for _, e := range errs {
+		if e != nil {
+			ers = append(ers, e)
+		}
+	}
+	switch len(ers) {
 	case 1:
-		return errs[0]
+		return ers[0]
 	case 0:
 		return nil
 	default:
-		return errors.Errorf("got errors %q", errs)
+		return errors.Errorf("got errors %q", ers)
 	}
 }
 

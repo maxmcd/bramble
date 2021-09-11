@@ -166,7 +166,7 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
 
-	if err := b.store.runGit(b.store, RunDerivationOptions{
+	if err := b.store.runGit(RunDerivationOptions{
 		Mounts: []string{outputPath},
 		Args:   []string{"git", "clone", url, outputPath},
 		Dir:    outputPath,

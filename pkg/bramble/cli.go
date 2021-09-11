@@ -15,6 +15,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -28,14 +29,32 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			Name:       "build",
 			ShortUsage: "bramble build [options] [module]:<function> [args...]",
 			ShortHelp:  "Build a function",
-			LongHelp:   "Build a function",
-			Exec:       func(ctx context.Context, args []string) error { _, err := runBuildFromCLI("build", args); return err },
+			Exec: func(ctx context.Context, args []string) error {
+				b, err := newBramble()
+				if err != nil {
+					return err
+				}
+				_, err = b.runBuildFromCLI("build", args)
+				return err
+			},
 		},
+		{
+			Name:       "run",
+			ShortUsage: "bramble run [options] [module]:<function> [args...]",
+			ShortHelp:  "run a derivation",
+			Exec: func(ctx context.Context, args []string) error {
+				b, err := newBramble()
+				if err != nil {
+					return err
+				}
+				return b.run(args)
+			},
+		},
+
 		{
 			Name:       "shell",
 			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 			ShortHelp:  "Open a shell from a derivation",
-			LongHelp:   "Open a shell from a derivation",
 			Exec:       func(ctx context.Context, args []string) error { err := shell(ctx, args); return err },
 		},
 		{
@@ -140,6 +159,9 @@ func RunCLI() {
 	handleErr := func(err error) {
 		if err == flag.ErrHelp {
 			os.Exit(127)
+		}
+		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
+			os.Exit(er.ExitCode)
 		}
 		logger.Print(starutil.AnnotateError(err))
 		os.Exit(1)
