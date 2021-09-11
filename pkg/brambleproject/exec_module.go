@@ -22,7 +22,7 @@ type ExecModuleOutput struct {
 	AllDerivations map[string]Derivation
 }
 
-func (project *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
+func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
 	cmd, args := input.Command, input.Arguments
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
@@ -31,9 +31,9 @@ func (project *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutp
 	}
 
 	rt := &runtime{
-		workingDirectory: project.wd,
-		projectLocation:  project.location,
-		moduleName:       project.config.Module.Name,
+		workingDirectory: p.wd,
+		projectLocation:  p.location,
+		moduleName:       p.config.Module.Name,
 	}
 	rt.init()
 
@@ -148,6 +148,7 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 		}
 		buildOutputs, err := fn(dep, drv)
 		if err != nil {
+			fmt.Printf("%+v\n", err)
 			return err
 		}
 		// Now find all immediate dependents of this output and patch them to

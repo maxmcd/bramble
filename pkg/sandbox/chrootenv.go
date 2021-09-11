@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/maxmcd/bramble/pkg/logger"
@@ -16,18 +15,6 @@ type chroot struct {
 	chrooted    bool
 	location    string
 	mounts      []string
-}
-
-func parseMount(mnt string) (src string, ro bool, valid bool) {
-	parts := strings.Split(mnt, ":")
-	switch len(parts) {
-	case 1:
-		return parts[0], false, true
-	case 2:
-		return parts[0], parts[1] == "ro", true
-	}
-	valid = false
-	return
 }
 
 func newChroot(location string, mounts []string) *chroot {

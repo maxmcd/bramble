@@ -18,7 +18,7 @@ type NewDerivationOptions struct {
 	Name             string
 	Outputs          []string
 	Platform         string
-	Sources          SourceFiles
+	Source           Source
 }
 
 type SourceFiles struct {
@@ -27,7 +27,7 @@ type SourceFiles struct {
 	Files           []string
 }
 
-func (s *Store) hashAndStoreSources(drv Derivation, sources SourceFiles) (out Source, err error) {
+func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
 	if len(sources.Files) == 0 {
 		return
 	}
@@ -77,28 +77,21 @@ func (s *Store) hashAndStoreSources(drv Derivation, sources SourceFiles) (out So
 			return
 		}
 	}
-	out.SourcePath = hshr.String()
+	out.Path = hshr.String()
 	out.RelativeBuildPath = relBramblefileLocation
 	return
 }
 
 type Source struct {
 	RelativeBuildPath string
-	SourcePath        string
+	Path              string
 }
 
 func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv Derivation, err error) {
-	// TODO, break out into its own thing. Sources must be popoulated before building
-	source, err := s.hashAndStoreSources(drv, options.Sources)
-	if err != nil {
-		return
-	}
 
 	drv = s.newDerivation()
-	drv.BuildContextRelativePath = source.RelativeBuildPath
-	drv.SourcePaths = append(drv.SourcePaths, source.SourcePath)
-	drv.BuildContextSource = source.SourcePath
 
+	drv.Source = options.Source // TODO: validate this is either empty or the paths are present in the store
 	drv.store = s
 	drv.Args = options.Args
 	drv.Builder = options.Builder

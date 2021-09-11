@@ -22,9 +22,6 @@ type Derivation struct {
 
 	// Args are arguments that are passed to the builder
 	Args []string
-	// BuildContextSource is the source directory that
-	BuildContextSource       string
-	BuildContextRelativePath string
 	// Builder will either be set to a string constant to signify an internal
 	// builder (like "fetch_url"), or it will be set to the path of an
 	// executable in the bramble store
@@ -47,8 +44,8 @@ type Derivation struct {
 	Outputs     []Output
 	// Platform is the platform we've built this derivation on
 	Platform string
-	// SourcePaths are all paths that must exist to support this build
-	SourcePaths []string
+
+	Source Source
 
 	// internal fields
 	store *Store
@@ -171,9 +168,6 @@ func (drv Derivation) makeConsistentNullJSONValues() Derivation {
 	}
 	if len(drv.Outputs) == 0 {
 		drv.Outputs = nil
-	}
-	if len(drv.SourcePaths) == 0 {
-		drv.SourcePaths = nil
 	}
 	if len(drv.InputDerivations) == 0 {
 		drv.InputDerivations = nil
@@ -336,7 +330,11 @@ func (drv Derivation) loadInputDerivations() (inputDerivations map[DerivationOut
 }
 
 func (drv Derivation) inputFiles() []string {
-	return append([]string{drv.Filename()}, drv.SourcePaths...)
+	out := []string{drv.Filename()}
+	if drv.Source.Path != "" {
+		return append(out, drv.Source.Path)
+	}
+	return out
 }
 
 func (drv Derivation) runtimeFiles(outputName string) []string {
@@ -356,18 +354,7 @@ func (drv Derivation) populateOutputsFromStore() (exists bool, outputs []Output,
 	return
 }
 
-func (drv *Derivation) replaceValueInDerivation(old, new string) (err error) {
-	var dummyDrv Derivation
-	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(drv.json()), old, new)), &dummyDrv); err != nil {
-		return err
-	}
-	drv.Args = dummyDrv.Args
-	drv.Env = dummyDrv.Env
-	drv.Builder = dummyDrv.Builder
-	return nil
-}
-
-func (drv *Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {
+func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {
 	s := string(drv.json())
 
 	// Looking for things like: /home/bramble/bramble/bramble_store_padding/bramb/rb2rveatcti4szdt3s6xc37cpvqxrdmr
