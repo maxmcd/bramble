@@ -26,8 +26,7 @@ func parseMount(mnt string) (src string, ro bool, valid bool) {
 	case 2:
 		return parts[0], parts[1] == "ro", true
 	}
-	valid = false
-	return
+	return "", false, false
 }
 
 func newChroot(location string, mounts []string) *chroot {

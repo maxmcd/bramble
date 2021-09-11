@@ -86,5 +86,5 @@ def busybox():
         name="busybox",
         builder=b.out + "/busybox-x86_64",
         args=["sh", "-c", script],
-        env={"busybox_download": b},
+        env={"busybox_download": b, "PATH": b.out},
     )
