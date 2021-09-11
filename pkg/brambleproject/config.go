@@ -12,7 +12,9 @@ type Config struct {
 	Module ConfigModule `toml:"module"`
 }
 type ConfigModule struct {
-	Name string `toml:"name"`
+	Name          string   `toml:"name"`
+	ReadOnlyPaths []string `toml:"read_only_paths"`
+	HiddenPaths   []string `toml:"hidden_paths"`
 }
 
 // func (p *Project) lockConfigAccess() {

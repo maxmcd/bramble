@@ -10,39 +10,28 @@ import (
 	"github.com/pkg/errors"
 )
 
-func runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
-	return runBuild(func(p *project.Project) (project.ExecModuleOutput, error) {
+func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
+	return b.runBuild(func() (project.ExecModuleOutput, error) {
 		return output, nil
 	})
 }
 
-func runBuildFromCLI(command string, args []string) (outputDerivations []build.Derivation, err error) {
-	return runBuild(func(p *project.Project) (output project.ExecModuleOutput, err error) {
-		return p.ExecModule(project.ExecModuleInput{
+func (b bramble) runBuildFromCLI(command string, args []string) (outputDerivations []build.Derivation, err error) {
+	return b.runBuild(func() (output project.ExecModuleOutput, err error) {
+		return b.project.ExecModule(project.ExecModuleInput{
 			Command:   command,
 			Arguments: args,
 		})
 	})
 }
 
-func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
-	p, err := project.NewProject(".")
+func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
+	output, err := execModule()
 	if err != nil {
 		return nil, err
 	}
 
-	output, err := execModule(p)
-	if err != nil {
-		return nil, err
-	}
-
-	store, err := build.NewStore("")
-	if err != nil {
-		return nil, err
-	}
-	store.RegisterGetGit(runGit)
-
-	builder := store.NewBuilder(false, p.URLHashes())
+	builder := b.store.NewBuilder(false, b.project.URLHashes())
 
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
 	// allDerivations := []build.Derivation{}
@@ -63,8 +52,8 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 		}
 		derivationDataLock.Unlock()
 
-		source, err := store.StoreLocalSources(build.SourceFiles{
-			ProjectLocation: p.Location(),
+		source, err := b.store.StoreLocalSources(build.SourceFiles{
+			ProjectLocation: b.project.Location(),
 			Location:        drv.Sources.Location,
 			Files:           drv.Sources.Files,
 		}) // TODO: delete this if the build fails?
@@ -72,7 +61,7 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 			return nil, errors.Wrap(err, "error moving local files to the store")
 		}
 
-		_, buildDrv, err := store.NewDerivation(build.NewDerivationOptions{
+		_, buildDrv, err := b.store.NewDerivation(build.NewDerivationOptions{
 			Args:             drv.Args,
 			Builder:          drv.Builder,
 			Env:              drv.Env,
@@ -120,7 +109,7 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 		return nil, err
 	}
 
-	err = p.AddURLHashesToLockfile(builder.URLHashes)
+	err = b.project.AddURLHashesToLockfile(builder.URLHashes)
 	if err != nil {
 		return outputDerivations, err
 	}

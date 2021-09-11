@@ -39,7 +39,7 @@ type Store struct {
 
 	derivationCache *derivationsMap
 
-	runGit func(*Store, RunDerivationOptions) error
+	runGit func(RunDerivationOptions) error
 }
 
 func (s *Store) tempDir() (tempDir string, err error) {
@@ -51,7 +51,7 @@ func (s *Store) tempDir() (tempDir string, err error) {
 	return tempDir, os.Chmod(tempDir, 0777)
 }
 
-func (s *Store) RegisterGetGit(runGit func(*Store, RunDerivationOptions) error) {
+func (s *Store) RegisterGetGit(runGit func(RunDerivationOptions) error) {
 	s.runGit = runGit
 }
 
@@ -79,6 +79,12 @@ type RunDerivationOptions struct {
 func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDerivationOptions) (err error) {
 	copy, _ := drv.copyWithOutputValuesReplaced()
 
+	PATH := copy.Env["PATH"]
+	if PATH != "" {
+		PATH = ":" + PATH
+	}
+	PATH = s.joinStorePath(drv.output(drv.mainOutput()).Path, "/bin") + PATH
+	copy.Env["PATH"] = PATH
 	sbx := sandbox.Sandbox{
 		Mounts: append([]string{s.StorePath + ":ro"}, opts.Mounts...),
 		Env:    copy.env(),

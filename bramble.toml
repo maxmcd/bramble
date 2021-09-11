@@ -2,3 +2,5 @@
 
 [module]
 name = "github.com/maxmcd/bramble"
+read_only_paths = ["./"]
+hidden_paths = ["./lib"]

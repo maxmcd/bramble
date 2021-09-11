@@ -86,6 +86,9 @@ type LockFile struct {
 func (p *Project) Location() string {
 	return p.location
 }
+func (p *Project) WD() string {
+	return p.wd
+}
 
 func (p *Project) URLHashes() map[string]string {
 	return p.lockFile.URLHashes

@@ -1,7 +1,6 @@
 package brambleproject
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -191,17 +190,6 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 	rt.allDerivations[drv.hash()] = drv
 
 	return drv, nil
-}
-
-func newID() string {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(errors.Wrap(err, "unable to generate secure randomness"))
-	}
-	h := hasher.NewHasher()
-	_, _ = h.Write(b)
-	return h.String()
 }
 
 func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
