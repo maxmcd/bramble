@@ -71,7 +71,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	ctx, task = trace.NewTask(ctx, "buildDerivation")
 	defer task.End()
 
-	buildDir, err := b.store.tempDir()
+	buildDir, err := b.store.storeLengthTempDir()
 	if err != nil {
 		return drv, err
 	}
@@ -83,8 +83,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	}
 	outputPaths := map[string]string{}
 	for _, name := range drv.OutputNames {
-		// TODO: use directory within store instead so that we can rewrite self-referential paths
-		if outputPaths[name], err = b.store.tempDir(); err != nil {
+		if outputPaths[name], err = b.store.storeLengthTempDir(); err != nil {
 			return drv, err
 		}
 	}
@@ -155,13 +154,8 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outpu
 }
 
 func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	gitDrv, err := b.store.getGit()
-	if err != nil {
-		return errors.Wrap(err, "error trying to install git")
-	}
-	gitDrv.store = b.store // let the other store be gc'd
-
-	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
+	outputPath, ok := outputPaths["out"]
+	if len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
 	url, ok := drv.Env["url"]
@@ -171,21 +165,27 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
 
-	outputPath := outputPaths["out"]
-
-	gitDir := gitDrv.Env["git"]
-	cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
-	for k, v := range drv.Env {
-		if k == "PATH" {
-			v = os.Getenv("PATH") + ":" + v
-		}
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-	if err := cmd.Run(); err != nil {
+	if err := b.store.runGit(RunDerivationOptions{
+		Mounts: []string{outputPath},
+		Args:   []string{"git", "clone", url, outputPath},
+		Dir:    outputPath,
+	}); err != nil {
 		return err
 	}
+
+	// gitDir := gitDrv.Env["git"]
+	// cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
+	// for k, v := range drv.Env {
+	// 	if k == "PATH" {
+	// 		v = os.Getenv("PATH") + ":" + v
+	// 	}
+	// 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	// }
+	// cmd.Stderr = os.Stderr
+	// cmd.Stdout = os.Stdout
+	// if err := cmd.Run(); err != nil {
+	// 	return err
+	// }
 	_ = hash
 	return nil
 }
@@ -332,8 +332,7 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		return cmd.Run()
 	}
 	sbx := sandbox.Sandbox{
-		Path:   builderLocation,
-		Args:   drv.Args,
+		Args:   append([]string{builderLocation}, drv.Args...),
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 		Env:    env,
@@ -355,7 +354,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	for outputName, outputPath := range outputPaths {
 		hshr := hasher.NewHasher()
 		var reptarFile *os.File
-		reptarFile, err = s.tmpFile()
+		reptarFile, err = s.storeLengthTempFile()
 		if err != nil {
 			return
 		}
@@ -376,6 +375,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 		// different names can share outputs
 		newPath := s.joinStorePath(hashedFolderName)
 
+		fmt.Println(newPath, outputFolder, hashedFolderName)
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
 				ctx,

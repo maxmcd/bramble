@@ -2,7 +2,22 @@ load("github.com/maxmcd/bramble/lib/std")
 
 
 def cacerts():
-    return std.fetch_url("https://brmbl.s3.amazonaws.com/ca-certificates.crt")
+    return derivation(
+        name="ca-certificates",
+        builder=busybox().out + "/bin/sh",
+        env=dict(
+            PATH=busybox().out + "/bin",
+            src=std.fetch_url("https://brmbl.s3.amazonaws.com/ca-certificates.crt"),
+        ),
+        args=[
+            "-c",
+            """
+            set -ex
+            cp -r $src/ca-certificates.crt $out
+            cp $out/ca-certificates.crt $out/ca-bundle.crt
+            """,
+        ],
+    )
 
 
 def git():
@@ -33,18 +48,17 @@ def git_fetcher():
             git=git(),
             PATH=git().out + "/bin",
             GIT_EXEC_PATH=git().out + "/libexec/git-core",
-            GIT_SSL_CAINFO=cacerts(),
+            GIT_SSL_CAINFO=cacerts().out + "/ca-certificates.crt",
         ),
     )
 
 
-# Need better sandboxing
-# def git_test():
-#     return derivation(
-#         "git-test",
-#         "fetch_git",
-#         env=dict(url="https://github.com/maxmcd/bramble.git", cachebust=1),
-#     )
+def git_test():
+    return derivation(
+        "git-test",
+        "fetch_git",
+        env=dict(url="https://github.com/maxmcd/bramble.git", cachebust=1),
+    )
 
 
 def zig():

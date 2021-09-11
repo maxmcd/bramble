@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/pkg/errors"
 )
 
@@ -23,7 +25,7 @@ var (
 	// different location
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb" // TODO: could we make this more obviously fake?
 
-	buildDirPattern = "bramble_build_directory*"
+	buildDirPrefix = "bramble_build_directory"
 )
 
 func NewStore(bramblePath string) (*Store, error) {
@@ -37,20 +39,11 @@ type Store struct {
 
 	derivationCache *derivationsMap
 
-	getGit func() (Derivation, error)
+	runGit func(RunDerivationOptions) error
 }
 
-func (s *Store) tempDir() (tempDir string, err error) {
-	tempDir, err = ioutil.TempDir(s.StorePath, buildDirPattern)
-	if err != nil {
-		return
-	}
-	// TODO: sus
-	return tempDir, os.Chmod(tempDir, 0777)
-}
-
-func (s *Store) RegisterGetGit(getGit func() (Derivation, error)) {
-	s.getGit = getGit
+func (s *Store) RegisterGetGit(runGit func(RunDerivationOptions) error) {
+	s.runGit = runGit
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
@@ -64,6 +57,43 @@ func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Outpu
 	}
 	// It's not built if it doesn't have the outputs we need
 	return existingDrv.Outputs, !existingDrv.missingOutput(), err
+}
+
+type RunDerivationOptions struct {
+	Args   []string
+	Mounts []string
+
+	Stdin io.Reader
+	Dir   string
+
+	HiddenPaths   []string
+	ReadOnlyPaths []string
+}
+
+func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDerivationOptions) (err error) {
+	copy, _ := drv.copyWithOutputValuesReplaced()
+
+	PATH := copy.Env["PATH"]
+	if PATH != "" {
+		PATH = ":" + PATH
+	}
+	PATH = s.joinStorePath(drv.output(drv.mainOutput()).Path, "/bin") + PATH
+	copy.Env["PATH"] = PATH
+	sbx := sandbox.Sandbox{
+		Mounts: append([]string{s.StorePath + ":ro"}, opts.Mounts...),
+		Env:    copy.env(),
+		Args:   opts.Args,
+		Stdin:  opts.Stdin,
+		Stderr: os.Stderr,
+		Stdout: os.Stdout,
+		Dir:    opts.Dir,
+
+		HiddenPaths:   opts.HiddenPaths,
+		ReadOnlyPaths: opts.ReadOnlyPaths,
+
+		DisableNetwork: false,
+	}
+	return sbx.Run(ctx)
 }
 
 func (s *Store) LoadDerivation(filename string) (drv Derivation, found bool, err error) {
@@ -234,10 +264,6 @@ func (s *Store) writeReader(src io.Reader, name string, validateHash string) (co
 	}
 
 	return hshr.Sha256Hex(), path, nil
-}
-
-func (s *Store) tmpFile() (f *os.File, err error) {
-	return ioutil.TempFile(s.StorePath, buildDirPattern)
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {
