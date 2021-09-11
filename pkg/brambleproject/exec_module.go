@@ -148,6 +148,7 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 		}
 		buildOutputs, err := fn(dep, drv)
 		if err != nil {
+			fmt.Printf("%+v\n", err)
 			return err
 		}
 		// Now find all immediate dependents of this output and patch them to

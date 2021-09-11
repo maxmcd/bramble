@@ -69,7 +69,7 @@ func runBuild(execModule func(*project.Project) (project.ExecModuleOutput, error
 			Files:           drv.Sources.Files,
 		}) // TODO: delete this if the build fails?
 		if err != nil {
-			return
+			return nil, errors.Wrap(err, "error moving local files to the store")
 		}
 
 		_, buildDrv, err := store.NewDerivation(build.NewDerivationOptions{

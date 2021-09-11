@@ -11,10 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime/trace"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -333,29 +331,14 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		}
 		return cmd.Run()
 	}
-	chrootDir, err := ioutil.TempDir("", "bramble-chroot-")
-	// TODO: don't put it in tmp, put it in ~/bramble/var
-	// chrootDir, err := b.store.TempBuildDir()
-	if err != nil {
-		return err
-	}
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
 	sbx := sandbox.Sandbox{
-		Path:       builderLocation,
-		Args:       drv.Args,
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
-		UserID:     uid,
-		GroupID:    gid,
-		Env:        env,
-		ChrootPath: chrootDir,
-		Dir:        filepath.Join(buildDir, drv.Source.RelativeBuildPath),
-		Mounts:     mounts,
+		Path:   builderLocation,
+		Args:   drv.Args,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Env:    env,
+		Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
+		Mounts: mounts,
 	}
 	if shell {
 		sbx.Args = nil

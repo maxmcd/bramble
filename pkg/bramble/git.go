@@ -15,6 +15,7 @@ func getGit() (drv build.Derivation, err error) {
 	if err = json.Unmarshal([]byte(execOutputJSON), &output); err != nil {
 		return
 	}
+
 	drvs, err := runBuildFromOutput(output)
 	if err != nil {
 		return
