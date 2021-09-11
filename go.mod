@@ -7,7 +7,6 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.0.2
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d
 	github.com/containerd/console v1.0.3
-	github.com/davecgh/go-spew v1.1.1
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
 	github.com/mholt/archiver/v3 v3.5.0

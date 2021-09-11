@@ -3,13 +3,9 @@ package sandbox
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
-	"runtime"
+	"strings"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/opencontainers/runc/libcontainer"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/pkg/errors"
 )
@@ -18,31 +14,17 @@ const (
 	initArg = "init"
 )
 
+var entrypoint func()
+
 // Entrypoint must be run at the beginning of your executable. When the sandbox
 // runs it re-runs the same binary with various arguments to indicate that we
 // want the process to be run as a sandbox. If this function detects that it is
 // needed it will run what it needs and then os.Exit the process, otherwise it
 // will be a no-op.
 func Entrypoint() {
-	// Libcontainer will take the "init" are we pass as the fake path and
-	// prepend the current working directory. So just check if it ends in the
-	// name we need.
-	fmt.Println("---------------")
-	fmt.Println(os.Args)
-	fmt.Println("---------------")
-	if !(len(os.Args) > 1 && os.Args[1] == initArg) {
-		return
+	if entrypoint != nil {
+		entrypoint()
 	}
-	runtime.GOMAXPROCS(1)
-	runtime.LockOSThread()
-	factory, err := libcontainer.New("")
-	if err != nil {
-		panic(err)
-	}
-	if err := factory.StartInitialization(); err != nil {
-		panic(err)
-	}
-	panic("unreachable")
 }
 
 // Sandbox defines a command or function that you want to run in a sandbox
@@ -52,20 +34,26 @@ type Sandbox struct {
 	Stderr io.Writer
 	Path   string
 	Args   []string
-	Dir    string
-	Env    []string
+
+	// Dir specifies the working directory of the command. If Dir is the empty
+	// string, Run runs the command in the calling process's current directory.
+	Dir string
+
+	// Env specifies the environment of the process. Each entry is of the form
+	// "key=value".
+	Env []string
 
 	// Bind mounts or directories the process should have access too. These
 	// should be absolute paths. If a mount is intended to be readonly add ":ro"
 	// to the end of the path like `/tmp:ro`
 	Mounts []string
+
 	// DisableNetwork will remove network access within the sandbox process
 	DisableNetwork bool
 }
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
-	spew.Dump(s)
 	container, err := newContainer(s)
 	if err != nil {
 		return err
@@ -86,6 +74,16 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 	case err = <-errChan:
 		return err
 	}
+}
+func parseMount(mnt string) (src string, ro bool, valid bool) {
+	parts := strings.Split(mnt, ":")
+	switch len(parts) {
+	case 1:
+		return parts[0], false, true
+	case 2:
+		return parts[0], parts[1] == "ro", true
+	}
+	return "", false, false
 }
 
 // func (s Sandbox) newNamespaceStep() (err error) {

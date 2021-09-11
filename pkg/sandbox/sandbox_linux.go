@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing/fstest"
 
@@ -17,6 +19,27 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
+
+func init() {
+	entrypoint = func() {
+		// Libcontainer will take the "init" are we pass as the fake path and
+		// prepend the current working directory. So just check if it ends in the
+		// name we need.
+		if !(len(os.Args) > 1 && strings.HasSuffix(os.Args[0], initArg) && os.Args[1] == initArg) {
+			return
+		}
+		runtime.GOMAXPROCS(1)
+		runtime.LockOSThread()
+		factory, err := libcontainer.New("")
+		if err != nil {
+			panic(err)
+		}
+		if err := factory.StartInitialization(); err != nil {
+			panic(err)
+		}
+		panic("unreachable")
+	}
+}
 
 type container struct {
 	container libcontainer.Container
@@ -105,7 +128,7 @@ func newContainer(s Sandbox) (c container, err error) {
 
 	factory, err := libcontainer.New(stateDir,
 		libcontainer.RootlessCgroupfs,
-		libcontainer.InitArgs(os.Args[0], initArg))
+		libcontainer.InitArgs(initArg, initArg))
 	if err != nil {
 		err = errors.Wrap(err, "error initializing container factory")
 		return
