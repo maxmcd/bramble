@@ -64,6 +64,7 @@ func initRootfs(path string) (err error) {
 		Data: resolvConfBytes,
 		Mode: 0644,
 	}
+	_ = os.MkdirAll(filepath.Join(path, "tmp"), 0755)
 	for loc, file := range files {
 		loc = filepath.Join(path, loc)
 		if err := os.MkdirAll(filepath.Dir(loc), 0777); err != nil {
