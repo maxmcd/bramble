@@ -155,13 +155,8 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outpu
 }
 
 func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	gitDrv, err := b.store.getGit()
-	if err != nil {
-		return errors.Wrap(err, "error trying to install git")
-	}
-	gitDrv.store = b.store // let the other store be gc'd
-
-	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
+	outputPath, ok := outputPaths["out"]
+	if len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
 	url, ok := drv.Env["url"]
@@ -171,21 +166,27 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
 
-	outputPath := outputPaths["out"]
-
-	gitDir := gitDrv.Env["git"]
-	cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
-	for k, v := range drv.Env {
-		if k == "PATH" {
-			v = os.Getenv("PATH") + ":" + v
-		}
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-	if err := cmd.Run(); err != nil {
+	if err := b.store.runGit(b.store, RunDerivationOptions{
+		Mounts: []string{outputPath},
+		Args:   []string{"git", "clone", url, outputPath},
+		Dir:    outputPath,
+	}); err != nil {
 		return err
 	}
+
+	// gitDir := gitDrv.Env["git"]
+	// cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
+	// for k, v := range drv.Env {
+	// 	if k == "PATH" {
+	// 		v = os.Getenv("PATH") + ":" + v
+	// 	}
+	// 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	// }
+	// cmd.Stderr = os.Stderr
+	// cmd.Stdout = os.Stdout
+	// if err := cmd.Run(); err != nil {
+	// 	return err
+	// }
 	_ = hash
 	return nil
 }
