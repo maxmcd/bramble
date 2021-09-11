@@ -158,7 +158,7 @@ func (c container) Run() (err error) {
 	}
 
 	c.process = &libcontainer.Process{
-		Args:   append([]string{c.sandbox.Path}, c.sandbox.Args...),
+		Args:   c.sandbox.Args,
 		Env:    c.sandbox.Env,
 		User:   "root",
 		Stdin:  c.sandbox.Stdin,

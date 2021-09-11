@@ -333,8 +333,7 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		return cmd.Run()
 	}
 	sbx := sandbox.Sandbox{
-		Path:   builderLocation,
-		Args:   drv.Args,
+		Args:   append([]string{builderLocation}, drv.Args...),
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 		Env:    env,
