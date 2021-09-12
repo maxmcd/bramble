@@ -140,7 +140,7 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outpu
 		return nil, err
 	}
 	outputFolderName := hshr.String()
-	outputs = map[string]Output{"out": Output{Path: outputFolderName}}
+	outputs = map[string]Output{"out": {Path: outputFolderName}}
 	outputStorePath := b.store.joinStorePath(outputFolderName)
 	if fileutil.PathExists(outputStorePath) {
 		err = os.RemoveAll(outputPath)
@@ -218,7 +218,7 @@ func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPat
 }
 
 // downloadFile downloads a file into the store. Must include an expected hash
-// of the downloaded file as a hex string of a  sha256 hash
+// of the downloaded file as a hex string of a sha256 hash
 func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (path string, err error) {
 	logger.Printfln("Downloading url %s", url)
 	if hash != "" {

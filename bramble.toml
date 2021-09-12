@@ -4,3 +4,7 @@
 name = "github.com/maxmcd/bramble"
 read_only_paths = ["./"]
 hidden_paths = ["./lib"]
+
+# [dependencies]
+# "github.com/maxmcd/bramble" = "0.1.12"
+# "github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}

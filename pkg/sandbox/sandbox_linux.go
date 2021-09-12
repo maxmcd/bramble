@@ -67,7 +67,7 @@ func initRootfs(path string) (err error) {
 	_ = os.MkdirAll(filepath.Join(path, "tmp"), 0755)
 	for loc, file := range files {
 		loc = filepath.Join(path, loc)
-		if err := os.MkdirAll(filepath.Dir(loc), 0777); err != nil {
+		if err := os.MkdirAll(filepath.Dir(loc), 0755); err != nil {
 			return err
 		}
 		f, err := os.OpenFile(loc, os.O_CREATE|os.O_RDWR|os.O_TRUNC, file.Mode)

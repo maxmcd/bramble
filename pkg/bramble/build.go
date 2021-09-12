@@ -113,5 +113,6 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 	if err != nil {
 		return outputDerivations, err
 	}
+	_ = b.store.WriteConfigLink(b.project.Location())
 	return outputDerivations, err
 }
