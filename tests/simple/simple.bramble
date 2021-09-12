@@ -9,4 +9,5 @@ def simple():
         args=["./simple_builder.sh"],
         sources=files(["./simple.c", "simple_builder.sh"]),
     )
-    test(simple, "simple")
+    return simple
+    # test(simple, "simple")
