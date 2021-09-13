@@ -92,7 +92,6 @@ func assembleModules(t *testing.T) []string {
 
 func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 	initIntegrationTest(t)
-
 	modules := assembleModules(t)
 	toSkip := []string{
 		"nix-seed/default.bramble:ldd",
@@ -107,7 +106,6 @@ func TestIntegrationRunAlmostAllPublicFunctions(t *testing.T) {
 				}
 			}
 			t.Run(module, func(t *testing.T) {
-
 				if err := runBrambleRun(module); err != nil {
 					t.Fatal(err)
 				}
@@ -148,7 +146,6 @@ func TestIntegrationTutorial(t *testing.T) {
 
 func TestIntegrationNixSeed(t *testing.T) {
 	initIntegrationTest(t)
-
 	runTwiceAndCheck(t, func(t *testing.T) {
 		if err := runBrambleRun("github.com/maxmcd/bramble/lib/nix-seed:stdenv"); err != nil {
 			t.Fatal(starutil.AnnotateError(err))
@@ -158,7 +155,6 @@ func TestIntegrationNixSeed(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	initIntegrationTest(t)
-
 	runRun := func(module string, args []string) (output string, exitCode int) {
 		cmd := exec.Command("bramble", append([]string{"run", module}, args...)...)
 		o, _ := cmd.CombinedOutput()
