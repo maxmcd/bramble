@@ -7,7 +7,6 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.0.2
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d
 	github.com/containerd/console v1.0.3
-	github.com/creack/pty v1.1.15 // indirect
 	github.com/jaguilar/vt100 v0.0.0-20201024211400-81de19cb81a4
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
 	github.com/mholt/archiver/v3 v3.5.0
@@ -23,7 +22,6 @@ require (
 	go.uber.org/zap v1.19.1
 	golang.org/x/sys v0.0.0-20210909193231-528a39cd75f3
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
 replace (

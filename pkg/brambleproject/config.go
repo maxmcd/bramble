@@ -3,8 +3,10 @@ package brambleproject
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/maxmcd/bramble/v/github.com/go4org/go4/lock"
 	"github.com/pkg/errors"
 )
 
@@ -17,14 +19,21 @@ type ConfigModule struct {
 	HiddenPaths   []string `toml:"hidden_paths"`
 }
 
-// func (p *Project) lockConfigAccess() {
-// 	lock := flock.New(filepath.Join(p.location, "bramble.lock"))
-// 	lock.Lock()
-// }
-
 func (p *Project) AddURLHashesToLockfile(mapping map[string]string) (err error) {
 	p.lockFileLock.Lock()
 	defer p.lockFileLock.Unlock()
+	count := 0
+	for {
+		done, err := lock.Lock("brambleconfig.lock")
+		if count++; err != nil && strings.Contains(err.Error(), "temporarily") && count < 200 {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		defer done.Close()
+		break
+	}
 
 	f, err := os.OpenFile(filepath.Join(p.location, "bramble.lock"),
 		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)

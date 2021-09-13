@@ -35,9 +35,9 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
 	// allDerivations := []build.Derivation{}
-	derivationDataLock := sync.Mutex{}
+	var derivationDataLock sync.Mutex
 
-	err = output.WalkAndPatch(1, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
+	err = output.WalkAndPatch(2, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
 		inputDerivations := []build.DerivationOutput{}
 
 		derivationDataLock.Lock()
