@@ -4,8 +4,8 @@ test: go_test \
 	integration_test
 
 ci_test: go_ci_test \
-	integration_ci_test \
-	build
+	integration_ci_test
+	make build
 
 gotestsum:
 	go get gotest.tools/gotestsum
