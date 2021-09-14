@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 
 	"github.com/maxmcd/bramble/pkg/brambleproject"
@@ -153,6 +155,12 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		panic("give me the stack")
+	}()
 	sandbox.Entrypoint()
 
 	log.SetOutput(ioutil.Discard)

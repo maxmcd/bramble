@@ -29,40 +29,6 @@ func (t *tty) copyIO(w io.Writer, r io.ReadCloser) {
 	_ = r.Close()
 }
 
-// setup pipes for the process so that advanced features like c/r are able to easily checkpoint
-// and restore the process's IO without depending on a host specific path or device
-func setupProcessPipes(p *libcontainer.Process, rootuid, rootgid int) (*tty, error) {
-	i, err := p.InitializeIO(rootuid, rootgid)
-	if err != nil {
-		return nil, err
-	}
-	t := &tty{
-		closers: []io.Closer{
-			i.Stdin,
-			i.Stdout,
-			i.Stderr,
-		},
-	}
-	// add the process's io to the post start closers if they support close
-	for _, cc := range []interface{}{
-		p.Stdin,
-		p.Stdout,
-		p.Stderr,
-	} {
-		if c, ok := cc.(io.Closer); ok {
-			t.postStart = append(t.postStart, c)
-		}
-	}
-	go func() {
-		_, _ = io.Copy(i.Stdin, os.Stdin)
-		_ = i.Stdin.Close()
-	}()
-	t.wg.Add(2)
-	go t.copyIO(os.Stdout, i.Stdout)
-	go t.copyIO(os.Stderr, i.Stderr)
-	return t, nil
-}
-
 func inheritStdio(process *libcontainer.Process) error {
 	process.Stdin = os.Stdin
 	process.Stdout = os.Stdout

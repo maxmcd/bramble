@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"testing/fstest"
 
+	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/moby/term"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -18,7 +20,6 @@ import (
 	"github.com/opencontainers/runc/libcontainer/utils"
 
 	// Needed or libcontainer entrypoint call won't work
-
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/opencontainers/runc/libcontainer/specconv"
 	"github.com/pkg/errors"
@@ -85,6 +86,7 @@ func initRootfs(path string) (err error) {
 
 func newContainer(s Sandbox) (c container, err error) {
 	c.sandbox = s
+	logger.Debugf("%+v\n", c)
 	cfg := defaultRootlessConfig()
 	uid, gid, err := userAndGroupIDs()
 	if err != nil {
@@ -184,8 +186,10 @@ func (c container) Run() (err error) {
 		Cwd:    c.sandbox.Dir,
 	}
 	handler := newSignalHandler()
-	t := &tty{}
+	// TODO: refactor!
+	var t *tty
 	if stdinF, ok := c.sandbox.Stdin.(*os.File); ok && term.IsTerminal(stdinF.Fd()) {
+		t := &tty{}
 		if err := t.initHostConsole(); err != nil {
 			return err
 		}
@@ -199,35 +203,38 @@ func (c container) Run() (err error) {
 		go func() {
 			t.consoleC <- t.recvtty(c.process, parent)
 		}()
-	} else {
-		uid := c.container.Config().UidMappings[0].HostID
-		gid := c.container.Config().GidMappings[0].HostID
-		t, err = setupProcessPipes(c.process, uid, gid)
-		if err != nil {
-			return err
-		}
+		defer t.Close()
+		defer func() { _ = c.Destroy() }()
 	}
-	defer t.Close()
-	defer func() { _ = c.Destroy() }()
 	if err := c.container.Run(c.process); err != nil {
 		return err
 	}
-	if err = t.waitConsole(); err != nil {
-		terminate(c.process)
-		return err
-	}
-	if err = t.ClosePostStart(); err != nil {
-		terminate(c.process)
-		return err
-	}
+	if t != nil {
+		if err = t.waitConsole(); err != nil {
+			terminate(c.process)
+			return err
+		}
+		if err = t.ClosePostStart(); err != nil {
+			terminate(c.process)
+			return err
+		}
 
-	status, err := handler.forward(c.process, t, false)
-	if err != nil {
-		terminate(c.process)
-		return err
-	}
-	if status != 0 {
-		return ExitError{ExitCode: status}
+		status, err := handler.forward(c.process, t, false)
+		if err != nil {
+			terminate(c.process)
+			return err
+		}
+		if status != 0 {
+			return ExitError{ExitCode: status}
+		}
+	} else {
+		state, err := c.process.Wait()
+		if err != nil {
+			return err
+		}
+		if state.ExitCode() != 0 {
+			return fmt.Errorf("Process exited with non-zero exit code %d but we make the message funny because we're not sure if this is handled above", state.ExitCode())
+		}
 	}
 	return
 }

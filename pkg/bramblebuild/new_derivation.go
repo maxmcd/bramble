@@ -88,7 +88,6 @@ type Source struct {
 }
 
 func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv Derivation, err error) {
-
 	drv = s.newDerivation()
 
 	drv.Source = options.Source // TODO: validate this is either empty or the paths are present in the store

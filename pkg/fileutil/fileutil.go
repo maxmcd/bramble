@@ -49,21 +49,6 @@ func CommonFilepathPrefix(paths []string) string {
 	return string(c)
 }
 
-// LS is a silly debugging function, don't use it
-func LS(wd string) {
-	entries, err := os.ReadDir(wd)
-	if err != nil {
-		fmt.Println(err)
-	}
-	for _, entry := range entries {
-		fi, _ := entry.Info()
-		fmt.Printf("%s %d %s %s\n", fi.Mode(), fi.Size(), fi.ModTime(), entry.Name())
-	}
-	if err != nil {
-		panic(err)
-	}
-}
-
 func CP(wd string, paths ...string) (err error) {
 	if len(paths) == 1 {
 		return errors.New("copy takes at least two arguments")

@@ -165,7 +165,7 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
 
-	if err := b.store.runGit(RunDerivationOptions{
+	if err := b.store.runGit(ctx, RunDerivationOptions{
 		Mounts: []string{outputPath},
 		Args:   []string{"git", "clone", url, outputPath},
 		Dir:    outputPath,
@@ -375,7 +375,6 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 		// different names can share outputs
 		newPath := s.joinStorePath(hashedFolderName)
 
-		fmt.Println(newPath, outputFolder, hashedFolderName)
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
 				ctx,

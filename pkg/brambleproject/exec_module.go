@@ -3,6 +3,7 @@ package brambleproject
 import (
 	"flag"
 	"fmt"
+	"sort"
 	"sync"
 
 	ds "github.com/maxmcd/bramble/pkg/data_structures"
@@ -20,6 +21,7 @@ type ExecModuleInput struct {
 type ExecModuleOutput struct {
 	Output         map[string]Derivation
 	AllDerivations map[string]Derivation
+	Globals        []string
 }
 
 func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
@@ -47,26 +49,46 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 	if err != nil {
 		return output, err
 	}
+	for fn := range globals {
+		output.Globals = append(output.Globals, fn)
+	}
+	sort.Strings(output.Globals)
 
-	toCall, ok := globals[fn]
-	if !ok {
-		return output, errors.Errorf("function %q not found in module %q", fn, module)
+	toCall := map[string]starlark.Value{}
+	if fn != "" {
+		f, ok := globals[fn]
+		if !ok {
+			return output, errors.Errorf("function %q not found in %q, available functions are %q",
+				fn, module, output.Globals)
+		}
+		toCall[fn] = f
+	} else {
+		toCall = globals
 	}
 
-	logger.Debug("Calling function ", fn)
-	values, err := starlark.Call(rt.newThread("Calling "+fn), toCall, nil, nil)
-	if err != nil {
-		return output, errors.Wrap(err, "error running")
-	}
-
-	// The function must return a single derivation or a list of derivations, or
-	// a tuple of derivations. We turn them into an array.
-
+	output.AllDerivations = map[string]Derivation{}
 	output.Output = map[string]Derivation{}
-	for _, d := range valuesToDerivations(values) {
-		output.Output[d.hash()] = d
+	for fn, callable := range toCall {
+		starlarkFunc, ok := callable.(*starlark.Function)
+		if !ok || (starlarkFunc.NumParams()+starlarkFunc.NumKwonlyParams() > 0) {
+			// TODO: make sure this prints a useful error message if a function has been explicitly called and we're silently skipping it
+			continue
+		}
+		logger.Debug("Calling function ", fn)
+		values, err := starlark.Call(rt.newThread("Calling "+fn), callable, nil, nil)
+		if err != nil {
+			return output, errors.Wrap(err, "error running")
+		}
+		// The function must return a single derivation or a list of derivations, or
+		// a tuple of derivations. We turn them into an array.
+		for _, d := range valuesToDerivations(values) {
+			output.Output[d.hash()] = d
+		}
+		// Append
+		for k, v := range rt.allDerivationDependencies(output.Output) {
+			output.AllDerivations[k] = v
+		}
 	}
-	output.AllDerivations = rt.allDerivationDependencies(output.Output)
 	return
 }
 
@@ -171,28 +193,28 @@ func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency
 	if len(errs) != 0 {
 		return errors.New(fmt.Sprint(errs))
 	}
+
 	return nil
 }
 
-func (rt *runtime) allDerivationDependencies(in map[string]Derivation) map[string]Derivation {
-	staging := map[string]Derivation{}
-	queue := make(chan string, len(rt.allDerivations))
+func (rt *runtime) allDerivationDependencies(in map[string]Derivation) (out map[string]Derivation) {
+	out = map[string]Derivation{}
+	queue := []string{}
 	for _, drv := range in {
-		queue <- drv.hash()
+		queue = append(queue, drv.hash())
 	}
-	for {
-		select {
-		case hash := <-queue:
-			drv := rt.allDerivations[hash]
-			staging[hash] = drv
-			for _, dep := range drv.Dependencies {
-				queue <- dep.Hash
-			}
-		default:
-			// Nothing left in the queue
-			return staging
+	// BFS
+	for len(queue) > 0 {
+		// pop
+		hash := queue[0]
+		queue = queue[1:]
+		drv := rt.allDerivations[hash]
+		out[hash] = drv
+		for _, dep := range drv.Dependencies {
+			queue = append(queue, dep.Hash)
 		}
 	}
+	return
 }
 
 // drvReplaceableMap provides a map of Derivations that is guarded by a mutex.

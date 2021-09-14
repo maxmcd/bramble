@@ -1,12 +1,24 @@
 ![](./notes/bramble.svg)
 
-# Bramble
+<h1> Bramble </h1>
 
-- [Bramble](#bramble)
-  - [Project Status](#project-status)
-    - [Feature Status](#feature-status)
-  - [Hello World](#hello-world)
-
+- [Project Status](#project-status)
+  - [Feature Status](#feature-status)
+- [Installation](#installation)
+  - [Linux](#linux)
+- [Hello World](#hello-world)
+- [Spec](#spec)
+  - [Introduction](#introduction)
+  - [Project configuration](#project-configuration)
+    - [Module metadata](#module-metadata)
+    - [bramble.lock](#bramblelock)
+  - [Config language](#config-language)
+    - [Sys module](#sys-module)
+    - [Assert module](#assert-module)
+    - [Files builtin](#files-builtin)
+  - [Derivation](#derivation)
+    - [URL Fetcher](#url-fetcher)
+    - [Git Fetcher](#git-fetcher)
 <hr>
 
 Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
@@ -44,6 +56,22 @@ Many things are broken, would not expect this to work or be useful yet. Things a
 - [ ] [Dynamic Dependencies](./notes/25-dynamic-dependencies.md)
 - [ ] [Running Build Outputs](https://github.com/maxmcd/bramble/issues/25)
 - [ ] Docker/OCI Container Build Output
+
+## Installation
+
+Install with `go get github.com/maxmcd/bramble` or download a recent binary release.
+
+### Linux
+
+In order for rootless/userspace sandboxing to work "User Namespaces" must be compiled and enabled in your kernel:
+
+- Confirm `CONFIG_USER_NS=y` is set in your kernel configuration (normally found in `/proc/config.gz`)
+  ```bash
+  $ cat /proc/config.gz | gzip -d | grep CONFIG_USER_NS
+  CONFIG_USER_NS=y
+  ```
+- Arch/Debian: `echo 1 > /proc/sys/kernel/unprivileged_userns_clone`
+- RHEL/CentOS 7: `echo 28633 > /proc/sys/user/max_user_namespaces`
 
 ## Hello World
 
@@ -146,3 +174,28 @@ Hello World!
 ```
 
 That's it! Your first bramble build.
+
+
+## Spec
+
+### Introduction
+
+### Project configuration
+
+#### Module metadata
+
+#### bramble.lock
+
+### Config language
+
+#### Sys module
+
+#### Assert module
+
+#### Files builtin
+
+### Derivation
+
+#### URL Fetcher
+#### Git Fetcher
+

@@ -4,7 +4,8 @@ test: go_test \
 	integration_test
 
 ci_test: go_ci_test \
-	integration_ci_test
+	integration_ci_test \
+	build
 
 gotestsum:
 	go get gotest.tools/gotestsum
@@ -17,6 +18,9 @@ go_test:
 
 install:
 	go install
+
+build: install
+	bramble build
 
 integration_ci_test: install gotestsum
 	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./pkg/bramble/

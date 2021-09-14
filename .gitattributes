@@ -1,1 +1,2 @@
 *.bramble linguist-language=python
+bramble.lock linguist-language=toml

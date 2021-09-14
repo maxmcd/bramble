@@ -39,10 +39,10 @@ type Store struct {
 
 	derivationCache *derivationsMap
 
-	runGit func(RunDerivationOptions) error
+	runGit func(context.Context, RunDerivationOptions) error
 }
 
-func (s *Store) RegisterGetGit(runGit func(RunDerivationOptions) error) {
+func (s *Store) RegisterGetGit(runGit func(context.Context, RunDerivationOptions) error) {
 	s.runGit = runGit
 }
 

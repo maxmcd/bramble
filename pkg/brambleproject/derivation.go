@@ -216,6 +216,9 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 	}
 
 	drv.Name = name.GoString()
+	if len(drv.Name) == 0 {
+		return drv, errors.New("derivation must have a name")
+	}
 
 	if argsParam != nil {
 		if drv.Args, err = starutil.IterableToGoList(argsParam); err != nil {

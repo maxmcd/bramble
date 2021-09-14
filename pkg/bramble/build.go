@@ -2,7 +2,12 @@ package bramble
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	build "github.com/maxmcd/bramble/pkg/bramblebuild"
 	project "github.com/maxmcd/bramble/pkg/brambleproject"
@@ -18,10 +23,37 @@ func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDeri
 
 func (b bramble) runBuildFromCLI(command string, args []string) (outputDerivations []build.Derivation, err error) {
 	return b.runBuild(func() (output project.ExecModuleOutput, err error) {
-		return b.project.ExecModule(project.ExecModuleInput{
-			Command:   command,
-			Arguments: args,
-		})
+		if len(args) > 0 {
+			// Building something specific
+			return b.project.ExecModule(project.ExecModuleInput{
+				Command:   command,
+				Arguments: args,
+			})
+		}
+
+		// Building everything in the project
+		modules, err := b.findAllModulesInProject()
+		if err != nil {
+			return output, err
+		}
+		output.AllDerivations = make(map[string]project.Derivation)
+		output.Output = make(map[string]project.Derivation)
+		for _, module := range modules {
+			o, err := b.project.ExecModule(project.ExecModuleInput{
+				Command:   command,
+				Arguments: []string{module},
+			})
+			if err != nil {
+				return output, err
+			}
+			for k, v := range o.AllDerivations {
+				output.AllDerivations[k] = v
+			}
+			for k, v := range o.Output {
+				output.Output[k] = v
+			}
+		}
+		return output, nil
 	})
 }
 
@@ -37,7 +69,7 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 	// allDerivations := []build.Derivation{}
 	var derivationDataLock sync.Mutex
 
-	err = output.WalkAndPatch(2, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
+	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
 		inputDerivations := []build.DerivationOutput{}
 
 		derivationDataLock.Lock()
@@ -74,10 +106,16 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 		if err != nil {
 			return nil, err
 		}
-		if buildDrv, _, err = builder.BuildDerivation(context.Background(), buildDrv); err != nil {
+		var didBuild bool
+		start := time.Now()
+		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv); err != nil {
 			return nil, err
 		}
-
+		ts := time.Since(start).String()
+		if !didBuild {
+			ts = "cached"
+		}
+		fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
 		derivationDataLock.Lock()
 		// allDerivations = append(allDerivations, buildDrv)
 		// Store the derivation outputs in the map for reference when building
@@ -115,4 +153,26 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 	}
 	_ = b.store.WriteConfigLink(b.project.Location())
 	return outputDerivations, err
+}
+
+func (b bramble) findAllModulesInProject() (modules []string, err error) {
+	return modules, filepath.Walk(b.project.Location(),
+		func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if filepath.Base(path) == "bramble.toml" &&
+				path != filepath.Join(b.project.Location(), "bramble.toml") {
+				return filepath.SkipDir
+			}
+			// TODO: ignore .git, ignore .gitignore?
+			if strings.HasSuffix(path, ".bramble") {
+				module, err := b.project.FilepathToModuleName(path)
+				if err != nil {
+					return err
+				}
+				modules = append(modules, module)
+			}
+			return nil
+		})
 }
