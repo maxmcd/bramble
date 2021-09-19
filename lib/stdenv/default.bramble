@@ -2,22 +2,20 @@
 
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 load("github.com/maxmcd/bramble/lib")
+load(static_patchelf="github.com/maxmcd/bramble/lib/static-patchelf")
 
 
 stdenv = nix_seed.stdenv
 
 
-def std_derivation(name, builder, **kwargs):
+def std_derivation(name, builder=None, **kwargs):
     nix = nix_seed.stdenv()
     bb = lib.busybox()
 
-    PATH = "{}/bin:{}/bin".format(nix.out, bb.out)
+    PATH = "{}/bin:{}/bin:{}bin".format(nix.out, bb.out, static_patchelf.patchelf())
     env = kwargs.get("env", {})
     kwargs.pop("env")
     env.update(dict(PATH=PATH, nix_seed=nix.out, stdenv=nix.out, busybox=bb.out))
-    return derivation(
-        name,
-        builder,
-        env=env,
-        **kwargs,
-    )
+    if builder == None:
+        builder = nix.out + "/bin/bash"
+    return derivation(name, builder, env=env, **kwargs,)

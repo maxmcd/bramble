@@ -12,13 +12,14 @@
   - [Project configuration](#project-configuration)
     - [Module metadata](#module-metadata)
     - [bramble.lock](#bramblelock)
+  - [Dependencies](#dependencies)
   - [Config language](#config-language)
     - [Sys module](#sys-module)
     - [Assert module](#assert-module)
     - [Files builtin](#files-builtin)
   - [Derivation](#derivation)
     - [Attributes](#attributes)
-    - [Dependencies](#dependencies)
+    - [Dependencies](#dependencies-1)
   - [Builds](#builds)
     - [URL Fetcher](#url-fetcher)
     - [Git Fetcher](#git-fetcher)
@@ -206,6 +207,8 @@ A project must include a module name. If it's expected that this project is goin
 ```
 
 The `bramble.lock` file stores hashes so that "fetch" builders like "fetch_url" and "fetch_git" can ensure the contents they are downloading have the expected content. This file will also include various hashes to ensure dependencies and sub-dependencies can be reliably re-assembled.
+
+### Dependencies
 
 ### Config language
 
