@@ -24,8 +24,7 @@ def self_reference():
         args=[
             "-c",
             """
-        cd $out
-        pwd > ./pwd
+        pwd > $out/pwd
         """,
         ],
     )

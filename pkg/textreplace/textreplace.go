@@ -2,14 +2,19 @@ package textreplace
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"io"
 	"strings"
 )
 
-var (
-	ErrNotSameLength = errors.New("old and new prefixes must be the same length")
-)
+type ErrNotSameLength struct {
+	old string
+	new string
+}
+
+func (e ErrNotSameLength) Error() string {
+	return fmt.Sprintf("old and new prefixes must be the same length, they are %q and %q", e.old, e.new)
+}
 
 // ReplaceStringsPrefix replaces the prefix of matching strings in a byte
 // stream. All values to be replaced must have the same prefix and that prefix
@@ -17,7 +22,7 @@ var (
 func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, old string, new string) (
 	replacements int, matches map[string]struct{}, err error) {
 	if len(old) != len(new) {
-		return 0, nil, ErrNotSameLength
+		return 0, nil, ErrNotSameLength{old, new}
 	}
 	longestValueLength := 0
 	for _, in := range values {
@@ -61,7 +66,7 @@ func ReplaceStringsPrefix(source io.Reader, output io.Writer, values []string, o
 func replaceStringsPrefixReplacer(source io.Reader, output io.Writer, values []string, old string, new string) (
 	err error) {
 	if len(old) != len(new) {
-		return ErrNotSameLength
+		return ErrNotSameLength{old, new}
 	}
 	longestValueLength := 0
 	for _, in := range values {
@@ -140,7 +145,7 @@ func CopyWithFrames(src io.Reader, dst io.Writer, buf []byte, overlapSize int, t
 
 func replaceBytesReplace(src io.Reader, dst io.Writer, old []byte, new []byte) (written int64, err error) {
 	if len(old) != len(new) {
-		return 0, ErrNotSameLength
+		return 0, ErrNotSameLength{string(old), string(new)}
 	}
 	return CopyWithFrames(src, dst, nil, len(old), func(b []byte) error {
 		copy(b, bytes.ReplaceAll(b, old, new))
@@ -150,7 +155,7 @@ func replaceBytesReplace(src io.Reader, dst io.Writer, old []byte, new []byte) (
 
 func ReplaceBytes(src io.Reader, dst io.Writer, old []byte, new []byte) (written int64, err error) {
 	if len(old) != len(new) {
-		return 0, ErrNotSameLength
+		return 0, ErrNotSameLength{string(old), string(new)}
 	}
 	return CopyWithFrames(src, dst, nil, len(old), func(b []byte) error {
 		return InPlaceReplaceAll(b, old, new)
@@ -163,7 +168,7 @@ func InPlaceReplaceAll(s, old, new []byte) (err error) {
 
 func InPlaceReplace(s, old, new []byte, n int) (err error) {
 	if len(old) != len(new) {
-		return ErrNotSameLength
+		return ErrNotSameLength{string(old), string(new)}
 	}
 
 	m := 0
