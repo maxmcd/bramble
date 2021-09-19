@@ -1,5 +1,6 @@
 ![](./notes/animated.svg)
 
+<h1 align="center">Bramble</h1>
 
 - [Project Status](#project-status)
   - [Feature Status](#feature-status)
