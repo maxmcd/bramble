@@ -242,9 +242,9 @@ When building a specific derivation the steps are as follows:
 10. Once the build is complete all output directories are hashed so that they can be placed in a folder that is a hash of their contents. Outputs are also searched for any references to dependencies so that the runtime dependencies can be noted. The hashing steps are as follows.
    1. The build output is tarred up into an archive.
    2. The mod times and user ids are stripped from the archive.
-   3. The archive is copied for hashing. The copy is scanned for this system's store path and replaced with the reference store path `/home/bramble/bramble/bramble_store_padding/bramb/`. This helps ensure outputs hash the same on different systems.
-   4. References to the output path in the copy are replaced with null bytes.
-   5. TODO TODO TODO: replace build directory with fixed known value so that random number isn't injected into builds?
+   3. References to the build directory are replaced with with a fixed known value so the random number isn't injected into builds. Files from this folder are discarded at the end of the build, so it's ok if we break references.
+   4. The archive is copied for hashing. The copy is scanned for this system's store path and replaced with the reference store path `/home/bramble/bramble/bramble_store_padding/bramb/`. This helps ensure outputs hash the same on different systems.
+   5. References to the output path in the copy are replaced with null bytes.
    6. The copy is hashed and a folder is created with the hash as the name.
    7. References to the output folder name are replaced with the hash name.
    8. The original archive is expanded into the hash-name folder.
