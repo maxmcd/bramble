@@ -12,5 +12,4 @@ gcc \
   -o $out/bin/simple ./simple.c
 
 $out/bin/simple
-
 patchelf --print-interpreter --print-soname --print-rpath $out/bin/simple

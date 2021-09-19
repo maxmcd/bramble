@@ -25,7 +25,8 @@ var (
 )
 
 func createAndParseCLI(args []string) (*ffcli.Command, error) {
-	var ()
+	buildFlagSet := flag.NewFlagSet("build", flag.ContinueOnError)
+	buildCheck := buildFlagSet.Bool("check", false, "verify that builds are reproducible by running them twice and comparing their output")
 	subcommands := []*ffcli.Command{
 		{
 			Name:       "build",
@@ -36,9 +37,12 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 				if err != nil {
 					return err
 				}
-				_, err = b.runBuildFromCLI("build", args)
+				_, err = b.runBuildFromCLI("build", args, buildOptions{
+					Check: *buildCheck,
+				})
 				return err
 			},
+			FlagSet: buildFlagSet,
 		},
 		{
 			Name:       "run",

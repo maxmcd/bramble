@@ -16,13 +16,17 @@ import (
 )
 
 func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(func() (project.ExecModuleOutput, error) {
+	return b.runBuild(buildOptions{}, func() (project.ExecModuleOutput, error) {
 		return output, nil
 	})
 }
 
-func (b bramble) runBuildFromCLI(command string, args []string) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(func() (output project.ExecModuleOutput, err error) {
+type buildOptions struct {
+	Check bool
+}
+
+func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
+	return b.runBuild(ops, func() (output project.ExecModuleOutput, err error) {
 		if len(args) > 0 {
 			// Building something specific
 			return b.project.ExecModule(project.ExecModuleInput{
@@ -57,7 +61,7 @@ func (b bramble) runBuildFromCLI(command string, args []string) (outputDerivatio
 	})
 }
 
-func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
+func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
 	output, err := execModule()
 	if err != nil {
 		return nil, err
@@ -108,11 +112,33 @@ func (b bramble) runBuild(execModule func() (project.ExecModuleOutput, error)) (
 		}
 		var didBuild bool
 		start := time.Now()
-		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv); err != nil {
+		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{}); err != nil {
 			return nil, err
 		}
+
+		if ops.Check {
+			secondBuildDrv, _, err := builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+				ForceBuild: true,
+			})
+			if err != nil {
+				return nil, err
+			}
+			for i := 0; i < len(buildDrv.Outputs); i++ {
+				a := buildDrv.Outputs[i].Path
+				b := secondBuildDrv.Outputs[i].Path
+				if a != b {
+					return nil, errors.Errorf(
+						"Derivation %s is not reproducible, output %s had output %s first and %s second",
+						buildDrv.Name,
+						buildDrv.OutputNames[i],
+						a, b,
+					)
+				}
+			}
+
+		}
 		ts := time.Since(start).String()
-		if !didBuild {
+		if !didBuild && !ops.Check {
 			ts = "cached"
 		}
 		fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)

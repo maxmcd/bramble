@@ -1,6 +1,5 @@
-![](./notes/bramble.svg)
+![](./notes/animated.svg)
 
-<h1> Bramble </h1>
 
 - [Project Status](#project-status)
   - [Feature Status](#feature-status)
@@ -17,13 +16,18 @@
     - [Assert module](#assert-module)
     - [Files builtin](#files-builtin)
   - [Derivation](#derivation)
+    - [Attributes](#attributes)
+    - [Dependencies](#dependencies)
+  - [Builds](#builds)
     - [URL Fetcher](#url-fetcher)
     - [Git Fetcher](#git-fetcher)
+    - [The build sandbox](#the-build-sandbox)
+    - [Recursive Builds](#recursive-builds)
 <hr>
 
 Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
 
-Bramble is a functional build system that intends to be a user-frendly, robust, and reliable way to build software. Here are some if the ideas behind it:
+Bramble is a functional build system that intends to be a user-friendly, robust, and reliable way to build software. Here are some if the ideas behind it:
 
 - **Project Based**: Every project has a `bramble.toml` and `bramble.lock` file that track dependencies and other metadata needed to build the project reliably.
 - **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break things.
@@ -182,11 +186,28 @@ That's it! Your first bramble build.
 
 ### Project configuration
 
+Every Project has a `bramble.toml` file that includes configuration information and a `bramble.lock` file that includes hashes and other metadata that are used to ensure that the project can be built reproducibly.
+
 #### Module metadata
+
+```toml
+[module]
+name = "github.com/maxmcd/bramble"
+```
+
+A project must include a module name. If it's expected that this project is going to be importable as a module then the module name must match the location of the repository where the module is stored.
 
 #### bramble.lock
 
+```toml
+[URLHashes]
+  "https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "2ae410370b8e9113968ffa6e52f38eea7f17df5f436bd6a69cc41c6ca01541a1"
+```
+
+The `bramble.lock` file stores hashes so that "fetch" builders like "fetch_url" and "fetch_git" can ensure the contents they are downloading have the expected content. This file will also include various hashes to ensure dependencies and sub-dependencies can be reliably re-assembled.
+
 ### Config language
+
 
 #### Sys module
 
@@ -196,6 +217,42 @@ That's it! Your first bramble build.
 
 ### Derivation
 
+#### Attributes
+
+#### Dependencies
+
+### Builds
+
+Bramble builds all derivations within a sandbox. There are OS-specific sandboxes that try and provide similar functionality.
+
+A tree of derivations is assembled to build. The tree is walked, compiling dependencies first, until all derivations are built. If a derivation has already been built (TODO: or is available in a remote store) it is skipped.
+
+When building a specific derivation the steps are as follows:
+
+1. Create a build directory. These are stored in the store (TODO: why?). They typically look something like this `/home/maxm/bramble/bramble_store_padding/bramble_/bramble_build_directory941760171`.
+2. Copy any file sources needed for this build into the build directory.
+3. Create folders for each output. They look something like this: `/home/maxm/bramble/bramble_store_padding/bramble_/bramble_build_directory451318742/`.
+4. If the derivation has a "fetch" builder then that specific builder is run to fetch files using the variables that have been passed.
+5. If the regular builder is used the derivation has to be prepared to be built. Paths in the derivation will reference a fixed known store path `/home/bramble/bramble/bramble_store_padding/bramb/`, so we must replace it with the store path (of equal length) used in this system.
+6. Once the derivation is ready to build the `builder`, `args`, and `env` attributes are taken and used to run a sandbox. The `builder` program is run and `args` are passed to that program. `env` values are loaded as environment variables in alphabetical order.
+7. The output folder locations are loaded by name into the environment variables as well. The value `$out` might have value `/home/maxm/bramble/bramble_store_padding/bramble_/bramble_build_directory451318742/`.
+8. The bramble store is mounted to the sandbox so that the build can access any store values that it needs for a build. All store outputs are read-only, but the build directory and all the outputs directories can be written to. (TODO: should we block access to other store directories?)
+9. If the build exits with a non-zero exit code it's assumed that the build has failed.
+10. Once the build is complete all output directories are hashed so that they can be placed in a folder that is a hash of their contents. Outputs are also searched for any references to dependencies so that the runtime dependencies can be noted. The hashing steps are as follows.
+   1. The build output is tarred up into an archive.
+   2. The mod times and user ids are stripped from the archive.
+   3. The archive is copied for hashing. The copy is scanned for this system's store path and replaced with the reference store path `/home/bramble/bramble/bramble_store_padding/bramb/`. This helps ensure outputs hash the same on different systems.
+   4. References to the output path in the copy are replaced with null bytes.
+   5. TODO TODO TODO: replace build directory with fixed known value so that random number isn't injected into builds?
+   6. The copy is hashed and a folder is created with the hash as the name.
+   7. References to the output folder name are replaced with the hash name.
+   8. The original archive is expanded into the hash-name folder.
+11. The build output hash is added to the derivation (along with all dependency output hashes) before being written to disk.
+12. The output folder locations and final derivation are returned.
+
 #### URL Fetcher
 #### Git Fetcher
 
+
+#### The build sandbox
+#### Recursive Builds

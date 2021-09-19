@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -42,7 +43,12 @@ type Builder struct {
 	URLHashes map[string]string
 }
 
-func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation) (builtDrv Derivation, didBuild bool, err error) {
+type BuildDerivationOptions struct {
+	// ForceBuild will make sure we build even if the derivation already exists
+	ForceBuild bool
+}
+
+func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
 	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
 	drv = drv.makeConsistentNullJSONValues()
 
@@ -53,7 +59,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation) (builtDrv
 	}
 	filename := drv.Filename()
 	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
-	if exists {
+	if exists && !opts.ForceBuild {
 		return drv, false, nil
 	}
 	logger.Print("Building derivation", filename)
@@ -173,19 +179,6 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 		return err
 	}
 
-	// gitDir := gitDrv.Env["git"]
-	// cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
-	// for k, v := range drv.Env {
-	// 	if k == "PATH" {
-	// 		v = os.Getenv("PATH") + ":" + v
-	// 	}
-	// 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	// }
-	// cmd.Stderr = os.Stderr
-	// cmd.Stdout = os.Stdout
-	// if err := cmd.Run(); err != nil {
-	// 	return err
-	// }
 	_ = hash
 	return nil
 }
@@ -347,6 +340,11 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 }
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string) (outputs map[string]Output, err error) {
+	// if drv.Name == "self-reference" {
+	// 	fmt.Println(drv.PrettyJSON(), outputPaths)
+	// 	panic("")
+	// }
+	fmt.Println(outputPaths)
 	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
 	defer region.End()
 
@@ -454,7 +452,6 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
-	pipeReader2, pipeWriter2 := io.Pipe()
 
 	// write the output files into an archive
 	go func() {
@@ -467,6 +464,8 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 			return
 		}
 	}()
+
+	pipeReader2, pipeWriter2 := io.Pipe()
 
 	// replace all the bramble store path prefixes with a known fixed value also
 	// write this byte stream out as a tar to unpack later as the final output
@@ -491,7 +490,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	go func() {
 		if _, err := textreplace.ReplaceBytes(
 			pipeReader2, hashOutput,
-			[]byte(storeFolder), make([]byte, len(storeFolder)),
+			[]byte(storeFolder), bytes.Repeat([]byte("x"), len(storeFolder)),
 		); err != nil {
 			errChan <- err
 			return
