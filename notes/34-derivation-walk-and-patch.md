@@ -3,7 +3,7 @@
 <h1> Bramble Derivation Walk and Patch </h1>
 
 - [Intro](#intro)
-- [Representing Derivations](#representing-derivations)
+- [What do derivations look like](#what-do-derivations-look-like)
 - [More complicated example](#more-complicated-example)
 - [Derivations that generate derivations](#derivations-that-generate-derivations)
 
@@ -14,10 +14,20 @@ The high level steps of a bramble build are as follows:
 2. Take any derivations that have been returned by the function call and assemble a build graph.
 3. Walk the graph, building each derivation once its dependencies have been built.
 
-
-## Representing Derivations
 Walking the derivation graph is complicated and requires a few tricky steps. This document walks through the walk.
-A few fields have been removed, but generally derivations look like this after they are generated from a starlark configuration.
+
+## What do derivations look like
+
+
+Here's a simple derivation defined in a `.bramble` file. `a` has no dependencies and `b` depends on `a`.
+
+```python
+def atob():
+    a = derivation("a", "a")
+    return derivation("b", a.out, args=[a.out])
+```
+
+After parsing and hashing each derivation we end up with an internal representation that looks like this:
 ```json
 {
     "ojsnyikh3g6gkg2wvzte7mocqbjrgo6y": {
