@@ -25,7 +25,40 @@ Each derivation has a hash (which is used as the key in this object/map) and var
 
 A build graph of the derivations above looks like so:
 
+![image](https://user-images.githubusercontent.com/283903/134381084-f61fedb1-2e36-4fd6-b101-5c647c90dd8e.png)
+<details>
+<summary>graphviz src</summary>
+
+```dot
+digraph {
+	compound = "true"
+	newrank = "true"
+	subgraph "root" {
+		"{ojsnyikh3g6gkg2wvzte7mocqbjrgo6y out}" -> "{uyfzbklpblwxplhwei63mtj3pnh2w3yr out}"
+	}
+}
+```
+</details>
+
+
+We use hashes to identify derivations because derivations are a [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). Every derivation contains references to its dependencies. If any of those dependencies change the hash of that derivation changes. For the rest of this document we'll use the derivation name instead of the hash to identify the derivations, but you can assume that we're actually referencing hashes in the real implementation instead. Therefore, the above graph would actually look like this:
+
 ![image](https://user-images.githubusercontent.com/283903/134198560-b6d31099-56d9-4eb6-acf3-0bcaf6b0b9c4.png)
+
+
+<details>
+<summary>graphviz src</summary>
+
+```dot
+digraph {
+	compound = "true"
+	newrank = "true"
+	subgraph "root" {
+		"{b out}" -> "{a out}"
+	}
+}
+```
+</details>
 
 
 Let’s look at a more complicated example. The following code is the rough derivation structure for compiling a “Hello World” program with `gcc`. Any code or build scripts have been omitted for brevity.
@@ -243,7 +276,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 	</details>
 
-2. Merge the graph output of hello_world with the previous build graph.
+2. Merge the graph output of hello_world with the previous build graph. The lighter green nodes are replaced with identical nodes and they've already been built. The dark green nodes are new and need to be built.
 
 	![image](https://user-images.githubusercontent.com/283903/134378894-028fa4c1-90b3-4aaf-8601-49cb74f14c46.png)
 
