@@ -25,7 +25,7 @@ Each derivation has a hash (which is used as the key in this object/map) and var
 
 A build graph of the derivations above looks like so:
 
-![image](https://user-images.githubusercontent.com/283903/134381084-f61fedb1-2e36-4fd6-b101-5c647c90dd8e.png)
+![image](https://user-images.githubusercontent.com/283903/134383026-0202b3d6-0b44-4bf9-99ae-860392b72f5f.png)
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
 
@@ -46,8 +46,7 @@ digraph {
 
 We use hashes to identify derivations because derivations are a [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). Every derivation contains references to its dependencies. If any of those dependencies change the hash of that derivation changes. For the rest of this document we'll use the derivation name instead of the hash to identify the derivations, but you can assume that we're actually referencing hashes in the real implementation instead. Therefore, the above graph would actually look like this:
 
-![image](https://user-images.githubusercontent.com/283903/134198560-b6d31099-56d9-4eb6-acf3-0bcaf6b0b9c4.png)
-
+![image](https://user-images.githubusercontent.com/283903/134383075-a75cefeb-d2b3-43f3-81d7-ddc5f9bf9ab5.png)
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -90,7 +89,7 @@ Glibc is being built. The builder is the `sh` binary from the busybox derivation
 
 This function has two derivation outputs, our man pages output and our “hello world” output. The man pages derivation takes the docs output from glibc, gcc and linux_headers. All together the dependency graph for these derivations looks like this:
 
-![image](https://user-images.githubusercontent.com/283903/134198487-1f6ef2a3-1094-4435-89e4-c818a04e506c.png)
+![image](https://user-images.githubusercontent.com/283903/134383149-701faac5-37ba-42a1-a797-3eeba6d901dd.png)
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -181,7 +180,7 @@ Let's go back to the "hello world" compilation example. What if instead of a sin
 
 Let's remove the man pages build and cut the graph down to just the build steps so that we can get a simple view.
 
-![image](https://user-images.githubusercontent.com/283903/134360616-2fa77856-d406-4462-ac69-14931e79f5bb.png)
+![image](https://user-images.githubusercontent.com/283903/134383305-8dc589e4-bda6-4463-82ff-3875ac6a0658.png)
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -216,7 +215,7 @@ We've added `hellox2` as well. Let's pretend this is a job that uses the `hello_
 
 So let's say we build the graph and `hello_world` outputs a new derivation graph instead of compiling directly. It outputs the following graph:
 
-![image](https://user-images.githubusercontent.com/283903/134377143-083bdc95-b62f-40d1-bfdb-c68b421b2ddd.png)
+![image](https://user-images.githubusercontent.com/283903/134383363-dc5fa234-e74b-48a1-9482-15d20f57597f.png)
 
 
 <details>
@@ -261,7 +260,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 1. Remove this node:
 
-	![image](https://user-images.githubusercontent.com/283903/134377930-ff6db770-0e09-4017-b25a-b7edcf6da26c.png)
+	![image](https://user-images.githubusercontent.com/283903/134383594-0da6cd22-495a-49dc-a639-13076e17493e.png)
 
 
 	<details>
@@ -271,6 +270,9 @@ This graph is very similar to our build graph because the outputted build steps 
 	digraph {
 		compound = "true"
 		newrank = "true"
+      	graph [truecolor=true bgcolor="#00000000"]
+      	node [style=filled fillcolor="#ffffff" color="#666666"]
+      	edge [color="#666666"]
 		subgraph "root" {
 			"{hello_world out}" [fillcolor = red, style=filled]
 			"{hello_world out}" -> "{glibc out}"
@@ -293,7 +295,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 2. Merge the graph output of hello_world with the previous build graph. The lighter green nodes are replaced with identical nodes and they've already been built. The dark green nodes are new and need to be built.
 
-	![image](https://user-images.githubusercontent.com/283903/134378894-028fa4c1-90b3-4aaf-8601-49cb74f14c46.png)
+	![image](https://user-images.githubusercontent.com/283903/134383652-2981500f-497f-4e4c-91ac-c7d99d4d3711.png)
 
 	<details>
 	<summary><sub><sup>graphviz src</sub></sup></summary>
@@ -302,6 +304,9 @@ This graph is very similar to our build graph because the outputted build steps 
 	digraph {
 		compound = "true"
 		newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 		subgraph "root" {
 			"{hello_world_expanded out}" [fillcolor = green, style=filled]
 			"{foo.c out}" [fillcolor = green, style=filled]
