@@ -1,5 +1,22 @@
-# Bramble Derivation Walk and Patch
 
+
+<h1> Bramble Derivation Walk and Patch </h1>
+
+- [Intro](#intro)
+- [Representing Derivations](#representing-derivations)
+- [More complicated example](#more-complicated-example)
+- [Derivations that generate derivations](#derivations-that-generate-derivations)
+
+## Intro
+The high level steps of a bramble build are as follows:
+
+1. Parse startlark config files and call a single build function.
+2. Take any derivations that have been returned by the function call and assemble a build graph.
+3. Walk the graph, building each derivation once its dependencies have been built.
+
+
+## Representing Derivations
+Walking the derivation graph is complicated and requires a few tricky steps. This document walks through the walk.
 A few fields have been removed, but generally derivations look like this after they are generated from a starlark configuration.
 ```json
 {
@@ -44,7 +61,7 @@ digraph {
 </details>
 
 
-We use hashes to identify derivations because derivations are a [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). Every derivation contains references to its dependencies. If any of those dependencies change the hash of that derivation changes. For the rest of this document we'll use the derivation name instead of the hash to identify the derivations, but you can assume that we're actually referencing hashes in the real implementation instead. Therefore, the above graph would actually look like this:
+We use hashes to identify derivations because a graph of derivations is a [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). Every derivation contains references to its dependencies. If any of those dependencies change the hash of that derivation changes. For the rest of this document we'll use the derivation name instead of the hash to identify the derivations, but you can assume that we're actually referencing hashes in the real implementation instead. Therefore, the above graph would actually look like this. How nice.
 
 <p align=center><img src="https://user-images.githubusercontent.com/283903/134383075-a75cefeb-d2b3-43f3-81d7-ddc5f9bf9ab5.png" /></p>
 
@@ -65,6 +82,7 @@ digraph {
 ```
 </details>
 
+## More complicated example
 
 Let’s look at a more complicated example. The following code is the rough derivation structure for compiling a “Hello World” program with `gcc`. Any code or build scripts have been omitted for brevity.
 
@@ -166,7 +184,7 @@ Once "a" has finished building it returns the output location. The "out" output 
 ```
 
 
-## Graph Expansion
+## Derivations that generate derivations
 
 Building a static derivation graph is relatively straightforward, but what about derivations that output other derivations? In certain instances we want to support a derivation that creates other derivations. This could be very helpful with ergonomics. Think about a few instances:
 
