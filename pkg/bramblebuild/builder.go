@@ -46,6 +46,8 @@ type Builder struct {
 type BuildDerivationOptions struct {
 	// ForceBuild will make sure we build even if the derivation already exists
 	ForceBuild bool
+
+	Shell bool
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
@@ -64,7 +66,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	}
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
-	if drv, err = b.buildDerivation(ctx, drv, false); err != nil {
+	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
 	// TODO: lock store on write
@@ -333,7 +335,8 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		Mounts: mounts,
 	}
 	if shell {
-		sbx.Args = nil
+		fmt.Printf("Opening shell for derivation %q\n", drv.Name)
+		sbx.Args = []string{builderLocation}
 		sbx.Stdin = os.Stdin
 	}
 	return sbx.Run(ctx)

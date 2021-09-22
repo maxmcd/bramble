@@ -23,6 +23,7 @@ func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDeri
 
 type buildOptions struct {
 	Check bool
+	Shell bool
 }
 
 func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
@@ -67,10 +68,12 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 		return nil, err
 	}
 
+	if len(output.Output) != 1 && ops.Shell {
+		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
+	}
 	builder := b.store.NewBuilder(false, b.project.URLHashes())
 
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
-	// allDerivations := []build.Derivation{}
 	var derivationDataLock sync.Mutex
 
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
@@ -112,7 +115,21 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 		}
 		var didBuild bool
 		start := time.Now()
-		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{}); err != nil {
+
+		runShell := false
+		if len(output.Output) == 1 && ops.Shell {
+			for k := range output.Output {
+				// This is the output derivation being built!
+				if k == dep.Hash {
+					runShell = true
+				}
+			}
+		}
+
+		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+			Shell:      runShell,
+			ForceBuild: runShell,
+		}); err != nil {
 			return nil, err
 		}
 
@@ -135,7 +152,6 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 					)
 				}
 			}
-
 		}
 		ts := time.Since(start).String()
 		if !didBuild && !ops.Check {

@@ -234,9 +234,9 @@ func (drv Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error
 	// If there are multiple build outputs we'll need to create a fake root and
 	// connect all of the build outputs to our fake root.
 	if len(dos) > 1 {
-		graph.Add(ds.FakeDAGRoot)
+		graph.Add(ds.FakeRoot)
 		for _, do := range dos {
-			graph.Connect(dag.BasicEdge(ds.FakeDAGRoot, do))
+			graph.Connect(dag.BasicEdge(ds.FakeRoot, do))
 		}
 	}
 	for _, do := range dos {

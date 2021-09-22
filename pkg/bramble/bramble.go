@@ -17,6 +17,7 @@ func newBramble() (b bramble, err error) {
 	if b.store, err = build.NewStore(""); err != nil {
 		return
 	}
+
 	b.store.RegisterGetGit(b.runGit)
 	return b, nil
 }

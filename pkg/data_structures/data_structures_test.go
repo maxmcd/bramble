@@ -46,15 +46,15 @@ func Test_mergeGraphs(t *testing.T) {
 				quickGraph("3-4"),
 			},
 			// These graphs are disconnected, so a fake root is added
-			want: quickGraph("1-2", "3-4", FakeDAGRoot+"-3", FakeDAGRoot+"-1"),
+			want: quickGraph("1-2", "3-4", FakeRoot+"-3", FakeRoot+"-1"),
 		},
 		{
 			name: "already using fakeRoot",
 			args: []*dag.AcyclicGraph{
-				quickGraph("1-2", FakeDAGRoot+"-1"),
+				quickGraph("1-2", FakeRoot+"-1"),
 				quickGraph("3-4"),
 			},
-			want: quickGraph("1-2", "3-4", FakeDAGRoot+"-3", FakeDAGRoot+"-1"),
+			want: quickGraph("1-2", "3-4", FakeRoot+"-3", FakeRoot+"-1"),
 		},
 	}
 	for _, tt := range tests {

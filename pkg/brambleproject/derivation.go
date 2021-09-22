@@ -134,11 +134,33 @@ func (drv Derivation) AttrNames() (out []string) {
 	return drv.Outputs
 }
 
-func (drv Derivation) patchDepedencyReferences(buildOutputs []BuildOutput) Derivation {
+func (drv Derivation) patchDependencyReferences(buildOutputs []BuildOutput) Derivation {
 	j := drv.json()
 	for _, bo := range buildOutputs {
 		j = strings.ReplaceAll(j, fmt.Sprintf(derivationTemplate, bo.Dep.Hash, bo.Dep.Output), bo.OutputPath)
 	}
+
+	var out Derivation
+	_ = json.Unmarshal([]byte(j), &out)
+	return out
+}
+
+// patchDerivationReferences replaces references to one derivation with the
+// other. We explicitly pass the old hash in case the derivations content has
+// been changed and the originally referenced hash has changed.
+func (drv Derivation) patchDerivationReferences(oldHash string, old, new Derivation) Derivation {
+	if !(len(old.Outputs) == 1 &&
+		len(new.Outputs) == 1 &&
+		new.Outputs[0] == old.Outputs[0] &&
+		old.Outputs[0] == "out") {
+		// Just to be sure this isn't used incorrectly, but we currently validate that this is true
+		// TODO: validate that this is true
+		panic("can't patch a derivation with another derivation unless they only have the default outputs")
+	}
+	j := drv.json()
+	j = strings.ReplaceAll(j,
+		fmt.Sprintf(derivationTemplate, new.hash(), new.Outputs[0]),
+		fmt.Sprintf(derivationTemplate, oldHash, new.Outputs[0]))
 
 	var out Derivation
 	_ = json.Unmarshal([]byte(j), &out)

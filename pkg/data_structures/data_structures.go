@@ -8,10 +8,10 @@ import (
 	"github.com/maxmcd/dag"
 )
 
-// FakeDAGRoot is used when we have multiple build outputs, or "roots" in our
+// FakeRoot is used when we have multiple build outputs, or "roots" in our
 // graph so we need to tie them to a single fake root so that we still have a
 // value DAG.
-const FakeDAGRoot = "fakeDAGRoot"
+const FakeRoot = "fake root"
 
 // AcyclicGraph
 type AcyclicGraph struct {
@@ -23,8 +23,12 @@ func NewAcyclicGraph() *AcyclicGraph {
 }
 
 func PrintDot(ag *dag.AcyclicGraph) {
+	fmt.Println(StringDot(ag))
+}
+
+func StringDot(ag *dag.AcyclicGraph) string {
 	graphString := string(ag.Dot(&dag.DotOpts{DrawCycles: true, Verbose: true}))
-	fmt.Println(strings.ReplaceAll(graphString, "\"[root] ", "\""))
+	return strings.ReplaceAll(graphString, "\"[root] ", "\"")
 }
 
 func MergeGraphs(graphs ...*dag.AcyclicGraph) *dag.AcyclicGraph {
@@ -47,10 +51,10 @@ func MergeGraphs(graphs ...*dag.AcyclicGraph) *dag.AcyclicGraph {
 
 	roots := graphRoots(out)
 	if len(roots) != 1 {
-		out.Add(FakeDAGRoot)
+		out.Add(FakeRoot)
 		for _, root := range roots {
-			if root != FakeDAGRoot {
-				out.Connect(dag.BasicEdge(FakeDAGRoot, root))
+			if root != FakeRoot {
+				out.Connect(dag.BasicEdge(FakeRoot, root))
 			}
 		}
 	}

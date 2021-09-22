@@ -21,3 +21,83 @@ def chain():
     c = derivation("c", b.out, args=[a.out])
     return c
 
+
+# Testing dynamic derivations, we're going to have "c" return a derivation graph
+# that is re-added to the tree. We start with `first_graph` and then define c's expected output
+# with `replace_c_with`. `expected_result` is the manually created result, there is no "c"
+def first_graph():
+    a = derivation("a", "a")
+    b = derivation("b", a.out, args=[a.out])
+    c = derivation(
+        "c", "derivation_output", args=[b.out, b.out]
+    )  # require that builder with "derivation_output" only has a single output
+    d = derivation("d", c.out, args=[c.out])
+    e = derivation("e", d.out, args=[d.out])
+    return e
+
+
+def replace_c_with():
+    a = derivation("a", "a")
+    b = derivation("b", a.out, args=[a.out])
+    y = derivation("y", b.out, args=[b.out])
+    return derivation("x", y.out, args=[y.out])
+
+
+def expected_result():
+    a = derivation("a", "a")
+    b = derivation("b", a.out, args=[a.out])
+    y = derivation("y", b.out, args=[b.out])
+    c = derivation("x", y.out, args=[y.out])
+    d = derivation("d", c.out, args=[c.out])
+    e = derivation("e", d.out, args=[d.out])
+    return e
+
+
+# C is expanded
+# a -> b -> c
+#
+# Do we remove c
+# a -> b -> y -> x
+#
+# or does c exist? c has unusual output, so it shouldn't really be run? do we just erase it?
+# a -> b -> y -> c
+# b -> c -> x
+
+
+def expected_result_add():
+    a = derivation("a", "a")
+    b = derivation("b", a.out, args=[a.out])
+    y = derivation("y", b.out, args=[b.out])
+    c = derivation("c", b.out, args=[b.out])
+    x = derivation("x", y.out, args=[y.out])
+    d = derivation("d", x.out, args=[x.out])
+    return derivation("e", d.out, args=[d.out])
+    # D has no dependency on c, so this is confusing...
+
+
+# fmt: off
+def gcc_hello_world():
+    bb = derivation("busybox", "fetch_url", env={"url": "foo"})
+    linux_headers = derivation("linux_headers", bb.out + "/bin/sh", outputs=["out", "doc"])
+    glibc = derivation("glibc", bb.out + "/bin/sh", env={"linux_headers": linux_headers}, outputs=["out", "doc"])
+    gcc = derivation("gcc", bb.out + "/bin/sh", env={"linux_headers": linux_headers, "glibc": glibc}, outputs=["out", "doc"])
+    man = derivation("man", bb.out + "/bin/sh", env={"linux_headers": linux_headers.doc, "glibc": glibc.doc, "gcc": gcc.doc}, outputs=["out"])
+    hello = derivation("hello_world", bb.out + "/bin/sh", env={"linux_headers": linux_headers, "glibc": glibc, "gcc": gcc})
+    hellox2 = derivation("hellox2", bb.out + "/bin/sh",
+        args=["-c", "echo \"$($hello/bin/hello) $($hello/bin/hello)\" > $out/out"],
+        env={"hello": hello})
+    return [hellox2]
+# fmt: on
+
+
+# fmt: off
+def expanded_compile():
+    bb = derivation("busybox", "fetch_url", env={"url": "foo"})
+    linux_headers = derivation("linux_headers", bb.out + "/bin/sh", outputs=["out", "doc"])
+    glibc = derivation("glibc", bb.out + "/bin/sh", env={"linux_headers": linux_headers}, outputs=["out", "doc"])
+    gcc = derivation("gcc", bb.out + "/bin/sh", env={"linux_headers": linux_headers, "glibc": glibc}, outputs=["out", "doc"])
+    foo = derivation("foo.c", bb.out + "/bin/sh", env={"linux_headers": linux_headers, "glibc": glibc.out, "gcc": gcc.out})
+    bar = derivation("bar.c", bb.out + "/bin/sh", env={"linux_headers": linux_headers, "glibc": glibc.out, "gcc": gcc.out})
+    hello = derivation("hello_world_expanded", bb.out + "/bin/sh", env={"foo":foo, "bar":bar, "linux_headers": linux_headers.out, "glibc": glibc.out, "gcc": gcc.out})
+    return hello
+# fmt: on

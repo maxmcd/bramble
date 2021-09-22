@@ -36,7 +36,7 @@ package brambleproject
 // 	errors := graph.Walk(func(v dag.Vertex) error {
 // 		lock.Lock() // Serialize
 // 		defer lock.Unlock()
-// 		if v == ds.FakeDAGRoot {
+// 		if v == ds.FakeRoot {
 // 			return nil
 // 		}
 // 		do := v.(DerivationOutput)
@@ -61,7 +61,7 @@ package brambleproject
 // 		oldTemplateName := fmt.Sprintf(UnbuiltDerivationOutputTemplate, do.Filename, do.OutputName)
 // 		newTemplateName := drv.String()
 // 		for _, edge := range graph.EdgesTo(v) {
-// 			if edge.Source() == ds.FakeDAGRoot {
+// 			if edge.Source() == ds.FakeRoot {
 // 				continue
 // 			}
 // 			childDO := edge.Source().(DerivationOutput)

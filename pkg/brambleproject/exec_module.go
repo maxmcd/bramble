@@ -2,7 +2,6 @@ package brambleproject
 
 import (
 	"flag"
-	"fmt"
 	"sort"
 	"sync"
 
@@ -96,8 +95,8 @@ func (emo ExecModuleOutput) buildDependencyGraph() (graph *dag.AcyclicGraph, err
 	graph = &dag.AcyclicGraph{}
 	for _, outputDrv := range emo.Output {
 		subGraph := &dag.AcyclicGraph{}
-		var processDepedencies func(drv Derivation, dep Dependency) error
-		processDepedencies = func(drv Derivation, dep Dependency) error {
+		var processDependencies func(drv Derivation, dep Dependency) error
+		processDependencies = func(drv Derivation, dep Dependency) error {
 			subGraph.Add(dep)
 			for _, id := range drv.Dependencies {
 				inputDrv, found := emo.AllDerivations[id.Hash]
@@ -109,7 +108,7 @@ func (emo ExecModuleOutput) buildDependencyGraph() (graph *dag.AcyclicGraph, err
 				}
 				subGraph.Add(id)
 				subGraph.Connect(dag.BasicEdge(dep, id))
-				if err := processDepedencies(inputDrv, id); err != nil {
+				if err := processDependencies(inputDrv, id); err != nil {
 					return err
 				}
 			}
@@ -119,82 +118,19 @@ func (emo ExecModuleOutput) buildDependencyGraph() (graph *dag.AcyclicGraph, err
 		// connect all of the build outputs to our fake root.
 		outputs := outputDrv.outputsAsDependencies()
 		if len(outputs) > 1 {
-			subGraph.Add(ds.FakeDAGRoot)
+			subGraph.Add(ds.FakeRoot)
 			for _, o := range outputs {
-				subGraph.Connect(dag.BasicEdge(ds.FakeDAGRoot, o))
+				subGraph.Connect(dag.BasicEdge(ds.FakeRoot, o))
 			}
 		}
 		for _, dep := range outputs {
-			if err = processDepedencies(outputDrv, dep); err != nil {
+			if err = processDependencies(outputDrv, dep); err != nil {
 				return nil, err
 			}
 		}
 		ds.MergeGraphs(graph, subGraph)
 	}
 	return graph, nil
-}
-
-type BuildOutput struct {
-	Dep        Dependency
-	OutputPath string
-}
-
-func (emo ExecModuleOutput) WalkAndPatch(maxParallel int, fn func(dep Dependency, drv Derivation) (buildOutputs []BuildOutput, err error)) error {
-	graph, err := emo.buildDependencyGraph()
-	if err != nil {
-		return err
-	}
-
-	// ds.PrintDot(graph)
-
-	drvMap := newDrvReplaceableMap()
-	for _, drv := range emo.AllDerivations {
-		drvMap.add(drv)
-	}
-	semaphore := make(chan struct{}, maxParallel)
-	errs := graph.Walk(func(v dag.Vertex) error {
-		if v == ds.FakeDAGRoot {
-			return nil
-		}
-		// Limit parallism
-		if maxParallel != 0 {
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-		}
-		dep := v.(Dependency)
-		oldHash := dep.Hash
-		drv, found := drvMap.lockDrv(oldHash)
-		defer drvMap.unlockDrv(oldHash)
-		if !found {
-			return errors.Errorf("derivation not found in DerivationGraph with hash %q", oldHash)
-		}
-		buildOutputs, err := fn(dep, drv)
-		if err != nil {
-			fmt.Printf("%+v\n", err)
-			return err
-		}
-		// Now find all immediate dependents of this output and patch them to
-		// contain the new template value.
-		for _, edge := range graph.EdgesTo(v) {
-			if edge.Source() == ds.FakeDAGRoot {
-				continue
-			}
-			dep := edge.Source().(Dependency)
-			edgeDOHash := dep.Hash
-			edgeDrv, found := drvMap.lockDrv(edgeDOHash)
-			if !found {
-				return errors.Errorf("derivation not found in DerivationGraph with hash %q", oldHash)
-			}
-			drvMap.update(edgeDOHash, edgeDrv.patchDepedencyReferences(buildOutputs))
-			drvMap.unlockDrv(edgeDOHash)
-		}
-		return nil
-	})
-	if len(errs) != 0 {
-		return errors.New(fmt.Sprint(errs))
-	}
-
-	return nil
 }
 
 func (rt *runtime) allDerivationDependencies(in map[string]Derivation) (out map[string]Derivation) {

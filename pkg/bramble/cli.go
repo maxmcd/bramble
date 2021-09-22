@@ -61,7 +61,16 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			Name:       "shell",
 			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 			ShortHelp:  "Open a shell from a derivation",
-			Exec:       func(ctx context.Context, args []string) error { err := shell(ctx, args); return err },
+			Exec: func(ctx context.Context, args []string) error {
+				b, err := newBramble()
+				if err != nil {
+					return err
+				}
+				_, err = b.runBuildFromCLI("build", args, buildOptions{
+					Shell: true,
+				})
+				return err
+			},
 		},
 		{
 			Name:       "repl",
@@ -228,10 +237,6 @@ func DefaultUsageFunc(c *ffcli.Command) string {
 func countFlags(fs *flag.FlagSet) (n int) {
 	fs.VisitAll(func(*flag.Flag) { n++ })
 	return n
-}
-
-func shell(ctx context.Context, args []string) (err error) {
-	return
 }
 
 func repl(_ []string) (err error) {

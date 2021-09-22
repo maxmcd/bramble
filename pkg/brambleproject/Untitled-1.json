@@ -1,0 +1,27 @@
+{
+    "ojsnyikh3g6gkg2wvzte7mocqbjrgo6y": {
+        "Args": [
+            "{{ uyfzbklpblwxplhwei63mtj3pnh2w3yr:out }}"
+        ],
+        "Builder": "{{ uyfzbklpblwxplhwei63mtj3pnh2w3yr:out }}",
+        "Dependencies": [
+            {
+                "Hash": "uyfzbklpblwxplhwei63mtj3pnh2w3yr",
+                "Output": "out"
+            }
+        ],
+        "Name": "b",
+        "Outputs": [
+            "out"
+        ]
+    },
+    "uyfzbklpblwxplhwei63mtj3pnh2w3yr": {
+        "Args": null,
+        "Builder": "a",
+        "Dependencies": null,
+        "Name": "a",
+        "Outputs": [
+            "out"
+        ]
+    }
+}
