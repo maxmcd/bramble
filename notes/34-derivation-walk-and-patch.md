@@ -27,7 +27,7 @@ A build graph of the derivations above looks like so:
 
 ![image](https://user-images.githubusercontent.com/283903/134381084-f61fedb1-2e36-4fd6-b101-5c647c90dd8e.png)
 <details>
-<summary><small>graphviz src</small></summary>
+<summary><sub><sup>graphviz src</sub></sup></summary>
 
 ```dot
 digraph {
@@ -47,7 +47,7 @@ We use hashes to identify derivations because derivations are a [merkle tree](ht
 
 
 <details>
-<summary><small>graphviz src</small></summary>
+<summary><sub><sup>graphviz src</sub></sup></summary>
 
 ```dot
 digraph {
@@ -87,7 +87,7 @@ This function has two derivation outputs, our man pages output and our “hello 
 ![image](https://user-images.githubusercontent.com/283903/134198487-1f6ef2a3-1094-4435-89e4-c818a04e506c.png)
 
 <details>
-<summary><small>graphviz src</small></summary>
+<summary><sub><sup>graphviz src</sub></sup></summary>
 
 ```dot
 digraph {
@@ -175,7 +175,7 @@ Let's remove the man pages build and cut the graph down to just the build steps 
 ![image](https://user-images.githubusercontent.com/283903/134360616-2fa77856-d406-4462-ac69-14931e79f5bb.png)
 
 <details>
-<summary><small>graphviz src</small></summary>
+<summary><sub><sup>graphviz src</sub></sup></summary>
 
 ```dot
 digraph {
@@ -208,7 +208,7 @@ So let's say we build the graph and `hello_world` outputs a new derivation graph
 
 
 <details>
-<summary><small>graphviz src</small></summary>
+<summary><sub><sup>graphviz src</sub></sup></summary>
 
 ```dot
 digraph {
@@ -250,7 +250,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 
 	<details>
-	<summary><small>graphviz src</small></summary>
+	<summary><sub><sup>graphviz src</sub></sup></summary>
 
 	```dot
 	digraph {
@@ -281,7 +281,7 @@ This graph is very similar to our build graph because the outputted build steps 
 	![image](https://user-images.githubusercontent.com/283903/134378894-028fa4c1-90b3-4aaf-8601-49cb74f14c46.png)
 
 	<details>
-	<summary><small>graphviz src</small></summary>
+	<summary><sub><sup>graphviz src</sub></sup></summary>
 
 	```dot
 	digraph {
