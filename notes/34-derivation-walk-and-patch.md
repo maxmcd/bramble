@@ -25,7 +25,7 @@ Each derivation has a hash (which is used as the key in this object/map) and var
 
 A build graph of the derivations above looks like so:
 
-![image](https://user-images.githubusercontent.com/283903/134383026-0202b3d6-0b44-4bf9-99ae-860392b72f5f.png)
+<p align=center><img src="https://user-images.githubusercontent.com/283903/134383026-0202b3d6-0b44-4bf9-99ae-860392b72f5f.png" /></p>
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
 
@@ -46,7 +46,7 @@ digraph {
 
 We use hashes to identify derivations because derivations are a [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). Every derivation contains references to its dependencies. If any of those dependencies change the hash of that derivation changes. For the rest of this document we'll use the derivation name instead of the hash to identify the derivations, but you can assume that we're actually referencing hashes in the real implementation instead. Therefore, the above graph would actually look like this:
 
-![image](https://user-images.githubusercontent.com/283903/134383075-a75cefeb-d2b3-43f3-81d7-ddc5f9bf9ab5.png)
+<p align=center><img src="https://user-images.githubusercontent.com/283903/134383075-a75cefeb-d2b3-43f3-81d7-ddc5f9bf9ab5.png" /></p>
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -89,7 +89,7 @@ Glibc is being built. The builder is the `sh` binary from the busybox derivation
 
 This function has two derivation outputs, our man pages output and our “hello world” output. The man pages derivation takes the docs output from glibc, gcc and linux_headers. All together the dependency graph for these derivations looks like this:
 
-![image](https://user-images.githubusercontent.com/283903/134383149-701faac5-37ba-42a1-a797-3eeba6d901dd.png)
+<p align=center><img src="https://user-images.githubusercontent.com/283903/134383149-701faac5-37ba-42a1-a797-3eeba6d901dd.png" /></p>
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -180,7 +180,7 @@ Let's go back to the "hello world" compilation example. What if instead of a sin
 
 Let's remove the man pages build and cut the graph down to just the build steps so that we can get a simple view.
 
-![image](https://user-images.githubusercontent.com/283903/134383305-8dc589e4-bda6-4463-82ff-3875ac6a0658.png)
+<p align=center><img src="https://user-images.githubusercontent.com/283903/134383305-8dc589e4-bda6-4463-82ff-3875ac6a0658.png" /></p>
 
 <details>
 <summary><sub><sup>graphviz src</sub></sup></summary>
@@ -215,7 +215,7 @@ We've added `hellox2` as well. Let's pretend this is a job that uses the `hello_
 
 So let's say we build the graph and `hello_world` outputs a new derivation graph instead of compiling directly. It outputs the following graph:
 
-![image](https://user-images.githubusercontent.com/283903/134383363-dc5fa234-e74b-48a1-9482-15d20f57597f.png)
+<p align=center><img src="https://user-images.githubusercontent.com/283903/134383363-dc5fa234-e74b-48a1-9482-15d20f57597f.png" /></p>
 
 
 <details>
@@ -260,7 +260,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 1. Remove this node:
 
-	![image](https://user-images.githubusercontent.com/283903/134383594-0da6cd22-495a-49dc-a639-13076e17493e.png)
+	<p align=center><img src="https://user-images.githubusercontent.com/283903/134383594-0da6cd22-495a-49dc-a639-13076e17493e.png" /></p>
 
 
 	<details>
@@ -295,7 +295,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 2. Merge the graph output of hello_world with the previous build graph. The lighter green nodes are replaced with identical nodes and they've already been built. The dark green nodes are new and need to be built.
 
-	![image](https://user-images.githubusercontent.com/283903/134383652-2981500f-497f-4e4c-91ac-c7d99d4d3711.png)
+	<p align=center><img src="https://user-images.githubusercontent.com/283903/134383652-2981500f-497f-4e4c-91ac-c7d99d4d3711.png" /></p>
 
 	<details>
 	<summary><sub><sup>graphviz src</sub></sup></summary>
