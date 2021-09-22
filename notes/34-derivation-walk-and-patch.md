@@ -213,84 +213,84 @@ This graph is very similar to our build graph because the outputted build steps 
 
 1. Remove this node:
 
-![image](https://user-images.githubusercontent.com/283903/134377930-ff6db770-0e09-4017-b25a-b7edcf6da26c.png)
+	![image](https://user-images.githubusercontent.com/283903/134377930-ff6db770-0e09-4017-b25a-b7edcf6da26c.png)
 
 
-<details>
-<summary>graphviz src</summary>
+	<details>
+	<summary>graphviz src</summary>
 
-```dot
-digraph {
-	compound = "true"
-	newrank = "true"
-	subgraph "root" {
-	    "{hello_world out}" [fillcolor = red, style=filled]
-		"{hello_world out}" -> "{glibc out}"
-		"{hello_world out}" -> "{linux_headers out}"
-		"{hello_world out}" -> "{gcc out}"
-		"{hello_world out}" -> "{busybox out}"
-		"{hellox2 out}" -> "{hello_world out}"
-		"{hellox2 out}" -> "{busybox out}"
-		"{glibc out}" -> "{linux_headers out}"
-		"{glibc out}" -> "{busybox out}"
-		"{linux_headers out}" -> "{busybox out}"
-		"{gcc out}" -> "{glibc out}"
-		"{gcc out}" -> "{linux_headers out}"
-		"{gcc out}" -> "{busybox out}"
+	```dot
+	digraph {
+		compound = "true"
+		newrank = "true"
+		subgraph "root" {
+			"{hello_world out}" [fillcolor = red, style=filled]
+			"{hello_world out}" -> "{glibc out}"
+			"{hello_world out}" -> "{linux_headers out}"
+			"{hello_world out}" -> "{gcc out}"
+			"{hello_world out}" -> "{busybox out}"
+			"{hellox2 out}" -> "{hello_world out}"
+			"{hellox2 out}" -> "{busybox out}"
+			"{glibc out}" -> "{linux_headers out}"
+			"{glibc out}" -> "{busybox out}"
+			"{linux_headers out}" -> "{busybox out}"
+			"{gcc out}" -> "{glibc out}"
+			"{gcc out}" -> "{linux_headers out}"
+			"{gcc out}" -> "{busybox out}"
+		}
 	}
-}
-```
+	```
 
-</details>
+	</details>
 
 2. Merge the graph output of hello_world with the previous build graph.
 
-![image](https://user-images.githubusercontent.com/283903/134378894-028fa4c1-90b3-4aaf-8601-49cb74f14c46.png)
+	![image](https://user-images.githubusercontent.com/283903/134378894-028fa4c1-90b3-4aaf-8601-49cb74f14c46.png)
 
-<details>
-<summary>graphviz src</summary>
+	<details>
+	<summary>graphviz src</summary>
 
-```dot
-digraph {
-	compound = "true"
-	newrank = "true"
-	subgraph "root" {
-	    "{hello_world_expanded out}" [fillcolor = green, style=filled]
-	    "{foo.c out}" [fillcolor = green, style=filled]
-	    "{bar.c out}" [fillcolor = green, style=filled]
+	```dot
+	digraph {
+		compound = "true"
+		newrank = "true"
+		subgraph "root" {
+			"{hello_world_expanded out}" [fillcolor = green, style=filled]
+			"{foo.c out}" [fillcolor = green, style=filled]
+			"{bar.c out}" [fillcolor = green, style=filled]
 
 
-	    "{gcc out}" [fillcolor = darkseagreen1, style=filled]
-		"{glibc out}" [fillcolor = darkseagreen1, style=filled]
-		"{linux_headers out}" [fillcolor = darkseagreen1, style=filled]
+			"{gcc out}" [fillcolor = darkseagreen1, style=filled]
+			"{glibc out}" [fillcolor = darkseagreen1, style=filled]
+			"{linux_headers out}" [fillcolor = darkseagreen1, style=filled]
 
-		"{bar.c out}" -> "{busybox out}"
-		"{bar.c out}" -> "{gcc out}"
-		"{bar.c out}" -> "{glibc out}"
-		"{bar.c out}" -> "{linux_headers out}"
-		"{foo.c out}" -> "{busybox out}"
-		"{foo.c out}" -> "{gcc out}"
-		"{foo.c out}" -> "{glibc out}"
-		"{foo.c out}" -> "{linux_headers out}"
-		"{gcc out}" -> "{busybox out}"
-		"{gcc out}" -> "{glibc out}"
-		"{gcc out}" -> "{linux_headers out}"
-		"{glibc out}" -> "{busybox out}"
-		"{glibc out}" -> "{linux_headers out}"
-		"{hello_world_expanded out}" -> "{bar.c out}"
-		"{hello_world_expanded out}" -> "{busybox out}"
-		"{hello_world_expanded out}" -> "{foo.c out}"
-		"{hello_world_expanded out}" -> "{gcc out}"
-		"{hello_world_expanded out}" -> "{glibc out}"
-		"{hello_world_expanded out}" -> "{linux_headers out}"
-		"{hellox2 out}" -> "{busybox out}"
-		"{hellox2 out}" -> "{hello_world_expanded out}"
-		"{linux_headers out}" -> "{busybox out}"
+			"{bar.c out}" -> "{busybox out}"
+			"{bar.c out}" -> "{gcc out}"
+			"{bar.c out}" -> "{glibc out}"
+			"{bar.c out}" -> "{linux_headers out}"
+			"{foo.c out}" -> "{busybox out}"
+			"{foo.c out}" -> "{gcc out}"
+			"{foo.c out}" -> "{glibc out}"
+			"{foo.c out}" -> "{linux_headers out}"
+			"{gcc out}" -> "{busybox out}"
+			"{gcc out}" -> "{glibc out}"
+			"{gcc out}" -> "{linux_headers out}"
+			"{glibc out}" -> "{busybox out}"
+			"{glibc out}" -> "{linux_headers out}"
+			"{hello_world_expanded out}" -> "{bar.c out}"
+			"{hello_world_expanded out}" -> "{busybox out}"
+			"{hello_world_expanded out}" -> "{foo.c out}"
+			"{hello_world_expanded out}" -> "{gcc out}"
+			"{hello_world_expanded out}" -> "{glibc out}"
+			"{hello_world_expanded out}" -> "{linux_headers out}"
+			"{hellox2 out}" -> "{busybox out}"
+			"{hellox2 out}" -> "{hello_world_expanded out}"
+			"{linux_headers out}" -> "{busybox out}"
+		}
 	}
-}
-```
+	```
 
-</details>
+	</details>
 
 
 
