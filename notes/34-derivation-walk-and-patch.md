@@ -1,18 +1,22 @@
 
 
-<h1> Bramble Derivation Walk and Patch </h1>
+<h1>Derivation Walk and Patch</h1>
 
 - [Intro](#intro)
 - [What do derivations look like](#what-do-derivations-look-like)
-- [More complicated example](#more-complicated-example)
+- [Many derivations, multiple outputs](#many-derivations-multiple-outputs)
+- [Preparing a derivation for building](#preparing-a-derivation-for-building)
 - [Derivations that generate derivations](#derivations-that-generate-derivations)
 
 ## Intro
 The high level steps of a bramble build are as follows:
 
-1. Parse startlark config files and call a single build function.
-2. Take any derivations that have been returned by the function call and assemble a build graph.
-3. Walk the graph, building each derivation once its dependencies have been built.
+1. Parse starlark config files and call a single build function.
+2. Take any derivations that have been returned by the function call and assemble all dependency derivations.
+3. Build the output derivations and dependency derivations into a graph.
+   - Nodes/vertexes are derivation outputs and edges are dependencies.
+   - That way we can start with derivations that have zero dependencies and walk the graph to the outputs as each node is built.
+4. Walk the graph, building each derivation once its dependencies have been built.
 
 Walking the derivation graph is complicated and requires a few tricky steps. This document walks through the walk.
 
@@ -92,7 +96,7 @@ digraph {
 ```
 </details>
 
-## More complicated example
+## Many derivations, multiple outputs
 
 Let’s look at a more complicated example. The following code is the rough derivation structure for compiling a “Hello World” program with `gcc`. Any code or build scripts have been omitted for brevity.
 
@@ -113,9 +117,9 @@ It’s a little complicated to read though. Let’s look at one line:
 glibc = derivation("glibc", bb.out + "/bin/sh", env={"linux_headers": linux_headers.out}, outputs=["out", "doc"])
 ```
 
-Glibc is being built. The builder is the `sh` binary from the busybox derivation. Glibc is compiled using just busybox and linux headers (a contrived example, not feasible in the real world). The linux headers output `.out` is passed as an environment variable so that it can be referenced within the build. The glibc derivation has two outputs “out” and “doc”; “out” contains the build output and “doc” contains documentation output.
+Glibc is being built. The builder is the `sh` binary from the busybox derivation. Glibc is compiled using just busybox and linux headers (a contrived example, likely not feasible in the real world). The linux headers output `.out` is passed as an environment variable so that it can be referenced within the build. The glibc derivation has two outputs `out` and `doc`; `out` contains the build output and `doc` contains documentation output.
 
-This function has two derivation outputs, our man pages output and our “hello world” output. The man pages derivation takes the docs output from glibc, gcc and linux_headers. All together the dependency graph for these derivations looks like this:
+This function has two derivation outputs `[man, hello]`. The first is the man pages output and the second is our “hello world” output. The man pages derivation takes the docs output from glibc, gcc and linux_headers. All together the dependency graph for these derivations looks like this:
 
 <p align=center><img src="https://user-images.githubusercontent.com/283903/134383149-701faac5-37ba-42a1-a797-3eeba6d901dd.png" /></p>
 
@@ -163,7 +167,9 @@ Since there are two outputs a “fake root” is used to construct a valid direc
 
 When a build starts it starts with dependencies and walks up the tree until it gets to root of the graph. Each derivation output is visited once. When a node is visited a lock is taken on the specific derivation and the build begins. If an existing copy of the derivation and its outputs is found on disk that output is returned.
 
-When a build finishes the template strings in all connected derivations are replaced with paths to the on-disk output. In our first example we have a two-step build. The body of the "b" derivation is:
+## Preparing a derivation for building
+
+When a build finishes we have to prepare dependent derivations for the build step. Derivations normally contain template strings referencing a derivation and its output name. Before building we want to replace these template strings with the on-disk location of the output. Before being prepared for a build, the body of the "b" derivation looks like so:
 
 ```json
 {
@@ -178,7 +184,7 @@ When a build finishes the template strings in all connected derivations are repl
 }
 ```
 
-Once "a" has finished building it returns the output location. The "out" output for "a" is at `4oymiquy7qobjgx36tejs35zeqt24qpe`. The template string `{{ uyfzbklpblwxplhwei63mtj3pnh2w3yr:out }}` is replaced with the store path plus the output hash. Our local store path `/home/maxm/bramble/bramble_store_padding/bramble_`, but it will be different depending on your system. This is what the "b" derivation would look like before it starts building. With this step complete the derivation builder can expect the derivation to reference paths when it is run.
+Once "a" has finished building it returns the output location. The "out" output for "a" is at `4oymiquy7qobjgx36tejs35zeqt24qpe`. The template string `{{ uyfzbklpblwxplhwei63mtj3pnh2w3yr:out }}` is replaced with the store path plus the output hash. Our local store path `/home/maxm/bramble/bramble_store_padding/bramble_`, but it will be different depending on your system. Combine those together, replace the original template string and you get this derivation.
 
 ```json
 {
@@ -193,6 +199,8 @@ Once "a" has finished building it returns the output location. The "out" output 
 }
 ```
 
+From here we hand the derivation to the builder knowing that the paths point to real on-disk paths and not template strings.
+
 
 ## Derivations that generate derivations
 
@@ -202,7 +210,7 @@ Building a static derivation graph is relatively straightforward, but what about
 2. A program scans a go.mod and creates a new derivation for every dependency that needs to be downloaded.
 3. A derivation will scan source files for dependencies that are needed and then replace itself with a graph of derivations that build the dependencies needed for that project.
 
-These kinds of use cases are difficult to support directly without generating code in advance. If a build ever has certain insights or information during a build that could be used to better define the build graph we can't currently take advantage of that information. At the same time we must ensure that we use that information in a way that still follows our build rules.
+These kinds of use cases are difficult to support directly without generating code in advance. If a build ever has certain insights or information that could be used to better define the build graph we can't currently take advantage of that information. At the same time we must ensure that we use that information in a way that still follows our build rules. (TODO: what build rules?)
 
 Let's go back to the "hello world" compilation example. What if instead of a single source file we're compiling a complicated source tree? We could just build them all in the same derivation, but that would mean we need to re-compile all source files when any of them change. Ideally each source file (or set or source files) would be in a separate derivation so that unchanged files are cached.
 
@@ -239,7 +247,7 @@ digraph {
 
 </details>
 
-We've added `hellox2` as well. Let's pretend this is a job that uses the `hello_world` output to print "Hello World" to a file twice. This will help demonstrate that we'll need to manually patch any dependencies of a replaced node in the graph.
+We've added `hellox2` as well. Let's pretend `hellox2` is a job that uses the `hello_world` output to print "Hello World" to a file twice. This will help demonstrate that we'll need to manually patch any dependencies of a replaced node in the graph.
 
 So let's say we build the graph and `hello_world` outputs a new derivation graph instead of compiling directly. It outputs the following graph:
 
@@ -283,10 +291,12 @@ digraph {
 
 </details>
 
-This graph is very similar to our build graph because the outputted build steps need all the same dependencies to compile individual source files. To update the graph we'll take the following steps.
+This graph is very similar to our build graph because the outputted build steps need all the same dependencies to compile individual source files. You can see that `foo.c` and `bar.c` have been added. Let's pretend these are both source files that will output something like `foo.o` and `bar.o` and the final `hello_world_expanded` output will take those object files and combine them into a final binary.
+
+From here we'll need to update the existing build graph to support these additions. Doing that will involve the following steps:
 
 
-1. Remove this node:
+1. Remove the `hello_world` node now that it has outputted derivations:
 
 	<p align=center><img src="https://user-images.githubusercontent.com/283903/134383594-0da6cd22-495a-49dc-a639-13076e17493e.png" /></p>
 
@@ -321,7 +331,7 @@ This graph is very similar to our build graph because the outputted build steps 
 
 	</details>
 
-2. Merge the graph output of hello_world with the previous build graph. The lighter green nodes are replaced with identical nodes and they've already been built. The dark green nodes are new and need to be built.
+2. Merge the graph output of `hello_world` with the build graph. The lighter green nodes are replaced with identical nodes and they've already been built. The dark green nodes are new and need to be built.
 
 	<p align=center><img src="https://user-images.githubusercontent.com/283903/134383652-2981500f-497f-4e4c-91ac-c7d99d4d3711.png" /></p>
 
@@ -375,10 +385,9 @@ This graph is very similar to our build graph because the outputted build steps 
 
 
 
-3. `hellox2` now still contains a reference to `{ hello_world out }`. Patch this derivation so that is now contains references to `{ hello_world_expanded out }`.
+3. `hellox2` now still contains a reference to `{ hello_world out }`. Patch this derivation so that is now contains references to `{ hello_world_expanded out }` instead.
 
 4. Continue walking the graph and building un-built nodes.
-
 
 For now there are some rules with this approach:
 
