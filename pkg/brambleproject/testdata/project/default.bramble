@@ -53,28 +53,6 @@ def expected_result():
     return e
 
 
-# C is expanded
-# a -> b -> c
-#
-# Do we remove c
-# a -> b -> y -> x
-#
-# or does c exist? c has unusual output, so it shouldn't really be run? do we just erase it?
-# a -> b -> y -> c
-# b -> c -> x
-
-
-def expected_result_add():
-    a = derivation("a", "a")
-    b = derivation("b", a.out, args=[a.out])
-    y = derivation("y", b.out, args=[b.out])
-    c = derivation("c", b.out, args=[b.out])
-    x = derivation("x", y.out, args=[y.out])
-    d = derivation("d", x.out, args=[x.out])
-    return derivation("e", d.out, args=[d.out])
-    # D has no dependency on c, so this is confusing...
-
-
 # fmt: off
 def gcc_hello_world():
     bb = derivation("busybox", "fetch_url", env={"url": "foo"})

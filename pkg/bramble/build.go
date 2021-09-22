@@ -76,7 +76,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
 	var derivationDataLock sync.Mutex
 
-	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (buildOutputs []project.BuildOutput, err error) {
+	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
 		inputDerivations := []build.DerivationOutput{}
 
 		derivationDataLock.Lock()
@@ -85,7 +85,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			do, found := derivationIDUpdates[dep]
 			if !found {
 				derivationDataLock.Unlock()
-				return nil, errors.Errorf("Missing build output for dep %q but we should have it", dep)
+				return nil, nil, errors.Errorf("Missing build output for dep %q but we should have it", dep)
 			}
 			inputDerivations = append(inputDerivations, do)
 		}
@@ -97,7 +97,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			Files:           drv.Sources.Files,
 		}) // TODO: delete this if the build fails?
 		if err != nil {
-			return nil, errors.Wrap(err, "error moving local files to the store")
+			return nil, nil, errors.Wrap(err, "error moving local files to the store")
 		}
 
 		_, buildDrv, err := b.store.NewDerivation(build.NewDerivationOptions{
@@ -111,7 +111,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			Source:           source,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var didBuild bool
 		start := time.Now()
@@ -130,7 +130,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			Shell:      runShell,
 			ForceBuild: runShell,
 		}); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if ops.Check {
@@ -138,13 +138,13 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 				ForceBuild: true,
 			})
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			for i := 0; i < len(buildDrv.Outputs); i++ {
 				a := buildDrv.Outputs[i].Path
 				b := secondBuildDrv.Outputs[i].Path
 				if a != b {
-					return nil, errors.Errorf(
+					return nil, nil, errors.Errorf(
 						"Derivation %s is not reproducible, output %s had output %s first and %s second",
 						buildDrv.Name,
 						buildDrv.OutputNames[i],

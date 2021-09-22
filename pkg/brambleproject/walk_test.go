@@ -1,23 +1,18 @@
 package brambleproject
 
 import (
-	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestWalkGCCHello(t *testing.T) {
-	project, err := NewProject("./testdata/project")
-	require.NoError(t, err)
-	rw, err := project.ExecModule(ExecModuleInput{
-		Arguments: []string{":expanded_compile"},
-	})
-	require.NoError(t, err)
-	w, err := rw.newWalker()
-	require.NoError(t, err)
-	w.printDot(w.graph)
+func sortLines(in string) (out string) {
+	lines := strings.Split(in, "\n")
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
 }
 
 func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
@@ -26,6 +21,7 @@ func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
 	firstGraph, err := project.ExecModule(ExecModuleInput{
 		Arguments: []string{":first_graph"},
 	})
+
 	require.NoError(t, err)
 	replaceCWith, err := project.ExecModule(ExecModuleInput{
 		Arguments: []string{":replace_c_with"},
@@ -34,23 +30,25 @@ func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
 	expectedResult, err := project.ExecModule(ExecModuleInput{
 		Arguments: []string{":expected_result"},
 	})
-	require.NoError(t, err)
-	_ = replaceCWith
-	_ = expectedResult
 
-	w, err := expectedResult.newWalker()
 	require.NoError(t, err)
-	w.printDot(w.graph)
 
-	require.NoError(t, firstGraph.WalkAndPatch(1, func(dep Dependency, drv Derivation) (
+	expectedWalker, err := expectedResult.newWalker()
+	require.NoError(t, err)
+
+	outputWalker, err := firstGraph.walkAndPatch(1, func(dep Dependency, drv Derivation) (
 		addGraph *ExecModuleOutput,
 		buildOutputs []BuildOutput, err error) {
-		fmt.Println(dep.Hash, drv.Name)
 		if drv.Name == "c" {
 			return &replaceCWith, nil, nil
 		}
 		return
-	}))
+	})
+	require.NoError(t, err)
+	require.Equal(t,
+		sortLines(outputWalker.stringDot(outputWalker.graph)),
+		sortLines(expectedWalker.stringDot(expectedWalker.graph)),
+	)
 }
 
 func TestExecModuleAndWalk(t *testing.T) {
@@ -79,7 +77,6 @@ func TestExecModuleAndWalk(t *testing.T) {
 	}))
 
 	for _, drv := range allDerivations {
-
 		// All template strings should have been replaced
 		require.NotContains(t, drv.prettyJSON(), "{{ ")
 	}

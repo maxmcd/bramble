@@ -21,6 +21,7 @@
     - [Attributes](#attributes)
     - [Dependencies](#dependencies-1)
   - [Builds](#builds)
+    - [Derivations that output derivations](#derivations-that-output-derivations)
     - [URL Fetcher](#url-fetcher)
     - [Git Fetcher](#git-fetcher)
     - [The build sandbox](#the-build-sandbox)
@@ -253,6 +254,15 @@ When building a specific derivation the steps are as follows:
    8. The original archive is expanded into the hash-name folder.
 11. The build output hash is added to the derivation (along with all dependency output hashes) before being written to disk.
 12. The output folder locations and final derivation are returned.
+
+#### Derivations that output derivations
+
+The `derivation_output` derivation outputs a new derivation graph. This graph will be merged with the existing build graph and the build will continue. There are two rules with this builder:
+
+1. No recursive `derivation_output`. If a derivation uses the builder `derivation_output` it must not output any derivations that use that builder. This will likely be supported in the future but is currently disallowed out of caution.
+2. A `derivation_output` must only have the default output "out" and the updated derivation graph must also only have a single outputted derivation that has a single default output. When `derivation_output` is built it replaces a node in the build graph with a new graph. Any references to that old node must be overwritten with references to the new output derivation. In order to ensure that replacement is trivial we must ensure that the old node and the new node have identical output structure.
+
+When a `derivation_output` is called the resulting derivation graph is written to `bramble.lock` so that the output is not rebuilt on other systems.
 
 #### URL Fetcher
 #### Git Fetcher
