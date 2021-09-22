@@ -33,6 +33,9 @@ A build graph of the derivations above looks like so:
 digraph {
 	compound = "true"
 	newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 	subgraph "root" {
 		"{ojsnyikh3g6gkg2wvzte7mocqbjrgo6y out}" -> "{uyfzbklpblwxplhwei63mtj3pnh2w3yr out}"
 	}
@@ -53,6 +56,9 @@ We use hashes to identify derivations because derivations are a [merkle tree](ht
 digraph {
 	compound = "true"
 	newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 	subgraph "root" {
 		"{b out}" -> "{a out}"
 	}
@@ -93,6 +99,9 @@ This function has two derivation outputs, our man pages output and our “hello 
 digraph {
 	compound = "true"
 	newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 	subgraph "root" {
 		"fake root" -> "{hello_world out}"
 		"fake root" -> "{man out}"
@@ -181,6 +190,9 @@ Let's remove the man pages build and cut the graph down to just the build steps 
 digraph {
 	compound = "true"
 	newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 	subgraph "root" {
 		"{hello_world out}" -> "{glibc out}"
 		"{hello_world out}" -> "{linux_headers out}"
@@ -214,6 +226,9 @@ So let's say we build the graph and `hello_world` outputs a new derivation graph
 digraph {
 	compound = "true"
 	newrank = "true"
+	graph [truecolor=true bgcolor="#00000000"]
+	node [style=filled fillcolor="#ffffff" color="#666666"]
+	edge [color="#666666"]
 	subgraph "root" {
 		"{glibc out}" -> "{linux_headers out}"
 		"{glibc out}" -> "{busybox out}"
