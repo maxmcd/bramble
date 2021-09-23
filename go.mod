@@ -22,6 +22,6 @@ require (
 
 replace (
 	github.com/jaguilar/vt100 => github.com/tonistiigi/vt100 v0.0.0-20190402012908-ad4c4a574305
-	github.com/mholt/archiver/v3 => github.com/maxmcd/archiver/v3 v3.3.2-0.20210910013223-bd3a04eff5a3
+	github.com/mholt/archiver/v3 => github.com/maxmcd/archiver/v3 v3.3.2-0.20210923004632-06ef4f8f175b
 	go.starlark.net => github.com/maxmcd/starlark-go v0.0.0-20201021154825-b2f805d0d122
 )

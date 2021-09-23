@@ -194,11 +194,11 @@ func isTopLevel(thread *starlark.Thread) bool {
 		// for tests
 		return false
 	}
-	return thread.CallStack().At(1).Name == "<toplevel>"
+	return thread.CallStack().At(1).Name == "<toplevel>" || thread.CallStack().At(1).Name == "<expr>"
 }
 
 func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if isTopLevel(thread) {
+	if thread.Name != "repl" && isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
 	}
 	// Parse function arguments and assemble the basic derivation
