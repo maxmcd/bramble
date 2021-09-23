@@ -19,4 +19,4 @@ jobs:
       #   uses: mxschmitt/action-tmate@v3
       - name: Run all tests
         run: |
-          make -j ci_test
+          make ci_test

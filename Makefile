@@ -3,9 +3,9 @@
 test: go_test \
 	integration_test
 
-ci_test: go_ci_test \
-	integration_ci_test
+ci_test:
 	make build
+	make -j go_ci_test integration_ci_test
 
 gotestsum:
 	go get gotest.tools/gotestsum
