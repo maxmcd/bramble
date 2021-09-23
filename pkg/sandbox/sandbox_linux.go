@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -186,8 +185,9 @@ func (c container) Run() (err error) {
 		Cwd:    c.sandbox.Dir,
 	}
 	handler := newSignalHandler()
-	// TODO: refactor!
+
 	var t *tty
+	// If we are using a real terminal then spawn a tty
 	if stdinF, ok := c.sandbox.Stdin.(*os.File); ok && term.IsTerminal(stdinF.Fd()) {
 		t := &tty{}
 		if err := t.initHostConsole(); err != nil {
@@ -204,8 +204,8 @@ func (c container) Run() (err error) {
 			t.consoleC <- t.recvtty(c.process, parent)
 		}()
 		defer t.Close()
-		defer func() { _ = c.Destroy() }()
 	}
+	defer func() { _ = c.Destroy() }()
 	if err := c.container.Run(c.process); err != nil {
 		return err
 	}
@@ -233,7 +233,7 @@ func (c container) Run() (err error) {
 			return err
 		}
 		if state.ExitCode() != 0 {
-			return fmt.Errorf("Process exited with non-zero exit code %d but we make the message funny because we're not sure if this is handled above", state.ExitCode())
+			return errors.Errorf("Process exited with non-zero exit code %d but we make the message funny because we're not sure if this is handled above", state.ExitCode())
 		}
 	}
 	return

@@ -185,6 +185,8 @@ That's it! Your first bramble build.
 
 ## Spec
 
+The spec is currently a WIP. Parts will be added as they materialize.
+
 ### Introduction
 
 ### Project configuration
