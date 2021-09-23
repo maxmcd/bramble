@@ -193,10 +193,6 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	}
 
 	folders := []string{
-		// TODO: move this to a common cache directory or somewhere else that
-		// this would be expected to be
-		"tmp", // Tmp folder, probably shouldn't exist.
-
 		"var", // The var folder.
 
 		// Metadata for config files to store recently built derivations so that

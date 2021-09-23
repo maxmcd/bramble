@@ -81,7 +81,7 @@ func CP(wd string, paths ...string) (err error) {
 
 	// otherwise copy each listed file into a directory with the given name
 	for i, path := range toCopy {
-		// TODO: this should be Lstat
+		// TODO: this should be Lstat. Do we need to add symlink support to CopyFile?
 		fi, err := os.Stat(path)
 		if err != nil {
 			return errors.Errorf("%q doesn't exist", paths[i])

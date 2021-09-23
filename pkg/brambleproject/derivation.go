@@ -198,9 +198,6 @@ func isTopLevel(thread *starlark.Thread) bool {
 }
 
 func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// TODO: we should be able to cache derivation builds using some kind of
-	// hash of the input values
-
 	if isTopLevel(thread) {
 		return nil, errors.New("derivation call not within a function")
 	}
@@ -266,7 +263,9 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 		if err != nil {
 			return
 		}
-		// TODO: error if the array is empty?
+		if len(outputsList) == 0 {
+			return drv, errors.New("derivation output must contain at least 1 value, set to None to use the default output")
+		}
 		drv.Outputs = outputsList
 	}
 

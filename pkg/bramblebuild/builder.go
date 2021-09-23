@@ -263,12 +263,9 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	// TODO: this is prob not ok, it's sort of fine for us but hostile against
-	// custom certs. maybe an easy way to fix that? Should just accept available
-	// certs (unless repro???). I think this was also motivated by barebones
-	// docker env and we can just mount in known cert locations, right?
-	//
-	// also yes, we have to make certs work for other software, so surely they can work for us
+	// TODO: consider making this whole thing a derivation that is run with the
+	// network. Cert mgmt should be bramble package tree thing not an in-code
+	// thing.
 	certPool, err := gocertifi.CACerts()
 	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
 
@@ -309,7 +306,6 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 	mounts := []string{
 		b.store.StorePath + ":ro",
 		buildDir,
-		// "/dev/", //TODO: this can't be allowed
 	}
 	for outputName, outputPath := range outputPaths {
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
@@ -487,7 +483,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 			}
 		}()
 		if buildDir == "" {
-			// TODO: remove this extra copy if we can?
+			// TODO: remove this extra copy when we can?
 			_, _ = io.Copy(io.MultiWriter(tarOutput, pipeWriter), tarPipeReader)
 			return
 		}
