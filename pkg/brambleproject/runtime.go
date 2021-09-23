@@ -1,7 +1,6 @@
 package brambleproject
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/assert"
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
@@ -43,26 +41,6 @@ func (rt *runtime) newThread(name string) *starlark.Thread {
 	return thread
 }
 
-func (rt *runtime) filepathToModuleName(path string) (module string, err error) {
-	if !strings.HasSuffix(path, BrambleExtension) {
-		return "", errors.Errorf("path %q is not a bramblefile", path)
-	}
-	if !fileutil.FileExists(path) {
-		return "", errors.Wrap(os.ErrNotExist, path)
-	}
-	rel, err := filepath.Rel(rt.projectLocation, path)
-	if err != nil {
-		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, rt.projectLocation)
-	}
-	if strings.HasSuffix(path, "default"+BrambleExtension) {
-		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
-	} else {
-		rel = strings.TrimSuffix(rel, BrambleExtension)
-	}
-	rel = strings.TrimSuffix(rel, "/")
-	return rt.moduleName + "/" + rel, nil
-}
-
 type runtime struct {
 	workingDirectory string
 	projectLocation  string
@@ -92,56 +70,6 @@ func (p *Project) REPL() {
 	}
 	t.init()
 	repl.REPL(t.newThread("repl"), t.predeclared)
-}
-
-func (rt *runtime) parseModuleFuncArgument(args []string) (module, function string, err error) {
-	if len(args) == 0 {
-		logger.Print(`"bramble build" requires 1 argument`)
-		return "", "", flag.ErrHelp
-	}
-
-	firstArgument := args[0]
-	lastIndex := strings.LastIndex(firstArgument, ":")
-	if lastIndex < 0 {
-		logger.Print("module and function argument is not properly formatted")
-		return "", "", flag.ErrHelp
-	}
-
-	path, function := firstArgument[:lastIndex], firstArgument[lastIndex+1:]
-	module, err = rt.moduleFromPath(path)
-	return
-}
-
-func (rt *runtime) moduleFromPath(path string) (thisModule string, err error) {
-	thisModule = (rt.moduleName + "/" + rt.relativePathFromConfig())
-
-	// See if this path is actually the name of a module, for now we just
-	// support one module.
-	// TODO: search through all modules in scope for this config
-	if strings.HasPrefix(path, rt.moduleName) {
-		return path, nil
-	}
-
-	// if the relative path is nothing, we've already added the slash above
-	if !strings.HasSuffix(thisModule, "/") {
-		thisModule += "/"
-	}
-
-	// support things like bar/main.bramble:foo
-	if strings.HasSuffix(path, BrambleExtension) &&
-		fileutil.FileExists(filepath.Join(rt.workingDirectory, path)) {
-		return thisModule + path[:len(path)-len(BrambleExtension)], nil
-	}
-
-	fullName := path + BrambleExtension
-	if !fileutil.FileExists(filepath.Join(rt.workingDirectory, fullName)) {
-		if !fileutil.FileExists(filepath.Join(rt.workingDirectory, path+"/default.bramble")) {
-			return "", errors.Errorf("%q: no such file or directory", path)
-		}
-	}
-	// we found it, return
-	thisModule += filepath.Join(path)
-	return strings.TrimSuffix(thisModule, "/"), nil
 }
 
 func (rt *runtime) relativePathFromConfig() string {
@@ -251,12 +179,4 @@ func (rt *runtime) sourceStarlarkProgram(filename string) (prog *starlark.Progra
 
 	_, prog, err = starlark.SourceProgram(filename, f, rt.predeclared.Has)
 	return prog, err
-}
-
-func (rt *runtime) execTestFileContents(wd string, script string) (v starlark.Value, err error) {
-	globals, err := starlark.ExecFile(rt.newThread("test"), filepath.Join(wd, "foo.bramble"), script, rt.predeclared)
-	if err != nil {
-		return nil, err
-	}
-	return starlark.Call(rt.newThread("test"), globals["test"], nil, nil)
 }

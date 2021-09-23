@@ -31,8 +31,8 @@ func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
 	if len(sources.Files) == 0 {
 		return
 	}
-	// TODO: could extend reptar to handle hasing the files before moving
-	// them to a tempdir
+	// TODO: could extend reptar to handle hashing the files before moving them
+	// to a tempdir
 	tmpDir, err := s.storeLengthTempDir()
 	if err != nil {
 		return
@@ -88,7 +88,6 @@ type Source struct {
 }
 
 func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv Derivation, err error) {
-
 	drv = s.newDerivation()
 
 	drv.Source = options.Source // TODO: validate this is either empty or the paths are present in the store

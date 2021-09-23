@@ -17,7 +17,13 @@ func printBuildInput(args []string) error {
 		Command:   "print-build-args",
 		Arguments: args,
 	})
+	if err != nil {
+		return err
+	}
 	b, err := json.Marshal(output)
+	if err != nil {
+		return err
+	}
 	fmt.Println(string(b))
 	return nil
 }

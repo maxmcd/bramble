@@ -9,7 +9,7 @@ import (
 )
 
 func (b bramble) run(args []string) (err error) {
-	output, err := b.runBuildFromCLI("run", args)
+	output, err := b.runBuildFromCLI("run", args, buildOptions{})
 	if err != nil {
 		return err
 	}

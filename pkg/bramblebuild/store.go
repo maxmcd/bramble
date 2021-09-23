@@ -39,10 +39,10 @@ type Store struct {
 
 	derivationCache *derivationsMap
 
-	runGit func(RunDerivationOptions) error
+	runGit func(context.Context, RunDerivationOptions) error
 }
 
-func (s *Store) RegisterGetGit(runGit func(RunDerivationOptions) error) {
+func (s *Store) RegisterGetGit(runGit func(context.Context, RunDerivationOptions) error) {
 	s.runGit = runGit
 }
 
@@ -193,10 +193,6 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	}
 
 	folders := []string{
-		// TODO: move this to a common cache directory or somewhere else that
-		// this would be expected to be
-		"tmp", // Tmp folder, probably shouldn't exist.
-
 		"var", // The var folder.
 
 		// Metadata for config files to store recently built derivations so that
@@ -235,7 +231,7 @@ func (s *Store) joinBramblePath(v ...string) string {
 
 func (s *Store) writeReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
 	hshr := hasher.NewHasher()
-	file, err := ioutil.TempFile(s.joinBramblePath("tmp"), "")
+	file, err := ioutil.TempFile("", "")
 	if err != nil {
 		err = errors.Wrap(err, "error creating a temporary file for a write to the store")
 		return

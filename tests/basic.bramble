@@ -11,3 +11,20 @@ def link_test():
             "hash": "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a",
         },
     )
+
+
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+
+
+def self_reference():
+    return derivation(
+        name="self-reference",
+        builder=nix_seed.stdenv().out + "/bin/bash",
+        env={"stdenv": nix_seed.stdenv(), "PATH": nix_seed.stdenv().out + "/bin"},
+        args=[
+            "-c",
+            """
+        pwd > $out/pwd
+        """,
+        ],
+    )

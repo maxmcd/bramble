@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 
 	"github.com/maxmcd/bramble/pkg/brambleproject"
@@ -23,7 +25,8 @@ var (
 )
 
 func createAndParseCLI(args []string) (*ffcli.Command, error) {
-	var ()
+	buildFlagSet := flag.NewFlagSet("build", flag.ContinueOnError)
+	buildCheck := buildFlagSet.Bool("check", false, "verify that builds are reproducible by running them twice and comparing their output")
 	subcommands := []*ffcli.Command{
 		{
 			Name:       "build",
@@ -34,9 +37,12 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 				if err != nil {
 					return err
 				}
-				_, err = b.runBuildFromCLI("build", args)
+				_, err = b.runBuildFromCLI("build", args, buildOptions{
+					Check: *buildCheck,
+				})
 				return err
 			},
+			FlagSet: buildFlagSet,
 		},
 		{
 			Name:       "run",
@@ -55,7 +61,16 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 			Name:       "shell",
 			ShortUsage: "bramble shell [options] [module]:<function> [args...]",
 			ShortHelp:  "Open a shell from a derivation",
-			Exec:       func(ctx context.Context, args []string) error { err := shell(ctx, args); return err },
+			Exec: func(ctx context.Context, args []string) error {
+				b, err := newBramble()
+				if err != nil {
+					return err
+				}
+				_, err = b.runBuildFromCLI("build", args, buildOptions{
+					Shell: true,
+				})
+				return err
+			},
 		},
 		{
 			Name:       "repl",
@@ -153,6 +168,12 @@ func createAndParseCLI(args []string) (*ffcli.Command, error) {
 
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		panic("give me the stack")
+	}()
 	sandbox.Entrypoint()
 
 	log.SetOutput(ioutil.Discard)
@@ -216,10 +237,6 @@ func DefaultUsageFunc(c *ffcli.Command) string {
 func countFlags(fs *flag.FlagSet) (n int) {
 	fs.VisitAll(func(*flag.Flag) { n++ })
 	return n
-}
-
-func shell(ctx context.Context, args []string) (err error) {
-	return
 }
 
 func repl(_ []string) (err error) {

@@ -13,8 +13,8 @@ foo()`,
 			errContains: "missing argument for name"},
 		{script: `
 def foo():
-	d = derivation("", builder="fetch_url", env={"url":1});
-	return derivation("", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)}, sources=files(["*"]))
+	d = derivation("a", builder="fetch_url", env={"url":1});
+	return derivation("a", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)}, sources=files(["*"]))
 b = foo()
 `,
 			respContains: `brambleproject/derivation.go`},

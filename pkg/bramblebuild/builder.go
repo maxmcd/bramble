@@ -1,6 +1,7 @@
 package bramblebuild
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -42,7 +43,14 @@ type Builder struct {
 	URLHashes map[string]string
 }
 
-func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation) (builtDrv Derivation, didBuild bool, err error) {
+type BuildDerivationOptions struct {
+	// ForceBuild will make sure we build even if the derivation already exists
+	ForceBuild bool
+
+	Shell bool
+}
+
+func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
 	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
 	drv = drv.makeConsistentNullJSONValues()
 
@@ -53,12 +61,12 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation) (builtDrv
 	}
 	filename := drv.Filename()
 	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
-	if exists {
+	if exists && !opts.ForceBuild {
 		return drv, false, nil
 	}
 	logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
-	if drv, err = b.buildDerivation(ctx, drv, false); err != nil {
+	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
 	// TODO: lock store on write
@@ -119,7 +127,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		// location, no archiving and byte replacing
 		outputs, err = b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
 	} else {
-		outputs, err = b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths)
+		outputs, err = b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths, buildDir)
 		err = errors.Wrap(err, "hash and move build outputs") // noop if err is nil
 	}
 	if err != nil {
@@ -135,12 +143,12 @@ func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outpu
 	defer region.End()
 
 	hshr := hasher.NewHasher()
-	_, err = b.store.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hshr, drv, filepath.Base(outputPath))
+	_, err = b.store.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hshr, drv, filepath.Base(outputPath), "")
 	if err != nil {
 		return nil, err
 	}
 	outputFolderName := hshr.String()
-	outputs = map[string]Output{"out": Output{Path: outputFolderName}}
+	outputs = map[string]Output{"out": {Path: outputFolderName}}
 	outputStorePath := b.store.joinStorePath(outputFolderName)
 	if fileutil.PathExists(outputStorePath) {
 		err = os.RemoveAll(outputPath)
@@ -165,7 +173,7 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 	// derivation can provide a hash, but usually this is just in the lockfile
 	hash := drv.Env["hash"]
 
-	if err := b.store.runGit(RunDerivationOptions{
+	if err := b.store.runGit(ctx, RunDerivationOptions{
 		Mounts: []string{outputPath},
 		Args:   []string{"git", "clone", url, outputPath},
 		Dir:    outputPath,
@@ -173,19 +181,6 @@ func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPat
 		return err
 	}
 
-	// gitDir := gitDrv.Env["git"]
-	// cmd := exec.Command(filepath.Join(gitDir, "/bin/git"), "clone", url, outputPath)
-	// for k, v := range drv.Env {
-	// 	if k == "PATH" {
-	// 		v = os.Getenv("PATH") + ":" + v
-	// 	}
-	// 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	// }
-	// cmd.Stderr = os.Stderr
-	// cmd.Stdout = os.Stdout
-	// if err := cmd.Run(); err != nil {
-	// 	return err
-	// }
 	_ = hash
 	return nil
 }
@@ -218,7 +213,7 @@ func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPat
 }
 
 // downloadFile downloads a file into the store. Must include an expected hash
-// of the downloaded file as a hex string of a  sha256 hash
+// of the downloaded file as a hex string of a sha256 hash
 func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (path string, err error) {
 	logger.Printfln("Downloading url %s", url)
 	if hash != "" {
@@ -268,12 +263,9 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	// TODO: this is prob not ok, it's sort of fine for us but hostile against
-	// custom certs. maybe an easy way to fix that? Should just accept available
-	// certs (unless repro???). I think this was also motivated by barebones
-	// docker env and we can just mount in known cert locations, right?
-	//
-	// also yes, we have to make certs work for other software, so surely they can work for us
+	// TODO: consider making this whole thing a derivation that is run with the
+	// network. Cert mgmt should be bramble package tree thing not an in-code
+	// thing.
 	certPool, err := gocertifi.CACerts()
 	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
 
@@ -314,7 +306,6 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 	mounts := []string{
 		b.store.StorePath + ":ro",
 		buildDir,
-		// "/dev/", //TODO: this can't be allowed
 	}
 	for outputName, outputPath := range outputPaths {
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
@@ -340,13 +331,19 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		Mounts: mounts,
 	}
 	if shell {
-		sbx.Args = nil
+		fmt.Printf("Opening shell for derivation %q\n", drv.Name)
+		sbx.Args = []string{builderLocation}
 		sbx.Stdin = os.Stdin
 	}
 	return sbx.Run(ctx)
 }
 
-func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string) (outputs map[string]Output, err error) {
+func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
+	// if drv.Name == "self-reference" {
+	// 	fmt.Println(drv.PrettyJSON(), outputPaths)
+	// 	panic("")
+	// }
+	fmt.Println(outputPaths)
 	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
 	defer region.End()
 
@@ -359,7 +356,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 			return
 		}
 		outputFolder := filepath.Base(outputPath)
-		matches, err := s.archiveAndScanOutputDirectory(ctx, reptarFile, hshr, drv, outputFolder)
+		matches, err := s.archiveAndScanOutputDirectory(ctx, reptarFile, hshr, drv, outputFolder, buildDir)
 		if err != nil {
 			return nil, errors.Wrap(err, "error scanning output")
 		}
@@ -375,7 +372,6 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 		// different names can share outputs
 		newPath := s.joinStorePath(hashedFolderName)
 
-		fmt.Println(newPath, outputFolder, hashedFolderName)
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
 				ctx,
@@ -405,10 +401,12 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 	errChan := make(chan error)
 	doneChan := make(chan struct{})
 
+	// Read the file and replace output folder names with the hashed folder name
 	go func() {
 		if _, err := textreplace.ReplaceBytes(
 			f, pipWriter,
-			[]byte(outputFolder), []byte(hashedFolderName)); err != nil {
+			[]byte(outputFolder), []byte(hashedFolderName),
+		); err != nil {
 			errChan <- err
 			return
 		}
@@ -417,13 +415,19 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 			return
 		}
 	}()
+	// Unarchive the resulting bytestream, pass the archive name because the lib
+	// needs it to resolve name conflicts. TODO: this is probably an error,
+	// wouldn't want the name of a random file to affect the tar output, need to
+	// be sure this isn't causing any issues.
 	go func() {
 		tr := archiver.NewTar()
+		// "archive" here is the name of the file that we open above
 		if err := tr.UnarchiveReader(pipeReader, archive, dst); err != nil {
 			errChan <- err
 		}
 		doneChan <- struct{}{}
 	}()
+
 	select {
 	case err := <-errChan:
 		return err
@@ -432,12 +436,11 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 	return
 }
 
-func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder string) (
+func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder, buildDir string) (
 	matches []string, err error) {
 	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
 	defer region.End()
 	var storeValues []string
-	oldStorePath := s.StorePath
 
 	for _, do := range drv.InputDerivations {
 		drv, found, err := s.LoadDerivation(do.Filename)
@@ -455,26 +458,59 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	errChan := make(chan error)
 	resultChan := make(chan map[string]struct{})
 	pipeReader, pipeWriter := io.Pipe()
-	pipeReader2, pipeWriter2 := io.Pipe()
 
+	tarPipeReader, tarPipeWriter := io.Pipe()
 	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(s.joinStorePath(storeFolder), io.MultiWriter(tarOutput, pipeWriter)); err != nil {
+		if err := reptar.Reptar(s.joinStorePath(storeFolder), tarPipeWriter); err != nil {
 			errChan <- err
 			return
 		}
-		if err := pipeWriter.Close(); err != nil {
+		if err := tarPipeWriter.Close(); err != nil {
 			errChan <- err
 			return
 		}
 	}()
 
-	// replace all the bramble store path prefixes with a known fixed value also
-	// write this byte stream out as a tar to unpack later as the final output
+	// Replace any references to the build directory with fixed known string
+	// value. Stream the output to both the hash bytestream and the archive
+	// output stream now that the build path is replaced.
 	go func() {
-		new := BramblePrefixOfRecord
+		defer func() {
+			if err := pipeWriter.Close(); err != nil {
+				errChan <- err
+				return
+			}
+		}()
+		if buildDir == "" {
+			// TODO: remove this extra copy when we can?
+			_, _ = io.Copy(io.MultiWriter(tarOutput, pipeWriter), tarPipeReader)
+			return
+		}
+		bdBytes := []byte(buildDir)
+		if _, err := textreplace.ReplaceBytes(
+			tarPipeReader, io.MultiWriter(tarOutput, pipeWriter),
+			bdBytes,
+			append(
+				// we need to copy the values out of the array so that the
+				// previous byte reference isn't mutated
+				append([]byte{}, bdBytes[:len(bdBytes)-32]...),
+				bytes.Repeat([]byte("x"), 32)...,
+			),
+		); err != nil {
+			errChan <- err
+			return
+		}
+	}()
+
+	pipeReader2, pipeWriter2 := io.Pipe()
+
+	// In the hash bytes stream, replace all the bramble store path prefixes
+	// with a known fixed value.
+	go func() {
 		_, matches, err := textreplace.ReplaceStringsPrefix(
-			pipeReader, pipeWriter2, storeValues, oldStorePath, new)
+			pipeReader, pipeWriter2, storeValues, s.StorePath,
+			BramblePrefixOfRecord)
 		if err != nil {
 			errChan <- err
 			return
@@ -492,12 +528,13 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	go func() {
 		if _, err := textreplace.ReplaceBytes(
 			pipeReader2, hashOutput,
-			[]byte(storeFolder), make([]byte, len(storeFolder)),
+			[]byte(storeFolder), bytes.Repeat([]byte{0}, len(storeFolder)),
 		); err != nil {
-			errChan <- err
+			wg.Done()
+			errChan <- errors.Wrap(err, "error replacing storeFolder with null bytes")
 			return
 		}
-		wg.Done()
+		wg.Done() // this is the end of the hash stream
 	}()
 
 	select {
@@ -506,10 +543,16 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	case result := <-resultChan:
 		for match := range result {
 			// remove prefix from dependency path
-			match = strings.TrimPrefix(strings.Replace(match, oldStorePath, "", 1), "/")
+			match = strings.TrimPrefix(strings.Replace(match, s.StorePath, "", 1), "/")
 			matches = append(matches, match)
 		}
 	}
 	wg.Wait()
+	select {
+	// Check if there are any errors left in the chan
+	case err := <-errChan:
+		return nil, err
+	default:
+	}
 	return
 }

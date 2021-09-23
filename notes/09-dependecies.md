@@ -45,3 +45,20 @@ Open questions.
 https://github.com/minos-org/minos-static
 
 http://s.minos.io/archive/
+
+---
+
+
+What if:
+
+1. We use semantic verisioning
+2. Every project must state a version
+3. You can point at relative dependencies within a project but you must also include a version number and that number must match what is at the relative path
+4. There is a public package registry, but it only accepts submissions like this `bramble publish $COMMIT_HASH github.com/maxmcd/bramble/path/to/project`. The registry will then add the version of the package at that commit hash to package registry, there is no authentication, anyone can publish to the registry. If a commit hash is submitted for a version that already has a commit hash then it is rejected. (ignoring the real problem of needing to remove packages).
+5. When you call `bramble run github.com/maxmcd/bramble:foo whatever.sh` the package must be published.
+
+```toml
+[dependencies]
+"github.com/maxmcd/bramble" = "0.1.12"
+"github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
+```

@@ -3,6 +3,7 @@ package brambleproject
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
@@ -105,4 +106,24 @@ func (p *Project) HiddenPaths() (out []string) {
 
 func (p *Project) URLHashes() map[string]string {
 	return p.lockFile.URLHashes
+}
+
+func (p *Project) FilepathToModuleName(path string) (module string, err error) {
+	if !strings.HasSuffix(path, BrambleExtension) {
+		return "", errors.Errorf("path %q is not a bramblefile", path)
+	}
+	if !fileutil.FileExists(path) {
+		return "", errors.Wrap(os.ErrNotExist, path)
+	}
+	rel, err := filepath.Rel(p.location, path)
+	if err != nil {
+		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, p.location)
+	}
+	if strings.HasSuffix(path, "default"+BrambleExtension) {
+		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
+	} else {
+		rel = strings.TrimSuffix(rel, BrambleExtension)
+	}
+	rel = strings.TrimSuffix(rel, "/")
+	return p.config.Module.Name + "/" + rel, nil
 }
