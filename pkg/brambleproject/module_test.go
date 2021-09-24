@@ -11,7 +11,7 @@ import (
 )
 
 func Test_parseModuleFuncArgument(t *testing.T) {
-	rt := newTestRuntime(t)
+	rt := newTestRuntime(t, "")
 	rt.workingDirectory = filepath.Join(rt.workingDirectory, "testdata")
 
 	tests := []struct {
@@ -98,7 +98,7 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 }
 
 func TestBramble_resolveModule(t *testing.T) {
-	rt := newTestRuntime(t)
+	rt := newTestRuntime(t, "")
 	tests := []struct {
 		name        string
 		module      string
@@ -151,7 +151,7 @@ func TestBramble_resolveModule(t *testing.T) {
 }
 
 func TestBramble_moduleNameFromFileName(t *testing.T) {
-	rt := newTestRuntime(t)
+	rt := newTestRuntime(t, "")
 	rt.workingDirectory = filepath.Join(rt.workingDirectory, "testdata")
 
 	tests := []struct {

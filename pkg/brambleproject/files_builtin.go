@@ -44,14 +44,16 @@ func (fb filesBuiltin) starlarkGlobListFiles(includeDirectories bool, fileDirect
 			return nil, errors.Errorf("argument %q is an absolute path", strValue)
 		}
 
-		searchGlob := filepath.Join(fileDirectory, strValue)
-		searchGlob, err := filepath.Rel(fb.projectLocation, searchGlob)
-		if err != nil || strings.Contains(searchGlob, "..") {
-			return nil, errors.Errorf("file search path %q searches outside of the project directory", strValue)
+		relativeSearchGlob := filepath.Join(fileDirectory, strValue)
+		// If it's just a single file or directory reference filepath.Rel will skip it
+		if filepath.Base(relativeSearchGlob) != relativeSearchGlob {
+			if relativeSearchGlob, _ = filepath.Rel(fb.projectLocation, relativeSearchGlob); strings.Contains(relativeSearchGlob, "..") {
+				return nil, errors.Errorf("file search path %q searches outside of the project directory", strValue)
+			}
 		}
 		if err := doublestar.GlobWalk(
 			projFilesystem,
-			searchGlob,
+			relativeSearchGlob,
 			func(path string, d fs.DirEntry) error {
 				// Skip directories if we want
 				if !bool(includeDirectories) && d.IsDir() {
@@ -59,7 +61,8 @@ func (fb filesBuiltin) starlarkGlobListFiles(includeDirectories bool, fileDirect
 				}
 				out[path] = struct{}{}
 				return nil
-			}); err != nil {
+			},
+		); err != nil {
 			return nil, errors.Wrapf(err, "error with pattern %q", strValue)
 		}
 	}
@@ -96,12 +99,11 @@ func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builti
 			return nil, err
 		}
 	}
-
 	// Only put the relative location in the derivation
 	relFileDirectory, err := filepath.Rel(fb.projectLocation, fileDirectory)
-
 	if err != nil {
-		return nil, errors.Wrapf(err, "can't compute relative path between %q and %q", fb.projectLocation, fileDirectory)
+		// We already know these are valid paths, so this is only if the fileDirectory is "." or "foo"
+		relFileDirectory = fileDirectory
 	}
 	fl := FilesList{
 		Location: relFileDirectory,

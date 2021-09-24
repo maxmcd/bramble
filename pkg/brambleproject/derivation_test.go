@@ -19,5 +19,5 @@ b = foo()
 `,
 			respContains: `brambleproject/derivation.go`},
 	}
-	runDerivationTest(t, tests)
+	runDerivationTest(t, tests, "")
 }

@@ -1,6 +1,7 @@
 package brambleproject
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -32,5 +33,17 @@ func TestBramble_filesBuiltin(t *testing.T) {
 			script:       `b = files(["../*"], include_directories=True)`,
 			respContains: "bramble"},
 	}
-	runDerivationTest(t, tests)
+	runDerivationTest(t, tests, "")
+}
+
+func TestBramble_filesBuiltinRootDir(t *testing.T) {
+	// Test these files specifically from the project root
+	projectRoot, _ := filepath.Abs("../../")
+	tests := []scriptTest{
+		{script: `b = files(["./*.go"])`,
+			respContains: "main.go"},
+		{script: `b = files(["./**/*"])`,
+			respContains: ".git"},
+	}
+	runDerivationTest(t, tests, projectRoot)
 }

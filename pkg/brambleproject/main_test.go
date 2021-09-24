@@ -12,9 +12,12 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func newTestRuntime(t *testing.T) *runtime {
-	wd, err := os.Getwd()
-	require.NoError(t, err)
+func newTestRuntime(t *testing.T, wd string) *runtime {
+	if wd == "" {
+		var err error
+		wd, err = os.Getwd()
+		require.NoError(t, err)
+	}
 
 	projectLocation, err := filepath.Abs("../../")
 	require.NoError(t, err)
@@ -47,16 +50,19 @@ func fixUpScript(script string) string {
 	return sb.String()
 }
 
-func runDerivationTest(t *testing.T, tests []scriptTest) {
+func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
 	var err error
 	dir := fileutil.TestTmpDir(t)
 	previous := os.Getenv("BRAMBLE_PATH")
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir); os.Setenv("BRAMBLE_PATH", previous) })
 
-	rt := newTestRuntime(t)
-	wd, err := os.Getwd()
-	require.NoError(t, err)
+	if wd == "" {
+		wd, err = os.Getwd()
+		require.NoError(t, err)
+	}
+	rt := newTestRuntime(t, wd)
+
 	for _, tt := range tests {
 		name := tt.script
 		if tt.name != "" {
