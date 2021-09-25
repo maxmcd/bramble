@@ -27,22 +27,22 @@ func TestProject_ListFunctions(t *testing.T) {
 	tests := []struct {
 		name    string
 		path    string
-		wantM   Module
+		wantM   ModuleDoc
 		wantErr bool
 	}{
 		{
 			name: "foo",
 			path: "./testdata/main.bramble",
-			wantM: Module{
+			wantM: ModuleDoc{
 				Name:      "github.com/maxmcd/bramble/src/project/testdata/main",
-				Docstring: "Hello this is the main module",
-				Functions: []Function{
+				Docstring: "\"\"\"Hello this is the main module\"\"\"",
+				Functions: []FunctionDoc{
 					{
-						Docstring:  "foo is a tricky fellow. sure to return good news, but also the bitter taste of regret",
+						Docstring:  "\"\"\"foo is a tricky fellow. sure to return good news, but also the bitter taste of regret\"\"\"",
 						Name:       "foo",
 						Definition: "def foo()",
 					}, {
-						Docstring:  "this is just a string",
+						Docstring:  "\"this is just a string\"",
 						Name:       "thing",
 						Definition: "def thing(hi, foo=None, bar=[1, 2, {\"foo\": 5}, dict(ho=\"hum\")], out={})",
 					},
@@ -54,7 +54,7 @@ func TestProject_ListFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p, err := NewProject(".")
 			require.NoError(t, err)
-			gotM, err := p.ListFunctions(tt.path)
+			gotM, err := p.parsedModuleDocFromPath(tt.path)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Project.ListFunctions() error = %v, wantErr %v", err, tt.wantErr)
 				return
