@@ -23,10 +23,10 @@ build: install
 	bramble build
 
 integration_ci_test: install gotestsum
-	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./pkg/bramble/
+	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./src/command/
 
 integration_test: install
-	env BRAMBLE_INTEGRATION_TEST=truthy go test -run=$(run) -v ./pkg/bramble/
+	env BRAMBLE_INTEGRATION_TEST=truthy go test -run=$(run) -v ./src/command/
 
 rootless_within_docker:
 	docker build -t bramble . && docker run --privileged -it bramble bramble build ./lib:busybox
