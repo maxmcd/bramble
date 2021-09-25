@@ -1,4 +1,4 @@
-package brambleproject
+package project
 
 import (
 	"os"
@@ -22,12 +22,7 @@ func newTestRuntime(t *testing.T, wd string) *runtime {
 	projectLocation, err := filepath.Abs("../../")
 	require.NoError(t, err)
 
-	rt := &runtime{
-		workingDirectory: wd,
-		projectLocation:  projectLocation,
-		moduleName:       "github.com/maxmcd/bramble",
-	}
-	rt.init()
+	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble")
 	return rt
 }
 

@@ -1,6 +1,7 @@
 package command
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -8,10 +9,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/maxmcd/bramble/src/project"
-	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/maxmcd/bramble/src/logger"
+	"github.com/maxmcd/bramble/src/project"
 	"github.com/mitchellh/go-wordwrap"
 
 	"github.com/pkg/errors"
@@ -154,7 +155,7 @@ has limited use because you can't build anything that you create, but it's a
 good place to get familiar with how the built-in modules and functions work.
 				`,
 				Action: func(c *cli.Context) error {
-					project, err := brambleproject.NewProject(".")
+					project, err := project.NewProject(".")
 					if err != nil {
 						return err
 					}
@@ -171,7 +172,32 @@ Calls to "ls" will search the current directory for bramble files and print
 their public functions with documentation. If an immediate subdirectory has a
 "default.bramble" documentation will be printed for those functions as well.
 				`,
-				Action: func(c *cli.Context) error { return nil },
+				Action: func(c *cli.Context) error {
+					project, err := project.NewProject(".")
+					if err != nil {
+						return err
+					}
+					modules, err := project.ListModuleDoc()
+					if err != nil {
+						return err
+					}
+					for _, m := range modules {
+						fmt.Printf("Module: %s\n", m.Name)
+						fmt.Println(m.Docstring)
+						if m.Docstring != "" {
+							fmt.Println()
+						}
+						for _, fn := range m.Functions {
+							fmt.Println("    " + fn.Definition)
+							fmt.Println(strings.ReplaceAll("        "+fn.Docstring, "\n", "\n    "))
+							if fn.Docstring != "" {
+								fmt.Println()
+							}
+						}
+						fmt.Println()
+					}
+					return nil
+				},
 			},
 		},
 	}

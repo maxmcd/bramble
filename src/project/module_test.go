@@ -1,4 +1,4 @@
-package brambleproject
+package project
 
 import (
 	"path/filepath"
@@ -108,7 +108,7 @@ func TestBramble_resolveModule(t *testing.T) {
 		{
 			name:        "direct file import",
 			module:      "github.com/maxmcd/bramble/src/project/testdata/main",
-			wantGlobals: []string{"foo"},
+			wantGlobals: []string{"foo", "thing"},
 		}, {
 			name:        "default directory import",
 			module:      "github.com/maxmcd/bramble/src/project/testdata",

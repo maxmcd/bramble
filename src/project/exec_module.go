@@ -1,12 +1,12 @@
-package brambleproject
+package project
 
 import (
 	"flag"
 	"sort"
 	"sync"
 
-	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/bramble/src/logger"
+	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -31,12 +31,7 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 		return
 	}
 
-	rt := &runtime{
-		workingDirectory: p.wd,
-		projectLocation:  p.location,
-		moduleName:       p.config.Module.Name,
-	}
-	rt.init()
+	rt := newRuntime(p.wd, p.location, p.config.Module.Name)
 
 	module, fn, err := rt.parseModuleFuncArgument(args)
 	if err != nil {

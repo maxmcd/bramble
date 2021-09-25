@@ -1,2 +1,11 @@
+"""Hello this is the main module"""
+
+
 def foo():
+    """foo is a tricky fellow. sure to return good news, but also the bitter taste of regret"""
+    print("foo")
+
+
+def thing(hi, foo=None, bar=[1, 2, {"foo": 5}, dict(ho="hum")], out={}):
+    "this is just a string"
     print("foo")

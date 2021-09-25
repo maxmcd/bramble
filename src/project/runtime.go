@@ -1,4 +1,4 @@
-package brambleproject
+package project
 
 import (
 	"fmt"
@@ -8,15 +8,20 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/maxmcd/bramble/src/assert"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/src/assert"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-func (rt *runtime) init() {
+func newRuntime(workingDirectory, projectLocation, moduleName string) *runtime {
+	rt := &runtime{
+		workingDirectory: workingDirectory,
+		projectLocation:  projectLocation,
+		moduleName:       moduleName,
+	}
 	assertGlobals, _ := assert.LoadAssertModule()
 	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
@@ -28,6 +33,7 @@ func (rt *runtime) init() {
 			projectLocation: rt.projectLocation,
 		}.filesBuiltin),
 	}
+	return rt
 }
 
 func (rt *runtime) newThread(name string) *starlark.Thread {
@@ -63,13 +69,8 @@ var starlarkSys = &starlarkstruct.Module{
 }
 
 func (p *Project) REPL() {
-	t := &runtime{
-		workingDirectory: p.wd,
-		projectLocation:  p.location,
-		moduleName:       p.config.Module.Name,
-	}
-	t.init()
-	repl.REPL(t.newThread("repl"), t.predeclared)
+	rt := newRuntime(p.wd, p.location, p.config.Module.Name)
+	repl.REPL(rt.newThread("repl"), rt.predeclared)
 }
 
 func (rt *runtime) relativePathFromConfig() string {

@@ -3,9 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -37,7 +34,7 @@ func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions
 		}
 
 		// Building everything in the project
-		modules, err := b.findAllModulesInProject()
+		modules, err := b.project.FindAllModules()
 		if err != nil {
 			return output, err
 		}
@@ -195,26 +192,4 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	}
 	_ = b.store.WriteConfigLink(b.project.Location())
 	return outputDerivations, err
-}
-
-func (b bramble) findAllModulesInProject() (modules []string, err error) {
-	return modules, filepath.Walk(b.project.Location(),
-		func(path string, fi os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if filepath.Base(path) == "bramble.toml" &&
-				path != filepath.Join(b.project.Location(), "bramble.toml") {
-				return filepath.SkipDir
-			}
-			// TODO: ignore .git, ignore .gitignore?
-			if strings.HasSuffix(path, ".bramble") {
-				module, err := b.project.FilepathToModuleName(path)
-				if err != nil {
-					return err
-				}
-				modules = append(modules, module)
-			}
-			return nil
-		})
 }

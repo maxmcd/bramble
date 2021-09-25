@@ -1,4 +1,4 @@
-package bramblebuild
+package build
 
 import (
 	"encoding/json"

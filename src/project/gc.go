@@ -1,4 +1,4 @@
-package brambleproject
+package project
 
 // import (
 // 	"fmt"
@@ -153,7 +153,7 @@ package brambleproject
 // 		return nil, err
 // 	}
 
-// 	store, err := bramblebuild.NewStore("")
+// 	store, err := build.NewStore("")
 // 	if err != nil {
 // 		return nil, err
 // 	}

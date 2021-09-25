@@ -1,4 +1,4 @@
-""" the stdenv wooooo"""
+"""the stdenv wooooo"""
 
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
 load("github.com/maxmcd/bramble/lib")
@@ -18,4 +18,9 @@ def std_derivation(name, builder=None, **kwargs):
     env.update(dict(PATH=PATH, nix_seed=nix.out, stdenv=nix.out, busybox=bb.out))
     if builder == None:
         builder = nix.out + "/bin/bash"
-    return derivation(name, builder, env=env, **kwargs,)
+    return derivation(
+        name,
+        builder,
+        env=env,
+        **kwargs,
+    )

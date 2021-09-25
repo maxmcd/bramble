@@ -1,7 +1,11 @@
+"""
+Lib provides various derivations to help build stuff
+"""
 load("github.com/maxmcd/bramble/lib/std")
 
 
 def cacerts():
+    """cacerts provides known certificate authority certificates to verify TLS connections"""
     return derivation(
         name="ca-certificates",
         builder=busybox().out + "/bin/sh",

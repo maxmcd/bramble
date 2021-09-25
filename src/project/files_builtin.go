@@ -1,4 +1,4 @@
-package brambleproject
+package project
 
 import (
 	"fmt"
