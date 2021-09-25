@@ -1,4 +1,4 @@
-package bramble
+package command
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	build "github.com/maxmcd/bramble/pkg/bramblebuild"
-	project "github.com/maxmcd/bramble/pkg/brambleproject"
+	build "github.com/maxmcd/bramble/src/build"
+	project "github.com/maxmcd/bramble/src/project"
 
 	"github.com/pkg/errors"
 )

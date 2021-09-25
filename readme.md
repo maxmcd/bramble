@@ -12,10 +12,19 @@
   - [Project configuration](#project-configuration)
     - [Module metadata](#module-metadata)
     - [bramble.lock](#bramblelock)
+  - [Command Line](#command-line)
+    - [`bramble build`](#bramble-build)
+    - [`bramble run`](#bramble-run)
+    - [`bramble ls`](#bramble-ls)
+    - [`bramble repl`](#bramble-repl)
+    - [`bramble shell`](#bramble-shell)
+    - [`bramble gc`](#bramble-gc)
   - [Dependencies](#dependencies)
   - [Config language](#config-language)
     - [.bramble, default.bramble and the load() statement](#bramble-defaultbramble-and-the-load-statement)
-  - [Derivation](#derivation)
+    - [derivation()](#derivation)
+    - [run()](#run)
+    - [test()](#test)
     - [Sys module](#sys-module)
     - [Assert module](#assert-module)
     - [Files builtin](#files-builtin)
@@ -220,6 +229,57 @@ A project must include a module name. If it's expected that this project is goin
 
 The `bramble.lock` file stores hashes so that "fetch" builders like "fetch_url" and "fetch_git" can ensure the contents they are downloading have the expected content. This file will also include various hashes to ensure dependencies and sub-dependencies can be reliably re-assembled.
 
+### Command Line
+
+#### `bramble build`
+
+```
+bramble build [options] [module]:<function>
+bramble build [options] <path>
+```
+
+The `build` command is used to build derivations returned by bramble functions. Calling `build` with a module location and function will call that function, take any derivations that are returned, and build that derivation and its dependencies.
+
+Here are some examples:
+```
+bramble build ./tests/basic:self_reference
+bramble build github.com/maxmcd/bramble:all
+bramble build github.com/username/repo/subdirectory:all
+```
+
+Calls to `build` with a path argument will build everything in that directory and all of its subdirectories. This is done by searching for all bramble files and calling all of their public functions. Any derivations that are returned by these functions are built along with all of their dependencies (TODO: should a call with a path just search that location). Call to `build` without a path will run all builds from the current directory and its subdirectories.
+
+```
+bramble build
+bramble build ./tests
+```
+
+#### `bramble run`
+
+```
+bramble run [options] [module]:<function> [args...]
+```
+
+#### `bramble ls`
+
+```
+bramble ls <path>
+```
+
+Calls to `ls` will search the current directory for bramble files and print their public functions with documentation. If an immediate subdirectory has a `default.bramble` documentation will be printed for those functions as well.
+
+#### `bramble repl`
+
+`repl` opens up a read-eval-print-loop for interacting with the bramble [config language](#config-language). You can make derivations and call other built-in functions. The repl has limited use because you can't build anything that you create, but it's a good place to get familiar with how the built-in modules and functions work.
+
+#### `bramble shell`
+
+`shell` takes the same arguments as `bramble build` but instead of building the final derivation it opens up a terminal into the build environment within a build directory with environment variables and dependencies populated. This is a good way to debug a derivation that you're building.
+
+#### `bramble gc`
+
+`gc` searches for all known projects (TODO: link to what "known projects" means), runs all of their public functions and calculates what derivations and configuration they need to run. All other information is deleted from the store and project configurations.
+
 ### Dependencies
 
 ### Config language
@@ -283,7 +343,7 @@ Traceback (most recent call last):
 Error: module has no ._bar field or method
 ```
 
-### Derivation
+#### derivation()
 
 ```python
 derivation(name, builder, args=[], sources=[], env={}, outputs=["out"], platform=sys.platform)
@@ -324,6 +384,23 @@ A `builder` can be on of the default built-ins: `["fetch_url", "fetch_git", "der
 ```
 
 `platform` denotes what platform this derivation can be built on. If the specific platform is available on the current system the derivation will be built.
+
+#### run()
+
+The run function defines the attributes for running a program from a derivation output. If a call to a bramble function returns a run command that run command and parameters will be executed.
+
+```python
+run(derivation, args=[], paths=[], write_paths=[], hidden_paths=[], network=False)
+```
+
+#### test()
+
+The test command creates a test. Any call to the test function will register a test that can be run later. Calls to `bramble test` will run all tests in that directory and it's children. Calls to a specific bramble function like `bramble test ./tests:first` will run any test functions that are called during the function call.
+
+```python
+test(derivation, args=[])
+```
+
 
 #### Sys module
 

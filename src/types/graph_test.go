@@ -1,4 +1,4 @@
-package ds
+package types
 
 import (
 	"reflect"

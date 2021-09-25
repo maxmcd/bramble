@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
+	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )

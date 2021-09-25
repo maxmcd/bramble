@@ -1,8 +1,8 @@
-package bramble
+package command
 
 import (
-	build "github.com/maxmcd/bramble/pkg/bramblebuild"
-	project "github.com/maxmcd/bramble/pkg/brambleproject"
+	project "github.com/maxmcd/bramble/src/project"
+	build "github.com/maxmcd/bramble/src/build"
 )
 
 type bramble struct {

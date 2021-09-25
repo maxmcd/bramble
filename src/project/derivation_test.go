@@ -17,7 +17,7 @@ def foo():
 	return derivation("a", builder="{}/bin/sh".format(d), env={"PATH":"{}/bin".format(d)}, sources=files(["*"]))
 b = foo()
 `,
-			respContains: `brambleproject/derivation.go`},
+			respContains: `project/derivation.go`},
 	}
 	runDerivationTest(t, tests, "")
 }

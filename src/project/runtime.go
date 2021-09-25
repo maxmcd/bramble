@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/maxmcd/bramble/pkg/assert"
+	"github.com/maxmcd/bramble/src/assert"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"

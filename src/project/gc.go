@@ -8,10 +8,10 @@ package brambleproject
 // 	"strings"
 // 	"sync"
 
-// 	"github.com/maxmcd/bramble/pkg/bramblebuild"
-// 	ds "github.com/maxmcd/bramble/pkg/data_structures"
+// 	"github.com/maxmcd/bramble/src/build"
+// 	ds "github.com/maxmcd/bramble/src/types"
 // 	"github.com/maxmcd/bramble/pkg/fileutil"
-// 	"github.com/maxmcd/bramble/pkg/logger"
+// 	"github.com/maxmcd/bramble/src/logger"
 // 	"github.com/maxmcd/dag"
 // 	"github.com/pkg/errors"
 // 	"go.starlark.net/starlark"

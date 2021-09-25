@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
+	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/dag"

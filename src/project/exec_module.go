@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	ds "github.com/maxmcd/bramble/pkg/data_structures"
-	"github.com/maxmcd/bramble/pkg/logger"
+	ds "github.com/maxmcd/bramble/src/types"
+	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"

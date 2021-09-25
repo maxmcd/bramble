@@ -1,11 +1,11 @@
-package bramble
+package command
 
 import (
 	"context"
 	"encoding/json"
 
-	build "github.com/maxmcd/bramble/pkg/bramblebuild"
-	project "github.com/maxmcd/bramble/pkg/brambleproject"
+	build "github.com/maxmcd/bramble/src/build"
+	project "github.com/maxmcd/bramble/src/project"
 )
 
 func (b bramble) runGit(ctx context.Context, opts build.RunDerivationOptions) (err error) {

@@ -1,10 +1,10 @@
-package bramble
+package command
 
 import (
 	"encoding/json"
 	"fmt"
 
-	project "github.com/maxmcd/bramble/pkg/brambleproject"
+	project "github.com/maxmcd/bramble/src/project"
 )
 
 func printBuildInput(args []string) error {

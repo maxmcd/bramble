@@ -11,7 +11,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/pkg/logger"
+	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/pkg/errors"
 )

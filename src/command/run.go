@@ -1,11 +1,11 @@
-package bramble
+package command
 
 import (
 	"context"
 	"errors"
 	"os"
 
-	"github.com/maxmcd/bramble/pkg/bramblebuild"
+	"github.com/maxmcd/bramble/src/build"
 )
 
 func (b bramble) run(args []string) (err error) {

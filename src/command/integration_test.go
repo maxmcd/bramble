@@ -1,4 +1,4 @@
-package bramble
+package command
 
 import (
 	"fmt"
