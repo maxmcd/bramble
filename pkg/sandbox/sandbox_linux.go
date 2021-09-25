@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"testing/fstest"
 
-	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/moby/term"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -85,7 +84,6 @@ func initRootfs(path string) (err error) {
 
 func newContainer(s Sandbox) (c container, err error) {
 	c.sandbox = s
-	logger.Debugf("%+v\n", c)
 	cfg := defaultRootlessConfig()
 	uid, gid, err := userAndGroupIDs()
 	if err != nil {

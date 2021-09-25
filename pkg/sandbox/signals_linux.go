@@ -1,10 +1,10 @@
 package sandbox
 
 import (
+	"log"
 	"os"
 	"os/signal"
 
-	"github.com/maxmcd/bramble/pkg/logger"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/utils"
 
@@ -65,7 +65,7 @@ func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach 
 		case unix.SIGCHLD:
 			exits, err := h.reap()
 			if err != nil {
-				logger.Debug(err)
+				log.Println(err)
 			}
 			for _, e := range exits {
 				// logrus.WithFields(logrus.Fields{
@@ -83,7 +83,7 @@ func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach 
 		default:
 			// logrus.Debugf("sending signal to process %s", s)
 			if err := unix.Kill(pid1, s.(unix.Signal)); err != nil {
-				logger.Debug(err)
+				log.Println(err)
 			}
 		}
 	}

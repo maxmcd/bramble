@@ -1,7 +1,7 @@
 package main
 
-import "github.com/maxmcd/bramble/pkg/bramble"
+import "github.com/maxmcd/bramble/src/command"
 
 func main() {
-	bramble.RunCLI()
+	command.RunCLI()
 }

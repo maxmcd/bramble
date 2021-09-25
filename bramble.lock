@@ -7,6 +7,7 @@
   "https://brmbl.s3.amazonaws.com/file-links.tar.gz" = "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a"
   "https://brmbl.s3.amazonaws.com/patchelf.tar.gz" = "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960"
   "https://dl.google.com/go/go1.4-bootstrap-20171003.tar.gz" = "f4ff5b5eb3a3cae1c993723f3eab519c5bae18866b5e5f96fe1102f0cb5c3e52"
+  "https://github.com/denoland/deno/releases/download/v1.14.0/deno-x86_64-unknown-linux-gnu.zip" = "66e6b562f5cc6fc23d340e6f418140ff61ed59a3db096ab522a8f5a7c640108c"
   "https://maxmcd.com/" = "c0c11d3923e78f8c103985e2035df7b146e9946bf7eabcd38d71459d94063a7a"
   "https://ziglang.org/builds/zig-linux-x86_64-0.8.0-dev.1431+c760532be.tar.xz" = "22e83ec5f2483bb0d9a861346c883b4b2f7f572595f3453d1131b31898e98a33"
   "https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab.tar.xz" = "a06f5c964121d979021b18d3c55d8390c6fda03dc380c6a65ab2bc283084ae3a"

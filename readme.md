@@ -12,13 +12,22 @@
   - [Project configuration](#project-configuration)
     - [Module metadata](#module-metadata)
     - [bramble.lock](#bramblelock)
+  - [Command Line](#command-line)
+    - [`bramble build`](#bramble-build)
+    - [`bramble run`](#bramble-run)
+    - [`bramble ls`](#bramble-ls)
+    - [`bramble repl`](#bramble-repl)
+    - [`bramble shell`](#bramble-shell)
+    - [`bramble gc`](#bramble-gc)
   - [Dependencies](#dependencies)
   - [Config language](#config-language)
+    - [.bramble, default.bramble and the load() statement](#bramble-defaultbramble-and-the-load-statement)
+    - [derivation()](#derivation)
+    - [run()](#run)
+    - [test()](#test)
     - [Sys module](#sys-module)
     - [Assert module](#assert-module)
     - [Files builtin](#files-builtin)
-  - [Derivation](#derivation)
-    - [Attributes](#attributes)
     - [Dependencies](#dependencies-1)
   - [Builds](#builds)
     - [Derivations that output derivations](#derivations-that-output-derivations)
@@ -185,9 +194,18 @@ That's it! Your first bramble build.
 
 ## Spec
 
-The spec is currently a WIP. Parts will be added as they materialize.
+This is a reference manual for Bramble. Bramble is a work-in-progress. I started writing this spec to solidify the major design decisions, but everything is still very much in flux. There are scattered notes in the [notes folder](./notes) as well.
 
 ### Introduction
+
+Bramble is a functional build system and package manager. Bramble is project-based, when you run a build or run a build output it must always be done in the context of a project.
+
+Here are three example use-cases that Bramble hopes to support and support well.
+
+1. **Running a build or a command related to a project**. Often, code repositories want to explain how to build or run their software. Bramble aims to be one of the safest and most reliable ways to do that. A `bramble build` or `bramble run` within a project will use the `bramble.toml`, `bramble.lock` and source files to fetch dependencies from a cache or build them from source. Additionally `bramble run` commands are sandboxed by default, so Bramble should be a good choice to run unfamiliar software.
+2. **Running arbitrary software from the internet**. Running `bramble run github.com/username/project:function binary` will pull down software from that repo, build it, and run it within a sandbox on a local system. `bramble run` is sandboxed by default and aims to provide a safe and reproducible way to run arbitrary software on your system.
+3. **Build a Docker/OCI container**. Any `bramble run` call can be packaged up into a container containing only the bare-minimum dependencies for that program to run.
+4. **Future use-cases**. Support for WASM build environments, support for running builds in a browser. Tight integration with IDEs.
 
 ### Project configuration
 
@@ -211,20 +229,216 @@ A project must include a module name. If it's expected that this project is goin
 
 The `bramble.lock` file stores hashes so that "fetch" builders like "fetch_url" and "fetch_git" can ensure the contents they are downloading have the expected content. This file will also include various hashes to ensure dependencies and sub-dependencies can be reliably re-assembled.
 
+### Command Line
+
+#### `bramble build`
+
+```
+bramble build [options] [module]:<function>
+bramble build [options] <path>
+```
+
+The `build` command is used to build derivations returned by bramble functions. Calling `build` with a module location and function will call that function, take any derivations that are returned, and build that derivation and its dependencies.
+
+Here are some examples:
+```
+bramble build ./tests/basic:self_reference
+bramble build github.com/maxmcd/bramble:all
+bramble build github.com/username/repo/subdirectory:all
+```
+
+Calls to `build` with a path argument will build everything in that directory and all of its subdirectories. This is done by searching for all bramble files and calling all of their public functions. Any derivations that are returned by these functions are built along with all of their dependencies (TODO: should a call with a path just search that location). Call to `build` without a path will run all builds from the current directory and its subdirectories.
+
+```
+bramble build
+bramble build ./tests
+```
+
+#### `bramble run`
+
+```
+bramble run [options] [module]:<function> [args...]
+```
+
+#### `bramble ls`
+
+```
+bramble ls <path>
+```
+
+Calls to `ls` will search the current directory for bramble files and print their public functions with documentation. If an immediate subdirectory has a `default.bramble` documentation will be printed for those functions as well.
+
+#### `bramble repl`
+
+`repl` opens up a read-eval-print-loop for interacting with the bramble [config language](#config-language). You can make derivations and call other built-in functions. The repl has limited use because you can't build anything that you create, but it's a good place to get familiar with how the built-in modules and functions work.
+
+#### `bramble shell`
+
+`shell` takes the same arguments as `bramble build` but instead of building the final derivation it opens up a terminal into the build environment within a build directory with environment variables and dependencies populated. This is a good way to debug a derivation that you're building.
+
+#### `bramble gc`
+
+`gc` searches for all known projects (TODO: link to what "known projects" means), runs all of their public functions and calculates what derivations and configuration they need to run. All other information is deleted from the store and project configurations.
+
 ### Dependencies
 
 ### Config language
 
+Bramble uses [starlark](https://github.com/google/starlark-go) for its configuration language. Starlark generally a superset of Python, but has some differences that might trip up more experienced Python users. When in doubt would be sure to check out the [lamnguage spec](https://github.com/google/starlark-go/blob/master/doc/spec.md).
+
+Here is a typical bramble file:
+
+```python
+# Load statements
+load("github.com/maxmcd/bramble/lib/stdenv")
+load("github.com/maxmcd/bramble/lib")
+load("github.com/maxmcd/bramble/lib/std")
+
+
+def fetch_a_url():
+    return std.fetch_url("https://maxmcd.com/")
+
+
+def step_1():
+    bash = "%s/bin/bash" % stdenv.stdenv()
+    # A derivation, the basic building block of our builds
+    return derivation(
+        "step_1",
+        builder=bash,
+        env=dict(bash=bash),
+        # Use of the `files()` builtin
+        sources=files(["./step1.sh"]),
+        args=["./step1.sh"],
+    )
+```
+
+#### .bramble, default.bramble and the load() statement
+
+Bramble source files are stored in files with a `.bramble` file extension. Files can reference other bramble files by using their module names. This project has the module name `github.com/maxmcd/bramble` so if I want to access a file at `./tests/basic.bramble` I can import it with `load("github.com/maxmcd/bramble/tests/basic")`. Relative imports aren't supported.
+
+The `default.bramble` filename is special. If a directory has a `default.bramble` in it then we can import that directory as a package and all functions in the `default.bramble`. In the above example, if the file was called `default.bramble` instead of `basic.bramble` we could import it with `load("github.com/maxmcd/bramble/tests")`.
+
+If you call `load("github.com/maxmcd/bramble/tests")` at the top of a bramble file a new global variable named `tests` will be loaded into the program context. `tests` will have an attribute for all global variables in the `default.bramble` file unless they begin with an underscore.
+
+```python
+# ./tests/default.bramble
+def foo():
+  print("hi")
+def _bar():
+  print("hello")
+```
+
+```python
+# In a `bramble repl`
+>>> load("github.com/maxmcd/bramble/tests")
+>>> tests
+<module "github.com/maxmcd/bramble/tests">
+>>> dir(tests)
+["foo"]
+>>> tests.foo()
+hi
+>>> tests._bar()
+Traceback (most recent call last):
+  <stdin>:1:6: in <expr>
+Error: module has no ._bar field or method
+```
+
+#### derivation()
+
+```python
+derivation(name, builder, args=[], sources=[], env={}, outputs=["out"], platform=sys.platform)
+```
+
+Derivations are the basic building block of a bramble build. Every build is a graph of derivations. Everything that is built has a derivation and has dependencies that are derivations.
+
+A derivation `name` is required to help with visibility and debugging. It's helpful to have derivation names be unique in a project, but this is not an enforced requirement.
+
+A `builder` can be on of the default built-ins: `["fetch_url", "fetch_git", "derivation_output"]` or it can point to an executable that will be used to build files.
+
+
+`args` are the arguments that as passed to the builder. `env` defines environment variables that are set within the build environment. Bramble detects dependencies by scanning for derivations referenced within a derivation. `builder`, `args` and `env` are the only parameters that can reference other derivations, so you can be sure that if a derivation isn't referenced in one of those parameters that it won't be available to the build.
+
+`sources` contains references to source files needed for this derivation. Use the `files` builtin to populate sources for a given derivation.
+
+`outputs` defines this Derivation's outputs. The default is for a derivation to have a single output called "out", but you can have one or more output with any name. After a derivation is created, you can reference it's outputs as attributes. If you cast a derivation to a string it returns a reference to the default output.
+
+```python
+>>> b = derivation("hi", "ho")
+>>> b
+{{ soen6obfffrahna6ojyc2cgxjx7jcmhv:out }}
+>>> b.out
+"{{ soen6obfffrahna6ojyc2cgxjx7jcmhv:out }}"
+>>> c = derivation("hi", "ho", outputs=["a", "b", "c"])
+>>> c
+{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:a }}
+>>> c.a
+"{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:a }}"
+>>> c.b
+"{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:b }}"
+>>> c.c
+"{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:c }}"
+>>> "{}/bin/bash".format(c)
+"{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:a }}/bin/bash"
+>>> "{}/bin/bash".format(c.b)
+"{{ lvliebpnk6lcalc3sdsvfbrzwlamb4qo:b }}/bin/bash"
+```
+
+`platform` denotes what platform this derivation can be built on. If the specific platform is available on the current system the derivation will be built.
+
+#### run()
+
+The run function defines the attributes for running a program from a derivation output. If a call to a bramble function returns a run command that run command and parameters will be executed.
+
+```python
+run(derivation, args=[], paths=[], write_paths=[], hidden_paths=[], network=False)
+```
+
+#### test()
+
+The test command creates a test. Any call to the test function will register a test that can be run later. Calls to `bramble test` will run all tests in that directory and it's children. Calls to a specific bramble function like `bramble test ./tests:first` will run any test functions that are called during the function call.
+
+```python
+test(derivation, args=[])
+```
+
 
 #### Sys module
 
+```python
+>>> sys
+<module "sys">
+>>> dir(sys)
+["arch", "os", "platform"]
+>>> sys.arch
+"amd64"
+>>> sys.os
+"linux"
+>>> sys.platform
+"linux-amd64"
+```
+
+
 #### Assert module
+
+```python
+>>> dir(assert)
+["contains", "eq", "fail", "fails", "lt", "ne", "true"]
+>>> assert.contains("hihihi", "hi")
+>>> assert.contains("hihihi", "how")
+Traceback (most recent call last):
+  <stdin>:1:16: in <expr>
+  assert.star:30:14: in _contains
+Error: hihihi does not contain how
+```
 
 #### Files builtin
 
-### Derivation
+```python
+files(include, exclude=[], exclude_directories=True, allow_empty=True)
+```
 
-#### Attributes
+`files` searches for source files and returns a mutable list.
+
 
 #### Dependencies
 

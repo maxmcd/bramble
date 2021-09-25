@@ -1,6 +1,4 @@
-"""
-Run a handful of functions
-"""
+"""Run a handful of functions"""
 
 load("github.com/maxmcd/bramble/tests/simple/simple")
 load("github.com/maxmcd/bramble/lib")
