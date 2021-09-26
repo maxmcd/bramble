@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -36,7 +37,8 @@ var (
 
 func main() {
 	if err := run(); err != nil {
-		panic(err)
+		fmt.Printf("%+v\n", err)
+		panic("")
 	}
 }
 func run() error {
@@ -50,10 +52,14 @@ func run() error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.WithStack(err)
+		return errors.Wrapf(err, "error requesting url %q", url)
 	}
 	defer resp.Body.Close()
-	dir, err := os.MkdirTemp("", "")
+	wd, err := os.Getwd()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	dir, err := os.MkdirTemp(wd, "")
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -71,7 +77,34 @@ func run() error {
 		if !strings.Contains(err.Error(), "format unrecognized by filename") {
 			return errors.Wrap(err, "error unpacking url archive")
 		}
-		return os.Rename(f.Name(), filepath.Join(os.Getenv("out"), filepath.Base(url)))
+		// Regrettable, but we can't rename/mv files across mounted devices in the sandbox
+		return copyFile(f.Name(), filepath.Join(os.Getenv("out"), filepath.Base(url)))
 	}
+	return nil
+}
+
+func copyFile(srcFile, dstFile string) error {
+	in, err := os.Open(srcFile)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	defer in.Close()
+
+	fi, err := in.Stat()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	out, err := os.OpenFile(dstFile, os.O_CREATE|os.O_RDWR, fi.Mode())
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
 	return nil
 }

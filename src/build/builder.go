@@ -105,8 +105,6 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	switch drv.Builder {
 	case "basic_fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
-	case "fetch_git":
-		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	default:
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
@@ -153,30 +151,6 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		}
 	}
 	return drv, err
-}
-
-func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	outputPath, ok := outputPaths["out"]
-	if len(outputPaths) > 1 || !ok {
-		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
-	}
-	url, ok := drv.Env["url"]
-	if !ok {
-		return errors.New("fetch_url requires the environment variable 'url' to be set")
-	}
-	// derivation can provide a hash, but usually this is just in the lockfile
-	hash := drv.Env["hash"]
-
-	if err := b.store.runGit(ctx, RunDerivationOptions{
-		Mounts: []string{outputPath},
-		Args:   []string{"git", "clone", url, outputPath},
-		Dir:    outputPath,
-	}); err != nil {
-		return err
-	}
-
-	_ = hash
-	return nil
 }
 
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {

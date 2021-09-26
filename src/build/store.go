@@ -38,12 +38,6 @@ type Store struct {
 	StorePath   string
 
 	derivationCache *derivationsMap
-
-	runGit func(context.Context, RunDerivationOptions) error
-}
-
-func (s *Store) RegisterGetGit(runGit func(context.Context, RunDerivationOptions) error) {
-	s.runGit = runGit
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
