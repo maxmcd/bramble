@@ -30,3 +30,6 @@ integration_test: install
 
 rootless_within_docker:
 	docker build -t bramble . && docker run --privileged -it bramble bramble build ./lib:busybox
+
+upload_url_fetcher:
+	cd cmd/url_fetcher && make upload

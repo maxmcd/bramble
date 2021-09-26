@@ -19,6 +19,7 @@ type NewDerivationOptions struct {
 	Outputs          []string
 	Platform         string
 	Source           Source
+	Network          bool
 }
 
 type SourceFiles struct {
@@ -94,6 +95,7 @@ func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv De
 	drv.store = s
 	drv.Args = options.Args
 	drv.Builder = options.Builder
+	drv.Network = options.Network
 	drv.Name = options.Name
 	drv.Env = options.Env
 	drv.InputDerivations = options.InputDerivations

@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/maxmcd/bramble/src/build"
 	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/src/project"
 	"github.com/mitchellh/go-wordwrap"
@@ -228,6 +230,10 @@ their public functions with documentation. If an immediate subdirectory has a
 	log.SetOutput(ioutil.Discard)
 
 	if err := app.Run(os.Args); err != nil {
+		if er, ok := errors.Cause(err).(build.ExecError); ok {
+			fmt.Println(er.Logs.Len())
+			_, _ = io.Copy(os.Stdout, er.Logs)
+		}
 		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
 			os.Exit(er.ExitCode)
 		}

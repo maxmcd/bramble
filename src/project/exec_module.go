@@ -139,7 +139,10 @@ func (rt *runtime) allDerivationDependencies(in map[string]Derivation) (out map[
 		// pop
 		hash := queue[0]
 		queue = queue[1:]
-		drv := rt.allDerivations[hash]
+		drv, ok := rt.allDerivations[hash]
+		if !ok {
+			panic("not found " + hash)
+		}
 		out[hash] = drv
 		for _, dep := range drv.Dependencies {
 			queue = append(queue, dep.Hash)

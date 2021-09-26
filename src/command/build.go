@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	build "github.com/maxmcd/bramble/src/build"
 	project "github.com/maxmcd/bramble/src/project"
@@ -64,6 +63,10 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	if err != nil {
 		return nil, err
 	}
+	// jobPrinter := jobprinter.New()
+
+	// go func() { _ = jobPrinter.Start() }()
+	// defer jobPrinter.Stop()
 
 	if len(output.Output) != 1 && ops.Shell {
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
@@ -76,8 +79,11 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
 		inputDerivations := []build.DerivationOutput{}
 
+		// job := jobPrinter.StartJob(drv.Name)
+		// defer jobPrinter.EndJob(job)
+		fmt.Println("building", drv.Name, dep.Hash)
 		derivationDataLock.Lock()
-		// Populate the input derivation from previous buids
+		// Populate the input derivation from previous builds
 		for _, dep := range drv.Dependencies {
 			do, found := derivationIDUpdates[dep]
 			if !found {
@@ -103,6 +109,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			Env:              drv.Env,
 			InputDerivations: inputDerivations,
 			Name:             drv.Name,
+			Network:          drv.Network,
 			Outputs:          drv.Outputs,
 			Platform:         drv.Platform,
 			Source:           source,
@@ -111,7 +118,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			return nil, nil, err
 		}
 		var didBuild bool
-		start := time.Now()
+		// start := time.Now()
 
 		runShell := false
 		if len(output.Output) == 1 && ops.Shell {
@@ -150,11 +157,13 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 				}
 			}
 		}
-		ts := time.Since(start).String()
+		_ = didBuild
+		// ts := time.Since(start).String()
 		if !didBuild && !ops.Check {
-			ts = "cached"
+			// job.ReplaceTS("(cached)")
 		}
-		fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
+		fmt.Println("built", drv.Name, didBuild)
+		// fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
 		derivationDataLock.Lock()
 		// allDerivations = append(allDerivations, buildDrv)
 		// Store the derivation outputs in the map for reference when building

@@ -48,8 +48,8 @@ type Sandbox struct {
 	// to the end of the path like `/tmp:ro`
 	Mounts []string
 
-	// DisableNetwork will remove network access within the sandbox process
-	DisableNetwork bool
+	// Network will allow network access
+	Network bool
 
 	ReadOnlyPaths []string
 	HiddenPaths   []string

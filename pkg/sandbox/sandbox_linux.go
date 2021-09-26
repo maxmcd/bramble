@@ -96,7 +96,7 @@ func newContainer(s Sandbox) (c container, err error) {
 
 	cfg.UidMappings[0].HostID = uid
 	cfg.GidMappings[0].HostID = gid
-	if s.DisableNetwork {
+	if !s.Network {
 		// NEWNET creates a new network namespace, it won't have a working network.
 		cfg.Namespaces = append(cfg.Namespaces, configs.Namespace{Type: configs.NEWNET})
 	}
@@ -407,7 +407,6 @@ func defaultRootlessConfig() *configs.Config {
 			{Type: configs.NEWUTS},
 			{Type: configs.NEWUSER},
 			{Type: configs.NEWCGROUP},
-			// {Type: configs.NEWNET},
 		}),
 		UidMappings: []configs.IDMap{
 			{

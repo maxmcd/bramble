@@ -158,6 +158,9 @@ func (emo ExecModuleOutput) walkAndPatch(maxParallel int, fn func(dep Dependency
 	w.walker = &dag.Walker{Callback: cb, Reverse: true}
 	w.walker.Update(w.graph)
 	if errs := w.walker.Wait(); len(errs) != 0 {
+		if len(errs) == 1 {
+			return nil, errs[0]
+		}
 		return nil, errors.New(fmt.Sprint(errs))
 	}
 	return w, nil

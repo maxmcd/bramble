@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	stdruntime "runtime"
@@ -22,11 +23,18 @@ func newRuntime(workingDirectory, projectLocation, moduleName string) *runtime {
 		projectLocation:  projectLocation,
 		moduleName:       moduleName,
 	}
-	assertGlobals, _ := assert.LoadAssertModule()
 	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
+	rt.internalKey = rand.Int63()
+	// TODO: sys will be needed by this, what else?
+	derivation, err := rt.loadNativeDerivation(starlark.NewBuiltin("_derivation", rt.derivationFunction))
+	if err != nil {
+		repl.PrintError(err)
+		panic(err)
+	}
+	assertGlobals, _ := assert.LoadAssertModule()
 	rt.predeclared = starlark.StringDict{
-		"derivation": starlark.NewBuiltin("derivation", rt.derivationFunction),
+		"derivation": derivation,
 		"assert":     assertGlobals["assert"],
 		"sys":        starlarkSys,
 		"files": starlark.NewBuiltin("files", filesBuiltin{
@@ -52,7 +60,10 @@ type runtime struct {
 	projectLocation  string
 	moduleName       string
 
+	internalKey int64
+
 	allDerivations map[string]Derivation
+	tests          []Test
 
 	cache map[string]*entry
 

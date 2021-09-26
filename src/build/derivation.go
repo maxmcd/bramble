@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
+	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )
@@ -33,6 +33,8 @@ type Derivation struct {
 	InputDerivations DerivationOutputs
 	// Name is the name of the derivation
 	Name string
+
+	Network bool `json:",omitempty"`
 
 	// Outputs are build outputs, a derivation can have many outputs, the
 	// default output is called "out". Multiple outputs are useful when your

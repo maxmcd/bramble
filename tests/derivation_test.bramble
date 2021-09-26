@@ -10,4 +10,4 @@ def other():
     and_another()
 
 def and_another():
-    assert.fails(_no_name, "missing argument for name")
+    assert.fails(_no_name, "missing")
