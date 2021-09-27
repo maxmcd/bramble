@@ -1,10 +1,5 @@
-def fetch_url(url):
-    return derivation(name=url.split("/")[-1], builder="fetch_url", env={"url": url})
-
-
 def foo():
-    eg = fetch_url("example.com")
-    print(files(["*.bramble"]))
+    eg = derivation("example.com", "hi")
     return derivation(
         "name",
         builder="foo",

@@ -190,12 +190,15 @@ func valuesToDerivations(values starlark.Value) (derivations []Derivation) {
 }
 
 func isTopLevel(thread *starlark.Thread) bool {
-	if thread.CallStackDepth() == 0 {
+	if thread.CallStackDepth() <= 1 {
 		// TODO: figure out what we should actually do here, so far this is only
 		// for tests
 		return false
 	}
-	return thread.CallStack().At(1).Name == "<toplevel>" || thread.CallStack().At(1).Name == "<expr>"
+	// TODO: instead of always assuming an additional layer for the derivation
+	// wrapper function we should validate the function with a builtin within
+	// the derivation file. maybe
+	return thread.CallStack().At(2).Name == "<toplevel>" || thread.CallStack().At(2).Name == "<expr>"
 }
 
 func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
