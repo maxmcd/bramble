@@ -43,9 +43,7 @@ func main() {
 }
 func run() error {
 	url := os.Getenv("url")
-	client := http.Client{
-		Transport: transport,
-	}
+	client := http.Client{Transport: transport}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return errors.WithStack(err)

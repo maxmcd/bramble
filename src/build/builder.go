@@ -102,6 +102,15 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		return drv, errors.New("can't spawn a shell with a builtin builder")
 	}
 
+	defer func() {
+		// If we exit let's try and clean these paths up in case they still exist
+		// TODO: could probably limit this to only when there's an error
+		os.RemoveAll(buildDir)
+		for _, outputPath := range outputPaths {
+			_ = os.RemoveAll(outputPath)
+		}
+	}()
+
 	switch drv.Builder {
 	case "basic_fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
@@ -109,10 +118,6 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
 	if err != nil {
-		return drv, err
-	}
-
-	if err := os.RemoveAll(buildDir); err != nil {
 		return drv, err
 	}
 
@@ -290,13 +295,6 @@ func (err ExecError) Error() string {
 }
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
-	// if drv.Name == "self-reference" {
-	// 	fmt.Println(drv.PrettyJSON(), outputPaths)
-	// 	panic("")
-	// }
-	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
-	defer region.End()
-
 	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
 		hshr := hasher.NewHasher()
@@ -341,8 +339,6 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	return
 }
 func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
-	region := trace.StartRegion(ctx, "unarchiveAndReplaceOutputFolderName")
-	defer region.End()
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {
@@ -379,6 +375,8 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 	}()
 
 	select {
+	case <-ctx.Done():
+		return context.Canceled
 	case err := <-errChan:
 		return err
 	case <-doneChan:

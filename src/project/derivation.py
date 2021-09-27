@@ -94,7 +94,7 @@ def git(name, env):
         env=dict(src=src, PATH=busybox().out + "/bin"),
     )
     return _derivation(
-        name="git_fetcher",
+        name=name,
         builder=busybox().out + "/bin/sh",
         args=[
             "-c",

@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(buildOptions{}, func() (project.ExecModuleOutput, error) {
+func (b bramble) runBuildFromOutput(ctx context.Context, output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
+	return b.runBuild(ctx, buildOptions{}, func() (project.ExecModuleOutput, error) {
 		return output, nil
 	})
 }
@@ -22,8 +22,8 @@ type buildOptions struct {
 	Shell bool
 }
 
-func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(ops, func() (output project.ExecModuleOutput, err error) {
+func (b bramble) runBuildFromCLI(ctx context.Context, command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
+	return b.runBuild(ctx, ops, func() (output project.ExecModuleOutput, err error) {
 		if len(args) > 0 {
 			// Building something specific
 			return b.project.ExecModule(project.ExecModuleInput{
@@ -58,7 +58,7 @@ func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions
 	})
 }
 
-func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
+func (b bramble) runBuild(ctx context.Context, ops buildOptions, execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
 	output, err := execModule()
 	if err != nil {
 		return nil, err
@@ -77,6 +77,11 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	var derivationDataLock sync.Mutex
 
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		inputDerivations := []build.DerivationOutput{}
 
 		// job := jobPrinter.StartJob(drv.Name)
@@ -130,7 +135,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			}
 		}
 
-		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+		if buildDrv, didBuild, err = builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
 			Shell:      runShell,
 			ForceBuild: runShell,
 		}); err != nil {
@@ -138,7 +143,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 		}
 
 		if ops.Check {
-			secondBuildDrv, _, err := builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+			secondBuildDrv, _, err := builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
 				ForceBuild: true,
 			})
 			if err != nil {

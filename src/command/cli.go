@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -108,7 +109,7 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI("build", c.Args().Slice(), buildOptions{
+					_, err = b.runBuildFromCLI(c.Context, "build", c.Args().Slice(), buildOptions{
 						Check: c.Bool("check"),
 					})
 					return err
@@ -123,7 +124,7 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					return b.run(c.Args().Slice())
+					return b.run(c.Context, c.Args().Slice())
 				},
 			},
 			{
@@ -140,7 +141,7 @@ good way to debug a derivation that you're building.`,
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI("build", c.Args().Slice(), buildOptions{
+					_, err = b.runBuildFromCLI(c.Context, "build", c.Args().Slice(), buildOptions{
 						Shell: true,
 					})
 					return err
@@ -229,7 +230,18 @@ their public functions with documentation. If an immediate subdirectory has a
 
 	log.SetOutput(ioutil.Discard)
 
-	if err := app.Run(os.Args); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		s := make(chan os.Signal)
+		// handle all signals for the process.
+		signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
+		for {
+			_ = <-s
+			cancel()
+		}
+	}()
+
+	if err := app.RunContext(ctx, os.Args); err != nil {
 		if er, ok := errors.Cause(err).(build.ExecError); ok {
 			fmt.Println(er.Logs.Len())
 			_, _ = io.Copy(os.Stdout, er.Logs)

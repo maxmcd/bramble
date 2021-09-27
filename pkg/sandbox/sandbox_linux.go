@@ -167,7 +167,7 @@ func terminate(p *libcontainer.Process) {
 	_, _ = p.Wait()
 }
 
-func (c container) Run() (err error) {
+func (c *container) Run() (err error) {
 	if c.process != nil {
 		return errors.New("Run command has already been called")
 	}
@@ -182,7 +182,6 @@ func (c container) Run() (err error) {
 		Init:   true,
 		Cwd:    c.sandbox.Dir,
 	}
-	handler := newSignalHandler()
 
 	var t *tty
 	// If we are using a real terminal then spawn a tty
@@ -216,7 +215,7 @@ func (c container) Run() (err error) {
 			terminate(c.process)
 			return err
 		}
-
+		handler := newSignalHandler()
 		status, err := handler.forward(c.process, t, false)
 		if err != nil {
 			terminate(c.process)
@@ -237,8 +236,11 @@ func (c container) Run() (err error) {
 	return
 }
 
-func (c container) Stop() (err error) {
-	return c.process.Signal(syscall.SIGKILL)
+func (c *container) Stop() (err error) {
+	if c.process != nil {
+		return c.process.Signal(syscall.SIGKILL)
+	}
+	return nil
 }
 
 func combineErrors(errs ...error) (err error) {
@@ -258,7 +260,7 @@ func combineErrors(errs ...error) (err error) {
 	}
 }
 
-func (c container) Destroy() (err error) {
+func (c *container) Destroy() (err error) {
 	return combineErrors(os.RemoveAll(c.tmpdir), c.container.Destroy())
 }
 

@@ -79,10 +79,9 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 	}()
 	select {
 	case <-ctx.Done():
-		return combineErrors(
-			container.Stop(),
-			container.Destroy(),
-		)
+		_ = container.Stop()
+		_ = container.Destroy()
+		return context.Canceled
 	case err = <-errChan:
 		return errors.Wrap(err, "error running sandbox")
 	}

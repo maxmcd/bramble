@@ -8,8 +8,8 @@ import (
 	"github.com/maxmcd/bramble/src/build"
 )
 
-func (b bramble) run(args []string) (err error) {
-	output, err := b.runBuildFromCLI("run", args, buildOptions{})
+func (b bramble) run(ctx context.Context, args []string) (err error) {
+	output, err := b.runBuildFromCLI(ctx, "run", args, buildOptions{})
 	if err != nil {
 		return err
 	}
@@ -17,7 +17,7 @@ func (b bramble) run(args []string) (err error) {
 		return errors.New("can't run a starlark function if it doesn't return a single derivation")
 	}
 
-	return b.store.RunDerivation(context.Background(), output[0], build.RunDerivationOptions{
+	return b.store.RunDerivation(ctx, output[0], build.RunDerivationOptions{
 		// Stdin:  io.MultiReader(os.Stdin),
 		Stdin:  os.Stdin,
 		Args:   args[1:],
