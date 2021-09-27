@@ -9,15 +9,19 @@ import (
 )
 
 func (b bramble) run(ctx context.Context, args []string) (err error) {
-	output, err := b.runBuildFromCLI(ctx, "run", args, buildOptions{})
+	output, err := b.execModule("run", args, execModuleOptions{})
+	if err != nil {
+		return
+	}
+	outputDerivations, err := b.runBuild(ctx, output, buildOptions{})
 	if err != nil {
 		return err
 	}
-	if len(output) != 1 {
+	if len(outputDerivations) != 1 {
 		return errors.New("can't run a starlark function if it doesn't return a single derivation")
 	}
 
-	return b.store.RunDerivation(ctx, output[0], build.RunDerivationOptions{
+	return b.store.RunDerivation(ctx, outputDerivations[0], build.RunDerivationOptions{
 		// Stdin:  io.MultiReader(os.Stdin),
 		Stdin:  os.Stdin,
 		Args:   args[1:],

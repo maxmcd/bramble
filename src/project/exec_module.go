@@ -13,14 +13,16 @@ import (
 )
 
 type ExecModuleInput struct {
-	Command   string
-	Arguments []string
+	Command      string
+	Arguments    []string
+	IncludeTests bool
 }
 
 type ExecModuleOutput struct {
 	Output         map[string]Derivation
 	AllDerivations map[string]Derivation
 	Globals        []string
+	Tests          map[string][]Test
 }
 
 func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
@@ -62,6 +64,7 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 
 	output.AllDerivations = map[string]Derivation{}
 	output.Output = map[string]Derivation{}
+	tests := []Test{}
 	for fn, callable := range toCall {
 		starlarkFunc, ok := callable.(*starlark.Function)
 		if !ok || (starlarkFunc.NumParams()+starlarkFunc.NumKwonlyParams() > 0) {
@@ -78,10 +81,22 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 		for _, d := range valuesToDerivations(values) {
 			output.Output[d.hash()] = d
 		}
+		if input.IncludeTests {
+			for _, test := range rt.tests {
+				output.Output[test.Derivation.hash()] = test.Derivation
+			}
+			tests = append(tests, rt.tests...)
+		}
 		// Append
 		for k, v := range rt.allDerivationDependencies(output.Output) {
 			output.AllDerivations[k] = v
 		}
+	}
+
+	for _, test := range tests {
+		hash := test.Derivation.hash()
+		// Append takes care of the nil case
+		output.Tests[hash] = append(output.Tests[hash], test)
 	}
 	return
 }

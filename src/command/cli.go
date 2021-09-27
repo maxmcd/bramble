@@ -109,8 +109,12 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI(c.Context, "build", c.Args().Slice(), buildOptions{
-						Check: c.Bool("check"),
+					output, err := b.execModule("build", c.Args().Slice(), execModuleOptions{})
+					if err != nil {
+						return err
+					}
+					_, err = b.runBuild(c.Context, output, buildOptions{
+						check: c.Bool("check"),
 					})
 					return err
 				},
@@ -128,6 +132,17 @@ bramble build ./tests
 				},
 			},
 			{
+				Name:      "test",
+				UsageText: "bramble test",
+				Action: func(c *cli.Context) error {
+					b, err := newBramble()
+					if err != nil {
+						return err
+					}
+					return b.test(c.Context)
+				},
+			},
+			{
 				Name:  "shell",
 				Usage: "Open a shell within a derivation build context",
 				UsageText: `bramble shell [options] [module]:<function>
@@ -141,8 +156,12 @@ good way to debug a derivation that you're building.`,
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI(c.Context, "build", c.Args().Slice(), buildOptions{
-						Shell: true,
+					output, err := b.execModule("shell", c.Args().Slice(), execModuleOptions{})
+					if err != nil {
+						return err
+					}
+					_, err = b.runBuild(c.Context, output, buildOptions{
+						shell: true,
 					})
 					return err
 				},
@@ -233,11 +252,17 @@ their public functions with documentation. If an immediate subdirectory has a
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		s := make(chan os.Signal)
+		count := 0
 		// handle all signals for the process.
 		signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
 		for {
 			_ = <-s
+			count++
 			cancel()
+			if count == 3 {
+				fmt.Println("Three interrupt attempts, exiting")
+				os.Exit(1)
+			}
 		}
 	}()
 

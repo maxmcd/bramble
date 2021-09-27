@@ -11,64 +11,59 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (b bramble) runBuildFromOutput(ctx context.Context, output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(ctx, buildOptions{}, func() (project.ExecModuleOutput, error) {
-		return output, nil
-	})
+type execModuleOptions struct {
+	includeTests bool
 }
 
-type buildOptions struct {
-	Check bool
-	Shell bool
-}
+func (b bramble) execModule(command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
+	if len(args) > 0 {
+		// Building something specific
+		return b.project.ExecModule(project.ExecModuleInput{
+			Command:      command,
+			Arguments:    args,
+			IncludeTests: ops.includeTests,
+		})
+	}
 
-func (b bramble) runBuildFromCLI(ctx context.Context, command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(ctx, ops, func() (output project.ExecModuleOutput, err error) {
-		if len(args) > 0 {
-			// Building something specific
-			return b.project.ExecModule(project.ExecModuleInput{
-				Command:   command,
-				Arguments: args,
-			})
-		}
-
-		// Building everything in the project
-		modules, err := b.project.FindAllModules()
+	// Building everything in the project
+	modules, err := b.project.FindAllModules()
+	if err != nil {
+		return output, err
+	}
+	output.AllDerivations = make(map[string]project.Derivation)
+	output.Output = make(map[string]project.Derivation)
+	for _, module := range modules {
+		o, err := b.project.ExecModule(project.ExecModuleInput{
+			Command:   command,
+			Arguments: []string{module},
+		})
 		if err != nil {
 			return output, err
 		}
-		output.AllDerivations = make(map[string]project.Derivation)
-		output.Output = make(map[string]project.Derivation)
-		for _, module := range modules {
-			o, err := b.project.ExecModule(project.ExecModuleInput{
-				Command:   command,
-				Arguments: []string{module},
-			})
-			if err != nil {
-				return output, err
-			}
-			for k, v := range o.AllDerivations {
-				output.AllDerivations[k] = v
-			}
-			for k, v := range o.Output {
-				output.Output[k] = v
-			}
+		for k, v := range o.AllDerivations {
+			output.AllDerivations[k] = v
 		}
-		return output, nil
-	})
+		for k, v := range o.Output {
+			output.Output[k] = v
+		}
+	}
+	return output, nil
 }
 
-func (b bramble) runBuild(ctx context.Context, ops buildOptions, execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
-	output, err := execModule()
-	if err != nil {
-		return nil, err
-	}
+type buildOptions struct {
+	check        bool
+	shell        bool
+	includeTests bool
+	callback     func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation)
+}
+
+func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops buildOptions) (outputDerivations []build.Derivation, err error) {
 	// jobPrinter := jobprinter.New()
 
 	// go func() { _ = jobPrinter.Start() }()
 	// defer jobPrinter.Stop()
 
-	if len(output.Output) != 1 && ops.Shell {
+	if len(output.Output) != 1 && ops.shell {
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
 	}
 	builder := b.store.NewBuilder(false, b.project.URLHashes())
@@ -126,7 +121,7 @@ func (b bramble) runBuild(ctx context.Context, ops buildOptions, execModule func
 		// start := time.Now()
 
 		runShell := false
-		if len(output.Output) == 1 && ops.Shell {
+		if len(output.Output) == 1 && ops.shell {
 			for k := range output.Output {
 				// This is the output derivation being built!
 				if k == dep.Hash {
@@ -142,7 +137,7 @@ func (b bramble) runBuild(ctx context.Context, ops buildOptions, execModule func
 			return nil, nil, err
 		}
 
-		if ops.Check {
+		if ops.check {
 			secondBuildDrv, _, err := builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
 				ForceBuild: true,
 			})
@@ -162,9 +157,12 @@ func (b bramble) runBuild(ctx context.Context, ops buildOptions, execModule func
 				}
 			}
 		}
+		if ops.callback != nil {
+			ops.callback(dep, drv, buildDrv)
+		}
 		_ = didBuild
 		// ts := time.Since(start).String()
-		if !didBuild && !ops.Check {
+		if !didBuild && !ops.check {
 			// job.ReplaceTS("(cached)")
 		}
 		fmt.Println("built", drv.Name, didBuild)
