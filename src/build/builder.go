@@ -322,7 +322,6 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
-				ctx,
 				reptarFile.Name(),
 				newPath,
 				outputFolder,
@@ -338,7 +337,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	}
 	return
 }
-func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
+func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {
@@ -375,8 +374,6 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 	}()
 
 	select {
-	case <-ctx.Done():
-		return context.Canceled
 	case err := <-errChan:
 		return err
 	case <-doneChan:
