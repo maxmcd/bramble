@@ -55,6 +55,7 @@ type Derivation struct {
 	Env map[string]string
 
 	Name     string
+	Network  bool `json:",omitempty"`
 	Outputs  []string
 	Platform string
 
@@ -189,12 +190,15 @@ func valuesToDerivations(values starlark.Value) (derivations []Derivation) {
 }
 
 func isTopLevel(thread *starlark.Thread) bool {
-	if thread.CallStackDepth() == 0 {
+	if thread.CallStackDepth() <= 1 {
 		// TODO: figure out what we should actually do here, so far this is only
 		// for tests
 		return false
 	}
-	return thread.CallStack().At(1).Name == "<toplevel>" || thread.CallStack().At(1).Name == "<expr>"
+	// TODO: instead of always assuming an additional layer for the derivation
+	// wrapper function we should validate the function with a builtin within
+	// the derivation file. maybe
+	return thread.CallStack().At(2).Name == "<toplevel>" || thread.CallStack().At(2).Name == "<expr>"
 }
 
 func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -207,7 +211,6 @@ func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Buil
 		return nil, err
 	}
 	rt.allDerivations[drv.hash()] = drv
-
 	return drv, nil
 }
 
@@ -216,11 +219,12 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 		Outputs: []string{"out"},
 	}
 	var (
-		name      starlark.String
-		builder   starlark.String
-		argsParam *starlark.List
-		env       *starlark.Dict
-		outputs   *starlark.List
+		name        starlark.String
+		builder     starlark.String
+		argsParam   *starlark.List
+		env         *starlark.Dict
+		outputs     *starlark.List
+		internalKey starlark.Int
 	)
 	if err = starlark.UnpackArgs("derivation", args, kwargs,
 		"name", &name,
@@ -230,8 +234,14 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 		"env?", &env,
 		"outputs?", &outputs,
 		"platform?", &drv.Platform,
+		"network?", &drv.Network,
+		"_internal_key?", &internalKey,
 	); err != nil {
 		return
+	}
+
+	if (rt.internalKey != internalKey.BigInt().Int64()) && drv.Network {
+		return drv, errors.New("derivations aren't allowed to use the network")
 	}
 
 	drv.Name = name.GoString()
@@ -240,7 +250,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 	}
 
 	if argsParam != nil {
-		if drv.Args, err = starutil.IterableToGoList(argsParam); err != nil {
+		if drv.Args, err = starutil.IterableToStringSlice(argsParam); err != nil {
 			return
 		}
 	}
@@ -259,7 +269,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 
 	if outputs != nil {
 		var outputsList []string
-		outputsList, err = starutil.IterableToGoList(outputs)
+		outputsList, err = starutil.IterableToStringSlice(outputs)
 		if err != nil {
 			return
 		}
@@ -309,7 +319,7 @@ func (rt *runtime) findDependencies(drv Derivation) []Dependency {
 	out := []Dependency{}
 	for _, match := range derivationTemplateRegexp.FindAllStringSubmatch(s, -1) {
 		// We must validate that the derivation exists and this isn't just an
-		// errant template string
+		// errant template string.
 
 		if _, found := rt.allDerivations[match[1]]; found {
 			out = append(out, Dependency{
@@ -326,7 +336,7 @@ func sortAndUniqueDependencies(deps []Dependency) []Dependency {
 		return deps[i].Hash+deps[i].Output < deps[j].Hash+deps[j].Output
 	})
 
-	// dedupe
+	// deduplicate
 	if len(deps) == 0 {
 		return nil
 	}

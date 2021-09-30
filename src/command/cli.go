@@ -1,7 +1,9 @@
 package command
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
+	"github.com/maxmcd/bramble/src/build"
 	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/src/project"
 	"github.com/mitchellh/go-wordwrap"
@@ -106,8 +109,12 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI("build", c.Args().Slice(), buildOptions{
-						Check: c.Bool("check"),
+					output, err := b.execModule("build", c.Args().Slice(), execModuleOptions{})
+					if err != nil {
+						return err
+					}
+					_, err = b.runBuild(c.Context, output, buildOptions{
+						check: c.Bool("check"),
 					})
 					return err
 				},
@@ -121,7 +128,18 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					return b.run(c.Args().Slice())
+					return b.run(c.Context, c.Args().Slice())
+				},
+			},
+			{
+				Name:      "test",
+				UsageText: "bramble test",
+				Action: func(c *cli.Context) error {
+					b, err := newBramble()
+					if err != nil {
+						return err
+					}
+					return b.test(c.Context)
 				},
 			},
 			{
@@ -138,8 +156,12 @@ good way to debug a derivation that you're building.`,
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuildFromCLI("build", c.Args().Slice(), buildOptions{
-						Shell: true,
+					output, err := b.execModule("shell", c.Args().Slice(), execModuleOptions{})
+					if err != nil {
+						return err
+					}
+					_, err = b.runBuild(c.Context, output, buildOptions{
+						shell: true,
 					})
 					return err
 				},
@@ -227,7 +249,28 @@ their public functions with documentation. If an immediate subdirectory has a
 
 	log.SetOutput(ioutil.Discard)
 
-	if err := app.Run(os.Args); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		s := make(chan os.Signal)
+		count := 0
+		// handle all signals for the process.
+		signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
+		for {
+			_ = <-s
+			count++
+			cancel()
+			if count == 3 {
+				fmt.Println("Three interrupt attempts, exiting")
+				os.Exit(1)
+			}
+		}
+	}()
+
+	if err := app.RunContext(ctx, os.Args); err != nil {
+		if er, ok := errors.Cause(err).(build.ExecError); ok {
+			fmt.Println(er.Logs.Len())
+			_, _ = io.Copy(os.Stdout, er.Logs)
+		}
 		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
 			os.Exit(er.ExitCode)
 		}

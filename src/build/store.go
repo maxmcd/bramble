@@ -11,8 +11,8 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/pkg/sandbox"
+	"github.com/maxmcd/bramble/src/logger"
 	"github.com/pkg/errors"
 )
 
@@ -38,12 +38,6 @@ type Store struct {
 	StorePath   string
 
 	derivationCache *derivationsMap
-
-	runGit func(context.Context, RunDerivationOptions) error
-}
-
-func (s *Store) RegisterGetGit(runGit func(context.Context, RunDerivationOptions) error) {
-	s.runGit = runGit
 }
 
 func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
@@ -91,7 +85,7 @@ func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDeriv
 		HiddenPaths:   opts.HiddenPaths,
 		ReadOnlyPaths: opts.ReadOnlyPaths,
 
-		DisableNetwork: false,
+		Network: false,
 	}
 	return sbx.Run(ctx)
 }
@@ -227,39 +221,6 @@ func (s *Store) joinStorePath(v ...string) string {
 }
 func (s *Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.BramblePath}, v...)...)
-}
-
-func (s *Store) writeReader(src io.Reader, name string, validateHash string) (contentHash, path string, err error) {
-	hshr := hasher.NewHasher()
-	file, err := ioutil.TempFile("", "")
-	if err != nil {
-		err = errors.Wrap(err, "error creating a temporary file for a write to the store")
-		return
-	}
-	tee := io.TeeReader(src, hshr)
-	if _, err = io.Copy(file, tee); err != nil {
-		err = errors.Wrap(err, "error writing to the temporary store file")
-		return
-	}
-	fileName := hshr.String()
-	if validateHash != "" && hshr.Sha256Hex() != validateHash {
-		return hshr.Sha256Hex(), "", hasher.ErrHashMismatch
-	}
-	if name != "" {
-		fileName += ("-" + name)
-	}
-	path = s.joinStorePath(fileName)
-	if err = file.Close(); err != nil {
-		return "", "", err
-	}
-	if er := os.Rename(file.Name(), path); er != nil {
-		return "", "", errors.Wrap(er, "error moving file into store")
-	}
-	if err = os.Chmod(path, 0444); err != nil {
-		return
-	}
-
-	return hshr.Sha256Hex(), path, nil
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {

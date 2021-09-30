@@ -1,8 +1,8 @@
 package command
 
 import (
-	project "github.com/maxmcd/bramble/src/project"
 	build "github.com/maxmcd/bramble/src/build"
+	project "github.com/maxmcd/bramble/src/project"
 )
 
 type bramble struct {
@@ -18,6 +18,5 @@ func newBramble() (b bramble, err error) {
 		return
 	}
 
-	b.store.RegisterGetGit(b.runGit)
 	return b, nil
 }

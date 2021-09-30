@@ -2,16 +2,14 @@ package build
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/trace"
 	"strings"
@@ -19,13 +17,14 @@ import (
 	"time"
 
 	"github.com/certifi/gocertifi"
-
+	"github.com/djherbis/buffer"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
+	"github.com/maxmcd/bramble/src/logger"
+	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 )
@@ -39,7 +38,6 @@ func (s *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder 
 
 type Builder struct {
 	store     *Store
-	rootless  bool
 	URLHashes map[string]string
 }
 
@@ -64,7 +62,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	if exists && !opts.ForceBuild {
 		return drv, false, nil
 	}
-	logger.Print("Building derivation", filename)
+	// logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
 	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
@@ -100,15 +98,22 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		return drv, err
 	}
 
-	if shell && (drv.Builder == "fetch_url" || drv.Builder == "fetch_git") {
+	if shell && (drv.Builder == "basic_fetch_url" || drv.Builder == "fetch_git") {
 		return drv, errors.New("can't spawn a shell with a builtin builder")
 	}
 
+	defer func() {
+		// If we exit let's try and clean these paths up in case they still exist
+		// TODO: could probably limit this to only when there's an error
+		os.RemoveAll(buildDir)
+		for _, outputPath := range outputPaths {
+			_ = os.RemoveAll(outputPath)
+		}
+	}()
+
 	switch drv.Builder {
-	case "fetch_url":
+	case "basic_fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
-	case "fetch_git":
-		err = b.fetchGitBuilder(ctx, drvCopy, outputPaths)
 	default:
 		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
 	}
@@ -116,79 +121,44 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		return drv, err
 	}
 
-	if err := os.RemoveAll(buildDir); err != nil {
-		return drv, err
-	}
-
 	var outputs map[string]Output
 
-	if drv.Builder == "fetch_url" {
-		// fetch url just hashes the directory and moves it into the output
-		// location, no archiving and byte replacing
-		outputs, err = b.hashAndMoveFetchURL(ctx, drv, outputPaths["out"])
-	} else {
-		outputs, err = b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths, buildDir)
-		err = errors.Wrap(err, "hash and move build outputs") // noop if err is nil
-	}
+	outputs, err = b.store.hashAndMoveBuildOutputs(ctx, drv, outputPaths, buildDir)
+	err = errors.Wrap(err, "hash and move build outputs") // noop if err is nil
 	if err != nil {
 		return drv, err
 	}
 
 	drv.Outputs, err = outputsToOutput(drv.OutputNames, outputs)
+
+	if drv.Builder == "fetch_url" {
+		// Check for a hash in the derivation
+		hash := drv.Env["hash"]
+		if hash == "" {
+			// If we don't have that then check in the config map
+			existingHash, ok := b.URLHashes[drv.Env["url"]]
+			if ok {
+				hash = existingHash
+			}
+		}
+		outputPath := drv.output("out").Path
+		// If we have a hash to validate, ensure it's valid
+		if hash != "" && outputPath != hash {
+			return drv, errors.Errorf(
+				"Urlfetch content doesn't match with the existing hash. "+
+					"Hash %q was provided by the output was %q",
+				hash, outputPath)
+		}
+		// If we never had a hash to validate, add it
+		if hash == "" {
+			// TODO: separate these from the input map!
+			b.URLHashes[drv.Env["url"]] = outputPath
+		}
+	}
 	return drv, err
 }
 
-func (b *Builder) hashAndMoveFetchURL(ctx context.Context, drv Derivation, outputPath string) (outputs map[string]Output, err error) {
-	region := trace.StartRegion(ctx, "hashAndMoveFetchUrl")
-	defer region.End()
-
-	hshr := hasher.NewHasher()
-	_, err = b.store.archiveAndScanOutputDirectory(ctx, ioutil.Discard, hshr, drv, filepath.Base(outputPath), "")
-	if err != nil {
-		return nil, err
-	}
-	outputFolderName := hshr.String()
-	outputs = map[string]Output{"out": {Path: outputFolderName}}
-	outputStorePath := b.store.joinStorePath(outputFolderName)
-	if fileutil.PathExists(outputStorePath) {
-		err = os.RemoveAll(outputPath)
-	} else {
-		err = os.Rename(outputPath, outputStorePath)
-	}
-	if err == nil {
-		logger.Print("Output at", outputStorePath)
-	}
-	return outputs, err
-}
-
-func (b *Builder) fetchGitBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	outputPath, ok := outputPaths["out"]
-	if len(outputPaths) > 1 || !ok {
-		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
-	}
-	url, ok := drv.Env["url"]
-	if !ok {
-		return errors.New("fetch_url requires the environment variable 'url' to be set")
-	}
-	// derivation can provide a hash, but usually this is just in the lockfile
-	hash := drv.Env["hash"]
-
-	if err := b.store.runGit(ctx, RunDerivationOptions{
-		Mounts: []string{outputPath},
-		Args:   []string{"git", "clone", url, outputPath},
-		Dir:    outputPath,
-	}); err != nil {
-		return err
-	}
-
-	_ = hash
-	return nil
-}
-
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
-	region := trace.StartRegion(ctx, "fetchURLBuilder")
-	defer region.End()
-
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
@@ -197,57 +167,35 @@ func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPat
 		return errors.New("fetch_url requires the environment variable 'url' to be set")
 	}
 	// derivation can provide a hash, but usually this is just in the lockfile
-	hash := drv.Env["hash"]
-	path, err := b.downloadFile(ctx, url, hash)
+	dir, path, err := b.downloadFile(ctx, url)
 	if err != nil {
 		return err
 	}
-	// TODO: what if this package changes?
-	if err = archiver.Unarchive(path, outputPaths["out"]); err != nil {
-		if !strings.Contains(err.Error(), "format unrecognized by filename") {
-			return errors.Wrap(err, "error unpacking url archive")
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	if strings.HasSuffix(drv.Env["url"], ".tar.gz") {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
 		}
-		return os.Rename(path, filepath.Join(outputPaths["out"], filepath.Base(url)))
+		r, err := gzip.NewReader(f)
+		if err != nil {
+			return errors.Wrap(err, "requires gzip-compressed body")
+		}
+		if err = untar.Untar(r, outputPaths["out"]); err != nil {
+			return err
+		}
+		return nil
 	}
-	return nil
+	// If it's not .tar.gz just put the file in the output
+	return os.Rename(path, filepath.Join(outputPaths["out"], filepath.Base(url)))
 }
 
-// downloadFile downloads a file into the store. Must include an expected hash
-// of the downloaded file as a hex string of a sha256 hash
-func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (path string, err error) {
-	logger.Printfln("Downloading url %s", url)
-	if hash != "" {
-		byt, err := hex.DecodeString(hash)
-		if err != nil {
-			err = errors.Wrap(err, fmt.Sprintf("error decoding hash %q; is it hexadecimal?", hash))
-			return "", err
-		}
-		storePrefixHash := hasher.BytesToBase32Hash(byt)
-		matches, err := filepath.Glob(b.store.joinStorePath(storePrefixHash) + "*")
-		if err != nil {
-			err = errors.Wrap(err, "error searching for existing hashed content")
-			return "", err
-		}
-		if len(matches) != 0 {
-			return matches[0], nil
-		}
-	}
-
-	// TODO: must pass url hashes
-	existingHash, exists := b.URLHashes[url]
-	if exists && hash != "" && hash != existingHash {
-		return "", errors.Errorf("when downloading the file %q a hash %q was provided in"+
-			" code but the hash %q was in the lock file, exiting", url, hash, existingHash)
-	}
-
-	// if we don't have a hash to validate, validate the one we already have
-	if hash == "" && exists {
-		hash = existingHash
-	}
-
+// downloadFile downloads a file into a temp dir
+func (b *Builder) downloadFile(ctx context.Context, url string) (dir, path string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	transport := &http.Transport{
@@ -280,20 +228,24 @@ func (b *Builder) downloadFile(ctx context.Context, url string, hash string) (pa
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:
 	default:
-		return "", errors.Errorf("Unexpected http status code %d when fetching url %q", resp.StatusCode, url)
+		return "", "", errors.Errorf("Unexpected http status code %d when fetching url %q", resp.StatusCode, url)
 	}
 	defer resp.Body.Close()
-	contentHash, path, err := b.store.writeReader(resp.Body, filepath.Base(url), hash)
-	if err == hasher.ErrHashMismatch {
-		err = errors.Errorf(
-			"Got incorrect hash for url %s.\nwanted %q\ngot    %q",
-			url, hash, contentHash)
-	} else if err != nil {
-		return
+	dir, err = os.MkdirTemp("", "")
+	if err != nil {
+		return "", "", errors.WithStack(err)
 	}
-	//REFAC: Is it ok to not keep track of what has been added???
-	b.URLHashes[url] = contentHash
-	return path, nil
+	f, err := os.Create(filepath.Join(dir, filepath.Base(url)))
+	if err != nil {
+		return "", "", errors.WithStack(err)
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", "", errors.WithStack(err)
+	}
+	if err := f.Close(); err != nil {
+		return "", "", errors.WithStack(err)
+	}
+	return dir, f.Name(), nil
 }
 
 func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
@@ -311,42 +263,38 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
 		mounts = append(mounts, outputPath)
 	}
-	if b.rootless {
-		cmd := exec.Cmd{
-			Path:   builderLocation,
-			Args:   append([]string{builderLocation}, drv.Args...),
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
-			Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
-			Env:    env,
-		}
-		return cmd.Run()
-	}
+	buf := buffer.NewUnboundedBuffer(32*1024, 100*1024*1024)
 	sbx := sandbox.Sandbox{
-		Args:   append([]string{builderLocation}, drv.Args...),
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Env:    env,
-		Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
-		Mounts: mounts,
+		Args:    append([]string{builderLocation}, drv.Args...),
+		Stdout:  os.Stdout,
+		Network: drv.Network,
+		Stderr:  os.Stderr,
+		Env:     env,
+		Dir:     filepath.Join(buildDir, drv.Source.RelativeBuildPath),
+		Mounts:  mounts,
 	}
 	if shell {
 		fmt.Printf("Opening shell for derivation %q\n", drv.Name)
 		sbx.Args = []string{builderLocation}
 		sbx.Stdin = os.Stdin
 	}
-	return sbx.Run(ctx)
+	defer buf.Reset()
+	if err := sbx.Run(ctx); err != nil {
+		return ExecError{Err: err, Logs: buf}
+	}
+	return nil
+}
+
+type ExecError struct {
+	Err  error
+	Logs buffer.Buffer
+}
+
+func (err ExecError) Error() string {
+	return err.Err.Error()
 }
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
-	// if drv.Name == "self-reference" {
-	// 	fmt.Println(drv.PrettyJSON(), outputPaths)
-	// 	panic("")
-	// }
-	fmt.Println(outputPaths)
-	region := trace.StartRegion(ctx, "hashAndMoveBuildOutputs")
-	defer region.End()
-
 	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
 		hshr := hasher.NewHasher()
@@ -374,7 +322,6 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
-				ctx,
 				reptarFile.Name(),
 				newPath,
 				outputFolder,
@@ -386,13 +333,11 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 			return nil, err
 		}
 		outputs[outputName] = Output{Path: hashedFolderName, Dependencies: matches}
-		logger.Print("Output at ", newPath)
+		// logger.Print("Output at ", newPath)
 	}
 	return
 }
-func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
-	region := trace.StartRegion(ctx, "unarchiveAndReplaceOutputFolderName")
-	defer region.End()
+func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {

@@ -48,8 +48,8 @@ type Sandbox struct {
 	// to the end of the path like `/tmp:ro`
 	Mounts []string
 
-	// DisableNetwork will remove network access within the sandbox process
-	DisableNetwork bool
+	// Network will allow network access
+	Network bool
 
 	ReadOnlyPaths []string
 	HiddenPaths   []string
@@ -79,10 +79,9 @@ func (s Sandbox) Run(ctx context.Context) (err error) {
 	}()
 	select {
 	case <-ctx.Done():
-		return combineErrors(
-			container.Stop(),
-			container.Destroy(),
-		)
+		_ = container.Stop()
+		_ = container.Destroy()
+		return context.Canceled
 	case err = <-errChan:
 		return errors.Wrap(err, "error running sandbox")
 	}

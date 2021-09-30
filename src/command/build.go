@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	build "github.com/maxmcd/bramble/src/build"
 	project "github.com/maxmcd/bramble/src/project"
@@ -12,60 +11,59 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (b bramble) runBuildFromOutput(output project.ExecModuleOutput) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(buildOptions{}, func() (project.ExecModuleOutput, error) {
-		return output, nil
-	})
+type execModuleOptions struct {
+	includeTests bool
 }
 
-type buildOptions struct {
-	Check bool
-	Shell bool
-}
+func (b bramble) execModule(command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
+	if len(args) > 0 {
+		// Building something specific
+		return b.project.ExecModule(project.ExecModuleInput{
+			Command:      command,
+			Arguments:    args,
+			IncludeTests: ops.includeTests,
+		})
+	}
 
-func (b bramble) runBuildFromCLI(command string, args []string, ops buildOptions) (outputDerivations []build.Derivation, err error) {
-	return b.runBuild(ops, func() (output project.ExecModuleOutput, err error) {
-		if len(args) > 0 {
-			// Building something specific
-			return b.project.ExecModule(project.ExecModuleInput{
-				Command:   command,
-				Arguments: args,
-			})
-		}
-
-		// Building everything in the project
-		modules, err := b.project.FindAllModules()
+	// Building everything in the project
+	modules, err := b.project.FindAllModules()
+	if err != nil {
+		return output, err
+	}
+	output.AllDerivations = make(map[string]project.Derivation)
+	output.Output = make(map[string]project.Derivation)
+	for _, module := range modules {
+		o, err := b.project.ExecModule(project.ExecModuleInput{
+			Command:   command,
+			Arguments: []string{module},
+		})
 		if err != nil {
 			return output, err
 		}
-		output.AllDerivations = make(map[string]project.Derivation)
-		output.Output = make(map[string]project.Derivation)
-		for _, module := range modules {
-			o, err := b.project.ExecModule(project.ExecModuleInput{
-				Command:   command,
-				Arguments: []string{module},
-			})
-			if err != nil {
-				return output, err
-			}
-			for k, v := range o.AllDerivations {
-				output.AllDerivations[k] = v
-			}
-			for k, v := range o.Output {
-				output.Output[k] = v
-			}
+		for k, v := range o.AllDerivations {
+			output.AllDerivations[k] = v
 		}
-		return output, nil
-	})
+		for k, v := range o.Output {
+			output.Output[k] = v
+		}
+	}
+	return output, nil
 }
 
-func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModuleOutput, error)) (outputDerivations []build.Derivation, err error) {
-	output, err := execModule()
-	if err != nil {
-		return nil, err
-	}
+type buildOptions struct {
+	check        bool
+	shell        bool
+	includeTests bool
+	callback     func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation)
+}
 
-	if len(output.Output) != 1 && ops.Shell {
+func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops buildOptions) (outputDerivations []build.Derivation, err error) {
+	// jobPrinter := jobprinter.New()
+
+	// go func() { _ = jobPrinter.Start() }()
+	// defer jobPrinter.Stop()
+
+	if len(output.Output) != 1 && ops.shell {
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
 	}
 	builder := b.store.NewBuilder(false, b.project.URLHashes())
@@ -74,10 +72,18 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 	var derivationDataLock sync.Mutex
 
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		inputDerivations := []build.DerivationOutput{}
 
+		// job := jobPrinter.StartJob(drv.Name)
+		// defer jobPrinter.EndJob(job)
+		fmt.Println("building", drv.Name, dep.Hash)
 		derivationDataLock.Lock()
-		// Populate the input derivation from previous buids
+		// Populate the input derivation from previous builds
 		for _, dep := range drv.Dependencies {
 			do, found := derivationIDUpdates[dep]
 			if !found {
@@ -103,6 +109,7 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			Env:              drv.Env,
 			InputDerivations: inputDerivations,
 			Name:             drv.Name,
+			Network:          drv.Network,
 			Outputs:          drv.Outputs,
 			Platform:         drv.Platform,
 			Source:           source,
@@ -111,10 +118,10 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			return nil, nil, err
 		}
 		var didBuild bool
-		start := time.Now()
+		// start := time.Now()
 
 		runShell := false
-		if len(output.Output) == 1 && ops.Shell {
+		if len(output.Output) == 1 && ops.shell {
 			for k := range output.Output {
 				// This is the output derivation being built!
 				if k == dep.Hash {
@@ -123,15 +130,15 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 			}
 		}
 
-		if buildDrv, didBuild, err = builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+		if buildDrv, didBuild, err = builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
 			Shell:      runShell,
 			ForceBuild: runShell,
 		}); err != nil {
 			return nil, nil, err
 		}
 
-		if ops.Check {
-			secondBuildDrv, _, err := builder.BuildDerivation(context.Background(), buildDrv, build.BuildDerivationOptions{
+		if ops.check {
+			secondBuildDrv, _, err := builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
 				ForceBuild: true,
 			})
 			if err != nil {
@@ -150,11 +157,16 @@ func (b bramble) runBuild(ops buildOptions, execModule func() (project.ExecModul
 				}
 			}
 		}
-		ts := time.Since(start).String()
-		if !didBuild && !ops.Check {
-			ts = "cached"
+		if ops.callback != nil {
+			ops.callback(dep, drv, buildDrv)
 		}
-		fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
+		_ = didBuild
+		// ts := time.Since(start).String()
+		if !didBuild && !ops.check {
+			// job.ReplaceTS("(cached)")
+		}
+		fmt.Println("built", drv.Name, didBuild)
+		// fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
 		derivationDataLock.Lock()
 		// allDerivations = append(allDerivations, buildDrv)
 		// Store the derivation outputs in the map for reference when building

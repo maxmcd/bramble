@@ -4,13 +4,13 @@ import "testing"
 
 func TestDerivationCreation(t *testing.T) {
 	tests := []scriptTest{
-		{script: `derivation()`,
+		{script: `derivation("hi", "hi")`,
 			errContains: "not within a function"},
 		{script: `
 def foo():
   derivation()
 foo()`,
-			errContains: "missing argument for name"},
+			errContains: "missing"},
 		{script: `
 def foo():
 	d = derivation("a", builder="fetch_url", env={"url":1});

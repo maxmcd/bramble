@@ -6,7 +6,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func IterableToGoList(list starlark.Iterable) (out []string, err error) {
+func IterableToStringSlice(list starlark.Iterable) (out []string, err error) {
 	iterator := list.Iterate()
 	defer iterator.Done()
 	var val starlark.Value
