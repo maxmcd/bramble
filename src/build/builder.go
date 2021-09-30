@@ -49,17 +49,24 @@ type BuildDerivationOptions struct {
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
-	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
-	drv = drv.makeConsistentNullJSONValues()
+	drv = formatDerivation(drv)
 
-	exists, outputs, err := drv.populateOutputsFromStore()
+	outputs, drvExists, err := b.store.checkForBuiltDerivationOutputs(drv)
 	drv.Outputs = outputs
 	if err != nil {
 		return drv, false, err
 	}
+
+	outputsExist := false
+	if drvExists {
+		outputsExist, err = b.store.outputFoldersExist(outputs)
+		if err != nil {
+			return drv, false, err
+		}
+	}
+
 	filename := drv.Filename()
-	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
-	if exists && !opts.ForceBuild {
+	if drvExists && outputsExist && !opts.ForceBuild {
 		return drv, false, nil
 	}
 	// logger.Print("Building derivation", filename)

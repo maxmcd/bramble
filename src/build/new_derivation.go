@@ -102,7 +102,8 @@ func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv De
 	drv.Platform = options.Platform
 	drv.OutputNames = options.Outputs // TODO: Validate, and others
 
-	exists, outputs, err := drv.populateOutputsFromStore()
+	drv = formatDerivation(drv)
+	outputs, exists, err := s.checkForBuiltDerivationOutputs(drv)
 	drv.Outputs = outputs
 	return exists, drv, err
 }

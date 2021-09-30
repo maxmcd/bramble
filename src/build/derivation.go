@@ -177,6 +177,12 @@ func (drv Derivation) makeConsistentNullJSONValues() Derivation {
 	return drv
 }
 
+func formatDerivation(drv Derivation) Derivation {
+	drv = drv.makeConsistentNullJSONValues()
+	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
+	return drv
+}
+
 func (drv Derivation) json() []byte {
 	drv.makeConsistentNullJSONValues()
 	b, err := json.Marshal(drv)
@@ -341,19 +347,6 @@ func (drv Derivation) inputFiles() []string {
 
 func (drv Derivation) runtimeFiles(outputName string) []string {
 	return []string{drv.Filename(), drv.output(outputName).Path}
-}
-
-func (drv Derivation) populateOutputsFromStore() (exists bool, outputs []Output, err error) {
-	filename := drv.Filename()
-	outputs, exists, err = drv.store.checkForBuiltDerivationOutputs(filename)
-	if err != nil {
-		return
-	}
-	if exists {
-		drv.Outputs = outputs
-		drv.store.derivationCache.Store(drv)
-	}
-	return
 }
 
 func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {

@@ -40,7 +40,8 @@ type Store struct {
 	derivationCache *derivationsMap
 }
 
-func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
+func (s *Store) checkForBuiltDerivationOutputs(drv Derivation) (outputs []Output, built bool, err error) {
+	filename := drv.Filename()
 	existingDrv, exists, err := s.LoadDerivation(filename)
 	if err != nil {
 		return
@@ -221,6 +222,21 @@ func (s *Store) joinStorePath(v ...string) string {
 }
 func (s *Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.BramblePath}, v...)...)
+}
+
+func (s *Store) outputFoldersExist(outputs []Output) (exists bool, err error) {
+	for _, output := range outputs {
+		fi, err := os.Stat(s.joinStorePath(output.Path))
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		if !fi.IsDir() {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {
