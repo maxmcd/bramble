@@ -51,7 +51,6 @@ func untar(r io.Reader, dir string) (err error) {
 
 		fi := f.FileInfo()
 		mode := fi.Mode()
-		fmt.Println(f.Name, fi, mode, dir)
 		switch {
 		case mode.IsRegular():
 			// Make the directory. This is redundant because it should

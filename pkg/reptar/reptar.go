@@ -49,6 +49,7 @@ func Reptar(location string, out io.Writer) (err error) {
 			}
 			// TODO: convert from absolute to relative
 		}
+
 		// GNU Tar adds a slash to the end of directories, but Go removes them
 		if fi.IsDir() {
 			path += "/"
@@ -76,7 +77,6 @@ func Reptar(location string, out io.Writer) (err error) {
 		hdr.Format = tar.FormatPAX
 
 		hdr.Name = strings.TrimPrefix(path, location)
-
 		if err = tw.WriteHeader(hdr); err != nil {
 			return fmt.Errorf("%s: writing header: %w", hdr.Name, err)
 		}
