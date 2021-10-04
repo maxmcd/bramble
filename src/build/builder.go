@@ -74,8 +74,9 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
+	_, err = b.store.WriteDerivation(drv)
 	// TODO: lock store on write
-	return drv, true, b.store.WriteDerivation(drv)
+	return drv, true, err
 }
 
 func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {

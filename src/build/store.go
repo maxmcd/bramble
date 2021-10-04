@@ -250,6 +250,23 @@ func (s *Store) WriteConfigLink(location string) (err error) {
 	return ioutil.WriteFile(configFileLocation, []byte(location), 0644)
 }
 
+func (s *Store) WriteBlob(src io.Reader) (hash string, err error) {
+	h := hasher.NewHasher()
+	tee := io.TeeReader(src, h)
+	f, err := os.CreateTemp("", "")
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, tee); err != nil {
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	hash = h.String()
+	return hash, os.Rename(f.Name(), s.joinStorePath(hash))
+}
+
 func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeDirectoryName string, err error) {
 	paddingLen := paddingLength -
 		len(bramblePath) - // parent folder lengths
@@ -274,8 +291,9 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 	return storeDirectoryName, nil
 }
 
-func (s *Store) WriteDerivation(drv Derivation) error {
-	filename := drv.Filename()
+func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
+	drv = formatDerivation(drv)
+	filename = drv.Filename()
 	fileLocation := s.joinStorePath(filename)
-	return ioutil.WriteFile(fileLocation, drv.json(), 0644)
+	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
 }

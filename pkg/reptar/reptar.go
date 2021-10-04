@@ -36,6 +36,7 @@ func Reptar(location string, out io.Writer) (err error) {
 	// TODO: disallow absolute paths
 
 	tw := tar.NewWriter(out)
+	location = filepath.Clean(location)
 	if err = filepath.Walk(location, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -77,6 +78,7 @@ func Reptar(location string, out io.Writer) (err error) {
 		hdr.Format = tar.FormatPAX
 
 		hdr.Name = strings.TrimPrefix(path, location)
+
 		if err = tw.WriteHeader(hdr); err != nil {
 			return fmt.Errorf("%s: writing header: %w", hdr.Name, err)
 		}
