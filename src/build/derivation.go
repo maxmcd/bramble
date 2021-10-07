@@ -3,6 +3,7 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -362,6 +363,21 @@ func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error
 		}
 	}
 	return copy, json.Unmarshal([]byte(s), &copy)
+}
+
+// normalizeDerivation replaces references to the local store path with
+// references to the store path prefix of record
+func (s *Store) normalizeDerivation(drv Derivation) (normalized Derivation, err error) {
+	stringDrv := string(drv.json())
+	replacements := []string{}
+	for _, dep := range drv.InputDerivations {
+		replacements = append(replacements,
+			filepath.Join(s.StorePath, dep.Filename),
+			filepath.Join(BramblePrefixOfRecord, dep.Filename))
+	}
+	replacer := strings.NewReplacer(replacements...)
+	stringDrv = replacer.Replace(stringDrv)
+	return normalized, json.Unmarshal([]byte(stringDrv), &normalized)
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

@@ -16,15 +16,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Context struct {
+type reqContext struct {
 	ResponseWriter http.ResponseWriter
 	Request        *http.Request
 	Params         httprouter.Params
 }
 
-func H(handler func(c Context) (err error)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
+func H(handler func(c reqContext) (err error)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		err := handler(Context{ResponseWriter: rw, Request: r, Params: p})
+		err := handler(reqContext{ResponseWriter: rw, Request: r, Params: p})
 		if err != nil {
 			code := http.StatusInternalServerError
 			if v, ok := err.(errHTTPResponse); ok {
@@ -56,7 +56,7 @@ func main() {
 	}
 
 	router := httprouter.New()
-	router.GET("/derivation/:filename", H(func(c Context) (err error) {
+	router.GET("/derivation/:filename", H(func(c reqContext) (err error) {
 		f, err := os.Open(filepath.Join(store.StorePath, c.Params.ByName("filename")))
 		if err != nil {
 			return notFound(err)
@@ -65,7 +65,7 @@ func main() {
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
 	}))
-	router.GET("/output/:hash", H(func(c Context) (err error) {
+	router.GET("/output/:hash", H(func(c reqContext) (err error) {
 		f, err := os.Open(filepath.Join(store.StorePath, c.Params.ByName("hash")))
 		if err != nil {
 			return notFound(err)
@@ -79,7 +79,7 @@ func main() {
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
 	}))
-	router.GET("/chunk/:hash", H(func(c Context) (err error) {
+	router.GET("/chunk/:hash", H(func(c reqContext) (err error) {
 		f, err := os.Open(filepath.Join(store.StorePath, c.Params.ByName("hash")))
 		if err != nil {
 			return notFound(err)
@@ -88,7 +88,7 @@ func main() {
 		return err
 	}))
 
-	router.POST("/derivation", H(func(c Context) (err error) {
+	router.POST("/derivation", H(func(c reqContext) (err error) {
 		var drv build.Derivation
 		if err := json.NewDecoder(c.Request.Body).Decode(&drv); err != nil {
 			return unprocessable(err)
@@ -104,7 +104,7 @@ func main() {
 		fmt.Fprint(c.ResponseWriter, filename)
 		return nil
 	}))
-	router.POST("/output", H(func(c Context) (err error) {
+	router.POST("/output", H(func(c reqContext) (err error) {
 		var toc []chunkedarchive.TOCEntry
 		if err := json.NewDecoder(c.Request.Body).Decode(&toc); err != nil {
 			return unprocessable(err)
@@ -120,7 +120,7 @@ func main() {
 		fmt.Fprint(c.ResponseWriter, hash)
 		return nil
 	}))
-	router.POST("/chunk", H(func(c Context) (err error) {
+	router.POST("/chunk", H(func(c reqContext) (err error) {
 		hash, err := store.WriteBlob(c.Request.Body)
 		if err != nil {
 			return err

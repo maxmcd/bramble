@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,7 +9,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 
+	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
@@ -296,4 +299,52 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	filename = drv.Filename()
 	fileLocation := s.joinStorePath(filename)
 	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
+}
+
+func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClient) (err error) {
+	bodyWriter := chunkedarchive.NewParallelBodyWriter(
+		runtime.NumCPU(),
+		func(rc io.ReadCloser) (out []string, err error) {
+			buf := bufio.NewReader(rc)
+			for {
+				limited := io.LimitReader(buf, 4e6)
+				hash, err := cc.postChunk(limited)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, hash)
+				fmt.Println("Finished uploading chunk", hash)
+				if _, err := buf.Peek(1); err != nil {
+					break
+				}
+			}
+			return out, rc.Close()
+		},
+	)
+
+	// Loop through derivations
+	for _, drv := range derivations {
+		// Normalize them with the fixed prefix path
+		normalized, err := s.normalizeDerivation(drv)
+		if err != nil {
+			return err
+		}
+		// Upload, could confirm hash
+		if _, err := cc.postDerivation(normalized); err != nil {
+			return err
+		}
+		// Loop through outputs and post them
+		for _, output := range normalized.Outputs {
+			// This will upload using the spawned queue in parallel
+			toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
+			if err != nil {
+				return err
+			}
+
+			if _, err := cc.postOutout(toc); err != nil {
+				return err
+			}
+		}
+	}
+	return
 }
