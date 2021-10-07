@@ -509,3 +509,36 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	}
 	return
 }
+
+func (s *Store) hashNormalizedBuildOutput(location string, hash string) (err error) {
+	pipeReader, pipeWriter := io.Pipe()
+	errChan := make(chan error)
+	resultChan := make(chan string)
+	go func() {
+		if err := reptar.Reptar(location, pipeWriter); err != nil {
+			errChan <- err
+		}
+		pipeWriter.Close()
+	}()
+	go func() {
+		h := hasher.NewHasher()
+		if _, err := textreplace.ReplaceBytes(
+			pipeReader, h,
+			[]byte(hash), bytes.Repeat([]byte{0}, len(hash)),
+		); err != nil {
+			errChan <- errors.Wrap(err, "error replacing self-reference outputs hash with with null bytes")
+			return
+		}
+		resultChan <- h.String()
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	case result := <-resultChan:
+		if result != hash {
+			return errors.Errorf("Output hash %s doesn't match computed hash value %s", hash, result)
+		}
+		return nil
+	}
+}

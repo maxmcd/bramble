@@ -307,6 +307,7 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 		func(rc io.ReadCloser) (out []string, err error) {
 			buf := bufio.NewReader(rc)
 			for {
+				// TODO: hash the body before uploading to confirm it doesn't already exist
 				limited := io.LimitReader(buf, 4e6)
 				hash, err := cc.postChunk(limited)
 				if err != nil {
@@ -322,6 +323,8 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 		},
 	)
 
+	uploaded := map[string]struct{}{}
+
 	// Loop through derivations
 	for _, drv := range derivations {
 		// Normalize them with the fixed prefix path
@@ -335,15 +338,22 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 		}
 		// Loop through outputs and post them
 		for _, output := range normalized.Outputs {
+			if _, ok := uploaded[output.Path]; ok {
+				continue
+			}
 			// This will upload using the spawned queue in parallel
 			toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
 			if err != nil {
 				return err
 			}
 
-			if _, err := cc.postOutout(toc); err != nil {
+			if err := cc.postOutout(outputRequestBody{
+				TOC:    toc,
+				Output: output,
+			}); err != nil {
 				return err
 			}
+			uploaded[output.Path] = struct{}{}
 		}
 	}
 	return

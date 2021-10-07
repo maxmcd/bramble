@@ -41,6 +41,9 @@ func Reptar(location string, out io.Writer) (err error) {
 		if err != nil {
 			return err
 		}
+		if location == path {
+			return nil
+		}
 		var linkTarget string
 		if isSymlink(fi) {
 			var err error
