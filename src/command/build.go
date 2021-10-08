@@ -17,7 +17,7 @@ type execModuleOptions struct {
 
 func (b bramble) execModule(ctx context.Context, command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "command.execModule")
+	ctx, span = tracer.Start(ctx, "command.execModule "+command+" "+fmt.Sprintf("%q", args))
 	defer span.End()
 
 	if len(args) > 0 {

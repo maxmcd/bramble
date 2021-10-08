@@ -3,6 +3,8 @@ package tracing
 import (
 	"context"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -24,15 +26,21 @@ const (
 // the Jaeger exporter that will send spans to the provided url. The returned
 // TracerProvider will also use a Resource configured with all the information
 // about the application.
-func tracerProvider(url string) (*tracesdk.TracerProvider, error) {
+func tracerProvider(hostAndPort string) (*tracesdk.TracerProvider, error) {
 	// Create the Jaeger exporter
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
+
+	// TODO: better validation, resolve IP+port?
+	parts := strings.Split(hostAndPort, ":")
+	jaegerBatcher, err := jaeger.New(jaeger.WithAgentEndpoint(
+		jaeger.WithAgentHost(parts[0]),
+		jaeger.WithAgentPort(parts[1]),
+	))
 	if err != nil {
 		return nil, err
 	}
-	tp := tracesdk.NewTracerProvider(
+	return tracesdk.NewTracerProvider(
 		// Always be sure to batch in production.
-		tracesdk.WithBatcher(exp),
+		tracesdk.WithBatcher(jaegerBatcher),
 		// Record information about this application in an Resource.
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
@@ -40,9 +48,7 @@ func tracerProvider(url string) (*tracesdk.TracerProvider, error) {
 			attribute.String("environment", environment),
 			attribute.Int64("ID", id),
 		)),
-	)
-
-	return tp, nil
+	), nil
 }
 
 var (
@@ -50,8 +56,14 @@ var (
 )
 
 func init() {
+	hostAndPort, found := os.LookupEnv("JAEGER_TRACE")
+	if !found {
+		// Never collect traces if we're not gathering them
+		tp = tracesdk.NewTracerProvider(tracesdk.WithSampler(tracesdk.NeverSample()))
+		return
+	}
 	var err error
-	tp, err = tracerProvider("http://localhost:14268/api/traces")
+	tp, err = tracerProvider(hostAndPort)
 	if err != nil {
 		panic(err)
 	}
@@ -60,10 +72,16 @@ func init() {
 }
 
 func Tracer(name string) trace.Tracer {
+	if tp == nil {
+		panic("tracing provider hasn't been initialized")
+	}
 	return tp.Tracer(name)
 }
 
 func Stop() {
+	if tp == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
 	defer cancel()
 	if err := tp.Shutdown(ctx); err != nil {

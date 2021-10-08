@@ -68,7 +68,7 @@ func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out
 	if err = os.MkdirAll(runLocation, 0755); err != nil {
 		return
 	}
-	hshr := hasher.NewHasher()
+	hshr := hasher.New()
 	if err = reptar.Reptar(tmpDir, hshr); err != nil {
 		return
 	}

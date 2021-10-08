@@ -248,7 +248,7 @@ func (s *Store) outputFoldersExist(outputs []Output) (exists bool, err error) {
 }
 
 func (s *Store) WriteConfigLink(location string) (err error) {
-	hshr := hasher.NewHasher()
+	hshr := hasher.New()
 	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
 	}
@@ -259,7 +259,7 @@ func (s *Store) WriteConfigLink(location string) (err error) {
 }
 
 func (s *Store) WriteBlob(src io.Reader) (hash string, err error) {
-	h := hasher.NewHasher()
+	h := hasher.New()
 	tee := io.TeeReader(src, h)
 	f, err := os.CreateTemp("", "")
 	if err != nil {

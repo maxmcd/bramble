@@ -113,7 +113,7 @@ bramble build ./tests
 					},
 				},
 				Action: func(c *cli.Context) error {
-					ctx, span := tracer.Start(c.Context, "bramble build")
+					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
 					defer span.End()
 					b, err := newBramble()
 					if err != nil {

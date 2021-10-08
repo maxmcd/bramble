@@ -104,7 +104,7 @@ type tarBodyWriter struct {
 func (bw *tarBodyWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), error) {
 	out := []string{}
 	for {
-		h := hasher.NewHasher()
+		h := hasher.New()
 		tr := io.TeeReader(f, h)
 
 		n, err := tr.Read(bw.buf)

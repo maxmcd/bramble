@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"flag"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -30,10 +31,10 @@ type ExecModuleOutput struct {
 
 func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output ExecModuleOutput, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "project.ExecModule")
-	defer span.End()
 
 	cmd, args := input.Command, input.Arguments
+	ctx, span = tracer.Start(ctx, "project.ExecModule "+cmd+" "+fmt.Sprintf("%q", args))
+	defer span.End()
 	span.SetAttributes(attribute.String("cmd", cmd))
 	span.SetAttributes(attribute.StringSlice("args", args))
 	if len(args) == 0 {

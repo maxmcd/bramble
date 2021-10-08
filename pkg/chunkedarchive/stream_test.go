@@ -96,7 +96,7 @@ func TestArchive(t *testing.T) {
 }
 
 func reptarDir(t *testing.T, location string) string {
-	h := hasher.NewHasher()
+	h := hasher.New()
 	if err := reptar.Reptar(location, h); err != nil {
 		t.Fatal(err)
 	}

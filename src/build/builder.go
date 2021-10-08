@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -174,6 +175,9 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 }
 
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.fetchURLBuilder")
+	defer span.End()
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
@@ -265,6 +269,9 @@ func (b *Builder) downloadFile(ctx context.Context, url string) (dir, path strin
 
 func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
 	outputPaths map[string]string, shell bool) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.regularBuilder")
+	defer span.End()
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "builder location doesn't exist")
@@ -310,9 +317,12 @@ func (err ExecError) Error() string {
 }
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.store.hashAndMoveBuildOutputs")
+	defer span.End()
 	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
-		hshr := hasher.NewHasher()
+		hshr := hasher.New()
 		var reptarFile *os.File
 		reptarFile, err = s.storeLengthTempFile()
 		if err != nil {
@@ -337,6 +347,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
+				ctx,
 				reptarFile.Name(),
 				newPath,
 				outputFolder,
@@ -352,7 +363,10 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	}
 	return
 }
-func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
+func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
+	var span trace.Span
+	_, span = tracer.Start(ctx, "build.store.unarchiveAndReplaceOutputFolderName")
+	defer span.End()
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {
@@ -399,7 +413,7 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, 
 func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder, buildDir string) (
 	matches []string, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "archiveAndScanOutputDirectory")
+	_, span = tracer.Start(ctx, "build.store.archiveAndScanOutputDirectory")
 	defer span.End()
 	var storeValues []string
 
@@ -421,12 +435,15 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	pipeReader, pipeWriter := io.Pipe()
 
 	tarPipeReader, tarPipeWriter := io.Pipe()
+
 	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(s.joinStorePath(storeFolder), tarPipeWriter); err != nil {
+		btpw := bufio.NewWriter(tarPipeWriter)
+		if err := reptar.Reptar(s.joinStorePath(storeFolder), btpw); err != nil {
 			errChan <- err
 			return
 		}
+		_ = btpw.Flush()
 		if err := tarPipeWriter.Close(); err != nil {
 			errChan <- err
 			return
@@ -529,7 +546,7 @@ func (s *Store) hashNormalizedBuildOutput(location string, hash string) (err err
 		pipeWriter.Close()
 	}()
 	go func() {
-		h := hasher.NewHasher()
+		h := hasher.New()
 		if _, err := textreplace.ReplaceBytes(
 			pipeReader, h,
 			[]byte(hash), bytes.Repeat([]byte{0}, len(hash)),

@@ -20,7 +20,7 @@ type Hasher struct {
 	hash hash.Hash
 }
 
-func NewHasher() *Hasher {
+func New() *Hasher {
 	return &Hasher{
 		hash: sha256.New(),
 	}
@@ -38,7 +38,7 @@ func (h *Hasher) Sha256Hex() string {
 }
 
 func HashString(input string) string {
-	h := NewHasher()
+	h := New()
 	_, _ = h.Write([]byte(input))
 	return h.String()
 }

@@ -53,7 +53,7 @@ type memWriter struct {
 }
 
 func (mw *memWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), error) {
-	h := hasher.NewHasher()
+	h := hasher.New()
 	b, err := io.ReadAll(io.TeeReader(f, h))
 	if errClose := f.Close(); errClose != nil && err == nil {
 		err = errClose
