@@ -161,6 +161,7 @@ func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
 		if err != nil {
 			return fmt.Errorf("%s: opening: %w", path, err)
 		}
+		fmt.Println("file.NewChunk")
 		promise, err := bw.NewChunk(file)
 		if err != nil {
 			return fmt.Errorf("%s: reading: %w", path, err)
@@ -172,6 +173,7 @@ func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
 	}
 	for _, ep := range queue {
 		if ep.promise != nil {
+			fmt.Println("reap promise")
 			ep.entry.Body, err = ep.promise()
 			if err != nil {
 				return nil, err
@@ -204,12 +206,15 @@ func (bw *ParallelBodyWriter) NewChunk(body io.ReadCloser) (func() ([]string, er
 	}
 	// Take slot to do work
 	bw.sem <- struct{}{}
+	fmt.Println("NewChunk scheduled")
 	out := make(chan result)
 	go func() {
 		r := result{}
 		r.hashes, r.err = bw.cb(body)
+		fmt.Println("cb returned")
 		out <- r
 	}()
+	fmt.Println("NewChunk returned")
 	return func() ([]string, error) {
 		r := <-out
 		// Free up slot

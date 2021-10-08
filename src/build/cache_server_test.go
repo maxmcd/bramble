@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,16 +10,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStore_CacheServer(t *testing.T) {
+	ctx := context.Background()
+
 	clientBramblePath := t.TempDir()
 	clientStore, err := NewStore(clientBramblePath)
 	require.NoError(t, err)
-
+	defer tracing.Stop()
 	{
 		cmd := exec.Command("bramble", "build", "../../lib:busybox")
 		cmd.Env = append(cmd.Env, "BRAMBLE_PATH="+clientBramblePath)
@@ -50,11 +53,10 @@ func TestStore_CacheServer(t *testing.T) {
 			drvs = append(drvs, drv)
 		}
 		cc := &cacheClient{host: server.URL, client: &http.Client{}}
-		if err := clientStore.UploadDerivationsToCache(drvs, cc); err != nil {
+		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}
 
 		fmt.Println(serverBramblePath)
-		time.Sleep(time.Minute * 10)
 	}
 }

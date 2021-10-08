@@ -9,7 +9,7 @@ import (
 )
 
 func (b bramble) run(ctx context.Context, args []string) (err error) {
-	output, err := b.execModule("run", args, execModuleOptions{})
+	output, err := b.execModule(ctx, "run", args, execModuleOptions{})
 	if err != nil {
 		return
 	}

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/trace"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +26,8 @@ import (
 	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (s *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder {
@@ -49,6 +50,11 @@ type BuildDerivationOptions struct {
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.BuildDerivation")
+	defer span.End()
+	span.SetAttributes(attribute.String("name", drv.Name))
+
 	drv = formatDerivation(drv)
 
 	outputs, drvExists, err := b.store.checkForBuiltDerivationOutputs(drv)
@@ -66,6 +72,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	}
 
 	filename := drv.Filename()
+	span.SetAttributes(attribute.String("filename", filename))
 	if drvExists && outputsExist && !opts.ForceBuild {
 		return drv, false, nil
 	}
@@ -81,9 +88,9 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 
 func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {
 	var err error
-	var task *trace.Task
-	ctx, task = trace.NewTask(ctx, "buildDerivation")
-	defer task.End()
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.buildDerivation")
+	defer span.End()
 
 	buildDir, err := b.store.storeLengthTempDir()
 	if err != nil {
@@ -391,8 +398,9 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, 
 
 func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder, buildDir string) (
 	matches []string, err error) {
-	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
-	defer region.End()
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "archiveAndScanOutputDirectory")
+	defer span.End()
 	var storeValues []string
 
 	for _, do := range drv.InputDerivations {

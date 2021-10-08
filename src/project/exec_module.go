@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"flag"
 	"sort"
 	"sync"
@@ -9,6 +10,8 @@ import (
 	ds "github.com/maxmcd/bramble/src/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.starlark.net/starlark"
 )
 
@@ -25,8 +28,14 @@ type ExecModuleOutput struct {
 	Tests          map[string][]Test
 }
 
-func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, err error) {
+func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output ExecModuleOutput, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "project.ExecModule")
+	defer span.End()
+
 	cmd, args := input.Command, input.Arguments
+	span.SetAttributes(attribute.String("cmd", cmd))
+	span.SetAttributes(attribute.StringSlice("args", args))
 	if len(args) == 0 {
 		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
 		err = flag.ErrHelp
@@ -41,7 +50,7 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 	}
 	logger.Debug("resolving module", module)
 	// parse the module and all of its imports, return available functions
-	globals, err := rt.execModule(module)
+	globals, err := rt.execModule(ctx, module)
 	if err != nil {
 		return output, err
 	}
@@ -72,7 +81,7 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 			continue
 		}
 		logger.Debug("Calling function ", fn)
-		values, err := starlark.Call(rt.newThread("Calling "+fn), callable, nil, nil)
+		values, err := starlarkCall(ctx, rt.newThread(ctx, "Calling "+fn), callable, nil, nil)
 		if err != nil {
 			return output, errors.Wrap(err, "error running")
 		}
@@ -99,6 +108,12 @@ func (p *Project) ExecModule(input ExecModuleInput) (output ExecModuleOutput, er
 		output.Tests[hash] = append(output.Tests[hash], test)
 	}
 	return
+}
+
+func starlarkCall(ctx context.Context, thread *starlark.Thread, fn starlark.Value, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	_, span := tracer.Start(ctx, "starlark.Call "+fn.String())
+	defer span.End()
+	return starlark.Call(thread, fn, args, kwargs)
 }
 
 func (emo ExecModuleOutput) buildDependencyGraph() (graph *dag.AcyclicGraph, err error) {

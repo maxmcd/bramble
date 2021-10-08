@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -129,7 +130,7 @@ func TestBramble_resolveModule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotGlobals, err := rt.execModule(tt.module)
+			gotGlobals, err := rt.execModule(context.Background(), tt.module)
 			if (err != nil) && tt.wantErr != "" {
 				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("Bramble.execModule() error doesn't match\nwanted:     %q\nto contain: %q", err, tt.wantErr)

@@ -10,13 +10,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/src/logger"
+	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -29,6 +32,8 @@ var (
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb" // TODO: could we make this more obviously fake?
 
 	buildDirPrefix = "bramble_build_directory"
+
+	tracer = tracing.Tracer("build")
 )
 
 func NewStore(bramblePath string) (*Store, error) {
@@ -301,15 +306,22 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
 }
 
-func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClient) (err error) {
+func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc *cacheClient) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.UploadDerivationsToCache")
+	defer span.End()
+	var cancel func()
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
+
 	bodyWriter := chunkedarchive.NewParallelBodyWriter(
-		runtime.NumCPU(),
+		8,
 		func(rc io.ReadCloser) (out []string, err error) {
 			buf := bufio.NewReader(rc)
 			for {
 				// TODO: hash the body before uploading to confirm it doesn't already exist
 				limited := io.LimitReader(buf, 4e6)
-				hash, err := cc.postChunk(limited)
+				hash, err := cc.postChunk(ctx, limited)
 				if err != nil {
 					return nil, err
 				}
@@ -324,6 +336,10 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 	)
 
 	uploaded := map[string]struct{}{}
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
 
 	// Loop through derivations
 	for _, drv := range derivations {
@@ -333,7 +349,7 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 			return err
 		}
 		// Upload, could confirm hash
-		if _, err := cc.postDerivation(normalized); err != nil {
+		if _, err := cc.postDerivation(ctx, normalized); err != nil {
 			return err
 		}
 		// Loop through outputs and post them
@@ -341,20 +357,37 @@ func (s *Store) UploadDerivationsToCache(derivations []Derivation, cc *cacheClie
 			if _, ok := uploaded[output.Path]; ok {
 				continue
 			}
-			// This will upload using the spawned queue in parallel
-			toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
-			if err != nil {
-				return err
-			}
-
-			if err := cc.postOutout(outputRequestBody{
-				TOC:    toc,
-				Output: output,
-			}); err != nil {
-				return err
-			}
 			uploaded[output.Path] = struct{}{}
+			wg.Add(1)
+			go func(output Output) {
+				// Limit parallelism
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				// This will upload using the spawned queue in parallel
+				toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
+				if err != nil {
+					errChan <- err
+				}
+
+				if err := cc.postOutout(ctx, outputRequestBody{
+					TOC:    toc,
+					Output: output,
+				}); err != nil {
+					errChan <- err
+				}
+				wg.Done()
+			}(output)
 		}
 	}
-	return
+
+	go func() {
+		wg.Wait()
+		doneChan <- struct{}{}
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-doneChan:
+		return nil
+	}
 }

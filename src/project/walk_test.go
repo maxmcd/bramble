@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"sync"
@@ -16,18 +17,19 @@ func sortLines(in string) (out string) {
 }
 
 func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
+	ctx := context.Background()
 	project, err := NewProject("./testdata/project")
 	require.NoError(t, err)
-	firstGraph, err := project.ExecModule(ExecModuleInput{
+	firstGraph, err := project.ExecModule(ctx, ExecModuleInput{
 		Arguments: []string{":first_graph"},
 	})
 
 	require.NoError(t, err)
-	replaceCWith, err := project.ExecModule(ExecModuleInput{
+	replaceCWith, err := project.ExecModule(ctx, ExecModuleInput{
 		Arguments: []string{":replace_c_with"},
 	})
 	require.NoError(t, err)
-	expectedResult, err := project.ExecModule(ExecModuleInput{
+	expectedResult, err := project.ExecModule(ctx, ExecModuleInput{
 		Arguments: []string{":expected_result"},
 	})
 
@@ -55,7 +57,7 @@ func TestExecModuleAndWalk(t *testing.T) {
 	project, err := NewProject(".")
 	require.NoError(t, err)
 
-	gotOutput, err := project.ExecModule(ExecModuleInput{
+	gotOutput, err := project.ExecModule(context.Background(), ExecModuleInput{
 		Command:   "build",
 		Arguments: []string{"github.com/maxmcd/bramble/all:all"},
 	})

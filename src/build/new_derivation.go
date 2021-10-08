@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
@@ -28,7 +29,10 @@ type SourceFiles struct {
 	Files           []string
 }
 
-func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
+func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out Source, err error) {
+	_, span := tracer.Start(ctx, "build.StoreLocalSources")
+	defer span.End()
+
 	if len(sources.Files) == 0 {
 		return
 	}

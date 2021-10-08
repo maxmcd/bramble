@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/src/assert"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/trace"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -45,11 +47,12 @@ func newRuntime(workingDirectory, projectLocation, moduleName string) *runtime {
 	return rt
 }
 
-func (rt *runtime) newThread(name string) *starlark.Thread {
+func (rt *runtime) newThread(ctx context.Context, name string) *starlark.Thread {
 	thread := &starlark.Thread{
 		Name: name,
 		Load: rt.load,
 	}
+	thread.SetLocal("ctx", ctx)
 	// set the necessary error reporter so that the assert package can catch
 	// errors
 	assert.SetReporter(thread, runErrorReporter{})
@@ -82,7 +85,7 @@ var starlarkSys = &starlarkstruct.Module{
 
 func (p *Project) REPL() {
 	rt := newRuntime(p.wd, p.location, p.config.Module.Name)
-	repl.REPL(rt.newThread("repl"), rt.predeclared)
+	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
 }
 
 func (rt *runtime) relativePathFromConfig() string {
@@ -100,10 +103,13 @@ type entry struct {
 }
 
 func (rt *runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	return rt.execModule(module)
+	return rt.execModule(thread.Local("ctx").(context.Context), module)
 }
 
-func (rt *runtime) execModule(module string) (globals starlark.StringDict, err error) {
+func (rt *runtime) execModule(ctx context.Context, module string) (globals starlark.StringDict, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "project.rt.execModule "+module)
+	defer span.End()
 	if rt.predeclared == nil {
 		return nil, errors.New("thread is not initialized")
 	}
@@ -128,7 +134,7 @@ func (rt *runtime) execModule(module string) (globals starlark.StringDict, err e
 		return nil, err
 	}
 	// Load and initialize the module in a new thread.
-	globals, err = rt.starlarkExecFile(rt.newThread("module "+module), path)
+	globals, err = rt.starlarkExecFile(rt.newThread(ctx, "module "+module), path)
 	rt.cache[module] = &entry{globals: globals, err: err}
 	return globals, err
 }
