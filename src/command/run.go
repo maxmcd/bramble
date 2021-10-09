@@ -21,7 +21,7 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 	if err != nil {
 		return
 	}
-	outputDerivations, err := b.runBuild(ctx, output, buildOptions{})
+	outputDerivations, err := b.runBuild(ctx, output, runBuildOptions{})
 	if err != nil {
 		return err
 	}

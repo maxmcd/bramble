@@ -6,11 +6,13 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
@@ -47,15 +49,18 @@ Commands:{{range .VisibleCategories}}{{if .Name}}
 
 Options:
 	{{range $index, $option := .VisibleFlags}}{{if $index}}
-	{{end}}{{$option}}{{end}}`
+	{{end}}{{$option}}{{end}}
+`
 )
 
 var tracer trace.Tracer
 
+func init() {
+	tracer = tracing.Tracer("command")
+}
+
 // RunCLI runs the cli with os.Args
 func RunCLI() {
-	tracer = tracing.Tracer("command")
-
 	defer tracing.Stop()
 
 	// Patch cli lib to remove bool default
@@ -116,7 +121,7 @@ bramble build ./tests
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
 					defer span.End()
-					b, err := newBramble()
+					b, err := newBramble(".", "")
 					if err != nil {
 						return err
 					}
@@ -124,7 +129,7 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuild(ctx, output, buildOptions{
+					_, err = b.runBuild(ctx, output, runBuildOptions{
 						check: c.Bool("check"),
 					})
 					return err
@@ -153,7 +158,7 @@ bramble build ./tests
 					},
 				},
 				Action: func(c *cli.Context) error {
-					b, err := newBramble()
+					b, err := newBramble(".", "")
 					if err != nil {
 						return err
 					}
@@ -194,7 +199,7 @@ bramble build ./tests
 				Name:      "test",
 				UsageText: "bramble test",
 				Action: func(c *cli.Context) error {
-					b, err := newBramble()
+					b, err := newBramble(".", "")
 					if err != nil {
 						return err
 					}
@@ -213,7 +218,7 @@ good way to debug a derivation that you're building.`,
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble shell")
 					defer span.End()
-					b, err := newBramble()
+					b, err := newBramble(".", "")
 					if err != nil {
 						return err
 					}
@@ -221,7 +226,7 @@ good way to debug a derivation that you're building.`,
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuild(ctx, output, buildOptions{
+					_, err = b.runBuild(ctx, output, runBuildOptions{
 						shell: true,
 					})
 					return err
@@ -280,6 +285,45 @@ their public functions with documentation. If an immediate subdirectory has a
 						fmt.Println()
 					}
 					return nil
+				},
+			},
+			{
+				Name:      "dependency-server",
+				UsageText: "bramble dependency-server",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "port",
+						Value: "2726",
+						Usage: "the port that the server will listen on",
+					},
+					&cli.StringFlag{
+						Name:  "hostname",
+						Value: "localhost",
+						Usage: "the hostname that the server will listen on",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					dep := &DepServer{}
+					listenOn := fmt.Sprintf("%s:%s", c.String("hostname"), c.String("port"))
+					fmt.Printf("Dependency server listening on: %s\n", listenOn)
+					srv := &http.Server{
+						Addr:    listenOn,
+						Handler: dep.handler(),
+					}
+					errChan := make(chan error)
+					go func() {
+						if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+							errChan <- err
+						}
+					}()
+					select {
+					case err := <-errChan:
+						return err
+					case <-c.Context.Done():
+						fmt.Println("Shutting down server.")
+						ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+						return srv.Shutdown(ctx)
+					}
 				},
 			},
 		},

@@ -57,7 +57,8 @@ def git_fetcher():
     )
 
 
-def git_test():
+# TODO: make reproducible
+def _git_test():
     return derivation(
         "git-test",
         "fetch_git",

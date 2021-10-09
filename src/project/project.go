@@ -90,6 +90,15 @@ type LockFile struct {
 func (p *Project) Location() string {
 	return p.location
 }
+
+func (p *Project) Module() string {
+	return p.config.Module.Name
+}
+
+func (p *Project) Version() string {
+	return p.config.Module.Version
+}
+
 func (p *Project) WD() string {
 	return p.wd
 }

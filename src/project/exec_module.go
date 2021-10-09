@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"sort"
 	"sync"
 
 	"github.com/maxmcd/bramble/src/logger"
@@ -25,9 +24,11 @@ type ExecModuleInput struct {
 type ExecModuleOutput struct {
 	Output         map[string]Derivation
 	AllDerivations map[string]Derivation
-	Globals        []string
 	Tests          map[string][]Test
 	Run            []Run
+	// Modules is a map of all modules run, the names of their called functions
+	// and the hashes of the derivations that they output
+	Modules map[string]map[string][]string
 }
 
 func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output ExecModuleOutput, err error) {
@@ -56,17 +57,13 @@ func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output
 	if err != nil {
 		return output, err
 	}
-	for fn := range globals {
-		output.Globals = append(output.Globals, fn)
-	}
-	sort.Strings(output.Globals)
 
 	toCall := map[string]starlark.Value{}
 	if fn != "" {
 		f, ok := globals[fn]
 		if !ok {
 			return output, errors.Errorf("function %q not found in %q, available functions are %q",
-				fn, module, output.Globals)
+				fn, module, globals)
 		}
 		toCall[fn] = f
 	} else {
@@ -76,12 +73,16 @@ func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output
 	output.AllDerivations = map[string]Derivation{}
 	output.Output = map[string]Derivation{}
 	tests := []Test{}
+	output.Modules = map[string]map[string][]string{module: {}}
 	for fn, callable := range toCall {
 		starlarkFunc, ok := callable.(*starlark.Function)
 		if !ok || (starlarkFunc.NumParams()+starlarkFunc.NumKwonlyParams() > 0) {
-			// TODO: make sure this prints a useful error message if a function has been explicitly called and we're silently skipping it
+			// TODO: make sure this prints a useful error message if a function
+			// has been explicitly called and we're silently skipping it
 			continue
 		}
+
+		// Call the function, calling all applicable derivations
 		logger.Debug("Calling function ", fn)
 		values, err := starlarkCall(ctx, rt.newThread(ctx, "Calling "+fn), callable, nil, nil)
 		if err != nil {
@@ -93,17 +94,26 @@ func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output
 			output.Run = append(output.Run, run)
 			output.Output[run.Derivation.hash()] = run.Derivation
 		}
+
 		// The function must return a single derivation or a list of derivations, or
 		// a tuple of derivations. We turn them into an array.
 		for _, d := range valuesToDerivations(values) {
 			output.Output[d.hash()] = d
 		}
+
+		// If we're including tests, add them to the output
 		if input.IncludeTests {
 			for _, test := range rt.tests {
 				output.Output[test.Derivation.hash()] = test.Derivation
 			}
 			tests = append(tests, rt.tests...)
 		}
+
+		// Add output hashes to module function output info
+		for _, drv := range output.Output {
+			output.Modules[module][fn] = append(output.Modules[module][fn], drv.hash())
+		}
+
 		// Append
 		for k, v := range rt.allDerivationDependencies(output.Output) {
 			output.AllDerivations[k] = v

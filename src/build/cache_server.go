@@ -8,40 +8,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/julienschmidt/httprouter"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
+	"github.com/maxmcd/bramble/pkg/httpx"
 	"github.com/pkg/errors"
 )
-
-type reqContext struct {
-	ResponseWriter http.ResponseWriter
-	Request        *http.Request
-	Params         httprouter.Params
-}
-
-func H(handler func(c reqContext) (err error)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		err := handler(reqContext{ResponseWriter: rw, Request: r, Params: p})
-		if err != nil {
-			code := http.StatusInternalServerError
-			if v, ok := err.(errHTTPResponse); ok {
-				code = v.code
-			}
-			http.Error(rw, err.Error(), code)
-		}
-	}
-}
-
-type errHTTPResponse struct {
-	err  error
-	code int
-}
-
-func (err errHTTPResponse) Error() string { return err.err.Error() }
-func notFound(err error) error            { return errHTTPResponse{err: err, code: http.StatusNotFound} }
-func unprocessable(err error) error {
-	return errHTTPResponse{err: err, code: http.StatusUnprocessableEntity}
-}
 
 type storeHashFetcher struct {
 	store *Store
@@ -62,44 +32,43 @@ type outputRequestBody struct {
 // Sources aren't uploaded
 // Outputs are uploaded in 4mb body chunks
 func (s *Store) CacheServer() http.Handler {
-	router := httprouter.New()
-
-	router.GET("/derivation/:filename", H(func(c reqContext) (err error) {
+	router := httpx.New()
+	router.GET("/derivation/:filename", func(c httpx.Context) (err error) {
 		f, err := os.Open(s.joinStorePath(c.Params.ByName("filename")))
 		if err != nil {
-			return notFound(err)
+			return httpx.ErrNotFound(err)
 		}
 		defer f.Close()
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
-	}))
-	router.GET("/output/:hash", H(func(c reqContext) (err error) {
+	})
+	router.GET("/output/:hash", func(c httpx.Context) (err error) {
 		f, err := os.Open(s.joinStorePath(c.Params.ByName("hash")))
 		if err != nil {
-			return notFound(err)
+			return httpx.ErrNotFound(err)
 		}
 		var toc []chunkedarchive.TOCEntry
 		if err := json.NewDecoder(f).Decode(&toc); err != nil {
 			// If the hash isn't a valid TOC then it's not an output
-			return notFound(err)
+			return httpx.ErrNotFound(err)
 		}
 		_, _ = f.Seek(0, 0)
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
-	}))
-	router.GET("/chunk/:hash", H(func(c reqContext) (err error) {
+	})
+	router.GET("/chunk/:hash", func(c httpx.Context) (err error) {
 		f, err := os.Open(s.joinStorePath(c.Params.ByName("hash")))
 		if err != nil {
-			return notFound(err)
+			return httpx.ErrNotFound(err)
 		}
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
-	}))
+	})
 
-	router.POST("/derivation", H(func(c reqContext) (err error) {
+	router.POST("/derivation", func(c httpx.Context) (err error) {
 		var drv Derivation
 		if err := json.NewDecoder(c.Request.Body).Decode(&drv); err != nil {
-			return unprocessable(err)
+			return httpx.ErrUnprocessableEntity(err)
 		}
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(drv); err != nil {
@@ -111,11 +80,11 @@ func (s *Store) CacheServer() http.Handler {
 		}
 		fmt.Fprint(c.ResponseWriter, filename)
 		return nil
-	}))
-	router.POST("/output", H(func(c reqContext) (err error) {
+	})
+	router.POST("/output", func(c httpx.Context) (err error) {
 		var req outputRequestBody
 		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-			return unprocessable(err)
+			return httpx.ErrUnprocessableEntity(err)
 		}
 
 		tempDir, err := os.MkdirTemp("", "")
@@ -137,8 +106,8 @@ func (s *Store) CacheServer() http.Handler {
 			return err
 		}
 		return nil
-	}))
-	router.POST("/chunk", H(func(c reqContext) (err error) {
+	})
+	router.POST("/chunk", func(c httpx.Context) (err error) {
 		hash, err := s.WriteBlob(c.Request.Body)
 		if err != nil {
 			return err
@@ -150,12 +119,12 @@ func (s *Store) CacheServer() http.Handler {
 		}
 		if fi.Size() > 4e6 {
 			_ = os.Remove(loc)
-			return unprocessable(errors.New("chunk size can't be larger than 4MB"))
+			return httpx.ErrUnprocessableEntity(errors.New("chunk size can't be larger than 4MB"))
 		}
 
 		fmt.Fprint(c.ResponseWriter, hash)
 		return nil
-	}))
+	})
 
 	return router
 }

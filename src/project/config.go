@@ -15,6 +15,7 @@ type Config struct {
 }
 type ConfigModule struct {
 	Name          string   `toml:"name"`
+	Version       string   `toml:"version"`
 	ReadOnlyPaths []string `toml:"read_only_paths"`
 	HiddenPaths   []string `toml:"hidden_paths"`
 }

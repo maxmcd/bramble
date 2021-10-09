@@ -54,14 +54,14 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 	return output, nil
 }
 
-type buildOptions struct {
+type runBuildOptions struct {
 	check        bool
 	shell        bool
 	includeTests bool
 	callback     func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation)
 }
 
-func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops buildOptions) (outputDerivations []build.Derivation, err error) {
+func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops runBuildOptions) (outputDerivations []build.Derivation, err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "command.runBuild")
 	defer span.End()
@@ -211,4 +211,31 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	}
 	_ = b.store.WriteConfigLink(b.project.Location())
 	return outputDerivations, err
+}
+
+type fullBuildOptions struct {
+	check bool
+}
+
+type buildResponse struct {
+	Output           project.ExecModuleOutput
+	FinalHashMapping map[string]build.Derivation
+}
+
+func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOptions) (br buildResponse, err error) {
+	br.FinalHashMapping = make(map[string]build.Derivation)
+	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
+	if err != nil {
+		return
+	}
+	var lock sync.Mutex
+	_, err = b.runBuild(ctx, br.Output, runBuildOptions{
+		check: opts.check,
+		callback: func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation) {
+			lock.Lock()
+			br.FinalHashMapping[dep.Hash] = buildDrv
+			lock.Unlock()
+		},
+	})
+	return
 }

@@ -10,11 +10,11 @@ type bramble struct {
 	project *project.Project
 }
 
-func newBramble() (b bramble, err error) {
-	if b.project, err = project.NewProject("."); err != nil {
+func newBramble(wd string, bramblePath string) (b bramble, err error) {
+	if b.project, err = project.NewProject(wd); err != nil {
 		return
 	}
-	if b.store, err = build.NewStore(""); err != nil {
+	if b.store, err = build.NewStore(bramblePath); err != nil {
 		return
 	}
 

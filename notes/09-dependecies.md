@@ -62,3 +62,15 @@ What if:
 "github.com/maxmcd/bramble" = "0.1.12"
 "github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
 ```
+
+
+------------------------
+
+
+We're going with the plan where the dependency server can be prompted to pull from a git/VC repo and then will build and load the derivation into its stores.
+
+From there the dependency server stores references to bramble projects at various versions. When a project tries to load or fetch one of these dependencies the latest version is pulled down and added to the bramble.toml and the lockfile.
+
+So we can start with the server. We'll need something that will accept a git repo location and an optional hash/commit/tag. The server will then pull that repo, download it and build the included derivations. It will check that the project is reproducible and if it is not it will reject it outright.
+
+

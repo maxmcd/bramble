@@ -25,7 +25,7 @@ func (b bramble) test(ctx context.Context) (err error) {
 	finishedBuild := make(chan buildOutput, 100)
 	errChan := make(chan error)
 	go func() {
-		if _, err := b.runBuild(ctx, output, buildOptions{
+		if _, err := b.runBuild(ctx, output, runBuildOptions{
 			callback: func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation) {
 				finishedBuild <- buildOutput{
 					dep:      dep,
