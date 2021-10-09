@@ -9,7 +9,7 @@ import (
 )
 
 func (b bramble) test(ctx context.Context) (err error) {
-	output, err := b.execModule("test", nil, execModuleOptions{
+	output, err := b.execModule(ctx, "test", nil, execModuleOptions{
 		includeTests: true,
 	})
 	if err != nil {

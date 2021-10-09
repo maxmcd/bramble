@@ -36,9 +36,13 @@ func Reptar(location string, out io.Writer) (err error) {
 	// TODO: disallow absolute paths
 
 	tw := tar.NewWriter(out)
+	location = filepath.Clean(location)
 	if err = filepath.Walk(location, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if location == path {
+			return nil
 		}
 		var linkTarget string
 		if isSymlink(fi) {
@@ -49,6 +53,7 @@ func Reptar(location string, out io.Writer) (err error) {
 			}
 			// TODO: convert from absolute to relative
 		}
+
 		// GNU Tar adds a slash to the end of directories, but Go removes them
 		if fi.IsDir() {
 			path += "/"

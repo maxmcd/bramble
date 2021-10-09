@@ -8,6 +8,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -16,6 +17,7 @@ const BrambleExtension = ".bramble"
 
 var (
 	ErrNotInProject = errors.New("couldn't find a bramble.toml file in this directory or any parent")
+	tracer          = tracing.Tracer("project")
 )
 
 type Project struct {

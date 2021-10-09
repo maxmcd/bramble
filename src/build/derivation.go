@@ -3,6 +3,7 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -177,6 +178,12 @@ func (drv Derivation) makeConsistentNullJSONValues() Derivation {
 	return drv
 }
 
+func formatDerivation(drv Derivation) Derivation {
+	drv = drv.makeConsistentNullJSONValues()
+	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
+	return drv
+}
+
 func (drv Derivation) json() []byte {
 	drv.makeConsistentNullJSONValues()
 	b, err := json.Marshal(drv)
@@ -343,19 +350,6 @@ func (drv Derivation) runtimeFiles(outputName string) []string {
 	return []string{drv.Filename(), drv.output(outputName).Path}
 }
 
-func (drv Derivation) populateOutputsFromStore() (exists bool, outputs []Output, err error) {
-	filename := drv.Filename()
-	outputs, exists, err = drv.store.checkForBuiltDerivationOutputs(filename)
-	if err != nil {
-		return
-	}
-	if exists {
-		drv.Outputs = outputs
-		drv.store.derivationCache.Store(drv)
-	}
-	return
-}
-
 func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {
 	s := string(drv.json())
 
@@ -369,6 +363,21 @@ func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error
 		}
 	}
 	return copy, json.Unmarshal([]byte(s), &copy)
+}
+
+// normalizeDerivation replaces references to the local store path with
+// references to the store path prefix of record
+func (s *Store) normalizeDerivation(drv Derivation) (normalized Derivation, err error) {
+	stringDrv := string(drv.json())
+	replacements := []string{}
+	for _, dep := range drv.InputDerivations {
+		replacements = append(replacements,
+			filepath.Join(s.StorePath, dep.Filename),
+			filepath.Join(BramblePrefixOfRecord, dep.Filename))
+	}
+	replacer := strings.NewReplacer(replacements...)
+	stringDrv = replacer.Replace(stringDrv)
+	return normalized, json.Unmarshal([]byte(stringDrv), &normalized)
 }
 
 // DerivationOutput tracks the build outputs. Outputs are not included in the

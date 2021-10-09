@@ -7,18 +7,22 @@ import (
 
 	build "github.com/maxmcd/bramble/src/build"
 	project "github.com/maxmcd/bramble/src/project"
-
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type execModuleOptions struct {
 	includeTests bool
 }
 
-func (b bramble) execModule(command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
+func (b bramble) execModule(ctx context.Context, command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "command.execModule "+command+" "+fmt.Sprintf("%q", args))
+	defer span.End()
+
 	if len(args) > 0 {
 		// Building something specific
-		return b.project.ExecModule(project.ExecModuleInput{
+		return b.project.ExecModule(ctx, project.ExecModuleInput{
 			Command:      command,
 			Arguments:    args,
 			IncludeTests: ops.includeTests,
@@ -33,7 +37,7 @@ func (b bramble) execModule(command string, args []string, ops execModuleOptions
 	output.AllDerivations = make(map[string]project.Derivation)
 	output.Output = make(map[string]project.Derivation)
 	for _, module := range modules {
-		o, err := b.project.ExecModule(project.ExecModuleInput{
+		o, err := b.project.ExecModule(ctx, project.ExecModuleInput{
 			Command:   command,
 			Arguments: []string{module},
 		})
@@ -58,6 +62,9 @@ type buildOptions struct {
 }
 
 func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops buildOptions) (outputDerivations []build.Derivation, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "command.runBuild")
+	defer span.End()
 	// jobPrinter := jobprinter.New()
 
 	// go func() { _ = jobPrinter.Start() }()
@@ -94,7 +101,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		}
 		derivationDataLock.Unlock()
 
-		source, err := b.store.StoreLocalSources(build.SourceFiles{
+		source, err := b.store.StoreLocalSources(ctx, build.SourceFiles{
 			ProjectLocation: b.project.Location(),
 			Location:        drv.Sources.Location,
 			Files:           drv.Sources.Files,

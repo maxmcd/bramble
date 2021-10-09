@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
@@ -28,7 +29,10 @@ type SourceFiles struct {
 	Files           []string
 }
 
-func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
+func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out Source, err error) {
+	_, span := tracer.Start(ctx, "build.StoreLocalSources")
+	defer span.End()
+
 	if len(sources.Files) == 0 {
 		return
 	}
@@ -64,7 +68,7 @@ func (s *Store) StoreLocalSources(sources SourceFiles) (out Source, err error) {
 	if err = os.MkdirAll(runLocation, 0755); err != nil {
 		return
 	}
-	hshr := hasher.NewHasher()
+	hshr := hasher.New()
 	if err = reptar.Reptar(tmpDir, hshr); err != nil {
 		return
 	}
@@ -102,7 +106,8 @@ func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv De
 	drv.Platform = options.Platform
 	drv.OutputNames = options.Outputs // TODO: Validate, and others
 
-	exists, outputs, err := drv.populateOutputsFromStore()
+	drv = formatDerivation(drv)
+	outputs, exists, err := s.checkForBuiltDerivationOutputs(drv)
 	drv.Outputs = outputs
 	return exists, drv, err
 }

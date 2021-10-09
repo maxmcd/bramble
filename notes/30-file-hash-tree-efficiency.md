@@ -10,3 +10,23 @@ We should try out the first one though, would make things fast.
 Ah man, this also means you can start building immediately. If you use the fuse layer to serve the files then you can start building before the sources are tarred up and sent out. You can finish building before the build state arrives.
 
 Would need to be able to disable it in the derivation definition.
+
+
+---------
+
+Thinking about this again. I think it separates into a few things.
+
+
+One is hashing of sources by hashing the individual files. This is good because then we can quickly hash sources. All we can do is speed up hashing, since we have to still copy every file into the build context when building.
+
+Another is fast startup for remote builds. If we have a remote build that has a fuse filesystem we could prioritize file fetches when `open` is called on a specific file
+
+Another is de-duplication. If we store files as chunks of files then we de-duplicate against chunks. This would be good for pushing up files and skipping common files. Not a huge space-saving though.
+
+So for the "now", how does affect the build cache? build cache would just have derivations, and outputs. Outputs are files, so we could get de-duplication and faster remote starts.
+
+Ok, so stargz or hashed chunks?
+
+---
+
+So, we use the stargz toc entry to track files. Add output metadata to the cache upload. File contents are chunked up into <4mb chunks and the hashes are stored in the toc entry file.

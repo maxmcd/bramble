@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -11,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/trace"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +27,8 @@ import (
 	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (s *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder {
@@ -49,17 +51,30 @@ type BuildDerivationOptions struct {
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
-	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
-	drv = drv.makeConsistentNullJSONValues()
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.BuildDerivation")
+	defer span.End()
+	span.SetAttributes(attribute.String("name", drv.Name))
 
-	exists, outputs, err := drv.populateOutputsFromStore()
+	drv = formatDerivation(drv)
+
+	outputs, drvExists, err := b.store.checkForBuiltDerivationOutputs(drv)
 	drv.Outputs = outputs
 	if err != nil {
 		return drv, false, err
 	}
+
+	outputsExist := false
+	if drvExists {
+		outputsExist, err = b.store.outputFoldersExist(outputs)
+		if err != nil {
+			return drv, false, err
+		}
+	}
+
 	filename := drv.Filename()
-	logger.Debugw("buildDerivationIfNew", "derivation", filename, "exists", exists)
-	if exists && !opts.ForceBuild {
+	span.SetAttributes(attribute.String("filename", filename))
+	if drvExists && outputsExist && !opts.ForceBuild {
 		return drv, false, nil
 	}
 	// logger.Print("Building derivation", filename)
@@ -67,15 +82,16 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
+	_, err = b.store.WriteDerivation(drv)
 	// TODO: lock store on write
-	return drv, true, b.store.WriteDerivation(drv)
+	return drv, true, err
 }
 
 func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {
 	var err error
-	var task *trace.Task
-	ctx, task = trace.NewTask(ctx, "buildDerivation")
-	defer task.End()
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.buildDerivation")
+	defer span.End()
 
 	buildDir, err := b.store.storeLengthTempDir()
 	if err != nil {
@@ -159,6 +175,9 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 }
 
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.fetchURLBuilder")
+	defer span.End()
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
 	}
@@ -250,6 +269,9 @@ func (b *Builder) downloadFile(ctx context.Context, url string) (dir, path strin
 
 func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
 	outputPaths map[string]string, shell bool) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.regularBuilder")
+	defer span.End()
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
 		return errors.Wrap(err, "builder location doesn't exist")
@@ -295,9 +317,12 @@ func (err ExecError) Error() string {
 }
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.store.hashAndMoveBuildOutputs")
+	defer span.End()
 	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
-		hshr := hasher.NewHasher()
+		hshr := hasher.New()
 		var reptarFile *os.File
 		reptarFile, err = s.storeLengthTempFile()
 		if err != nil {
@@ -322,6 +347,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 
 		if !fileutil.PathExists(newPath) {
 			if err := s.unarchiveAndReplaceOutputFolderName(
+				ctx,
 				reptarFile.Name(),
 				newPath,
 				outputFolder,
@@ -337,7 +363,10 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	}
 	return
 }
-func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, hashedFolderName string) (err error) {
+func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
+	var span trace.Span
+	_, span = tracer.Start(ctx, "build.store.unarchiveAndReplaceOutputFolderName")
+	defer span.End()
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
 	if err != nil {
@@ -383,8 +412,9 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(archive, dst, outputFolder, 
 
 func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder, buildDir string) (
 	matches []string, err error) {
-	region := trace.StartRegion(ctx, "archiveAndScanOutputDirectory")
-	defer region.End()
+	var span trace.Span
+	_, span = tracer.Start(ctx, "build.store.archiveAndScanOutputDirectory")
+	defer span.End()
 	var storeValues []string
 
 	for _, do := range drv.InputDerivations {
@@ -405,12 +435,15 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	pipeReader, pipeWriter := io.Pipe()
 
 	tarPipeReader, tarPipeWriter := io.Pipe()
+
 	// write the output files into an archive
 	go func() {
-		if err := reptar.Reptar(s.joinStorePath(storeFolder), tarPipeWriter); err != nil {
+		btpw := bufio.NewWriter(tarPipeWriter)
+		if err := reptar.Reptar(s.joinStorePath(storeFolder), btpw); err != nil {
 			errChan <- err
 			return
 		}
+		_ = btpw.Flush()
 		if err := tarPipeWriter.Close(); err != nil {
 			errChan <- err
 			return
@@ -500,4 +533,37 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	default:
 	}
 	return
+}
+
+func (s *Store) hashNormalizedBuildOutput(location string, hash string) (err error) {
+	pipeReader, pipeWriter := io.Pipe()
+	errChan := make(chan error)
+	resultChan := make(chan string)
+	go func() {
+		if err := reptar.Reptar(location, pipeWriter); err != nil {
+			errChan <- err
+		}
+		pipeWriter.Close()
+	}()
+	go func() {
+		h := hasher.New()
+		if _, err := textreplace.ReplaceBytes(
+			pipeReader, h,
+			[]byte(hash), bytes.Repeat([]byte{0}, len(hash)),
+		); err != nil {
+			errChan <- errors.Wrap(err, "error replacing self-reference outputs hash with with null bytes")
+			return
+		}
+		resultChan <- h.String()
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	case result := <-resultChan:
+		if result != hash {
+			return errors.Errorf("Output hash %s doesn't match computed hash value %s", hash, result)
+		}
+		return nil
+	}
 }

@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,12 +9,17 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 
+	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/src/logger"
+	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -26,6 +32,8 @@ var (
 	BramblePrefixOfRecord = "/home/bramble/bramble/bramble_store_padding/bramb" // TODO: could we make this more obviously fake?
 
 	buildDirPrefix = "bramble_build_directory"
+
+	tracer = tracing.Tracer("build")
 )
 
 func NewStore(bramblePath string) (*Store, error) {
@@ -40,7 +48,8 @@ type Store struct {
 	derivationCache *derivationsMap
 }
 
-func (s *Store) checkForBuiltDerivationOutputs(filename string) (outputs []Output, built bool, err error) {
+func (s *Store) checkForBuiltDerivationOutputs(drv Derivation) (outputs []Output, built bool, err error) {
+	filename := drv.Filename()
 	existingDrv, exists, err := s.LoadDerivation(filename)
 	if err != nil {
 		return
@@ -223,8 +232,23 @@ func (s *Store) joinBramblePath(v ...string) string {
 	return filepath.Join(append([]string{s.BramblePath}, v...)...)
 }
 
+func (s *Store) outputFoldersExist(outputs []Output) (exists bool, err error) {
+	for _, output := range outputs {
+		fi, err := os.Stat(s.joinStorePath(output.Path))
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		if !fi.IsDir() {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (s *Store) WriteConfigLink(location string) (err error) {
-	hshr := hasher.NewHasher()
+	hshr := hasher.New()
 	if _, err = hshr.Write([]byte(location)); err != nil {
 		return
 	}
@@ -232,6 +256,23 @@ func (s *Store) WriteConfigLink(location string) (err error) {
 	hash := hshr.String()
 	configFileLocation := filepath.Join(reg, hash)
 	return ioutil.WriteFile(configFileLocation, []byte(location), 0644)
+}
+
+func (s *Store) WriteBlob(src io.Reader) (hash string, err error) {
+	h := hasher.New()
+	tee := io.TeeReader(src, h)
+	f, err := os.CreateTemp("", "")
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, tee); err != nil {
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	hash = h.String()
+	return hash, os.Rename(f.Name(), s.joinStorePath(hash))
 }
 
 func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeDirectoryName string, err error) {
@@ -258,8 +299,95 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 	return storeDirectoryName, nil
 }
 
-func (s *Store) WriteDerivation(drv Derivation) error {
-	filename := drv.Filename()
+func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
+	drv = formatDerivation(drv)
+	filename = drv.Filename()
 	fileLocation := s.joinStorePath(filename)
-	return ioutil.WriteFile(fileLocation, drv.json(), 0644)
+	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
+}
+
+func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc *cacheClient) (err error) {
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "build.UploadDerivationsToCache")
+	defer span.End()
+	var cancel func()
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
+
+	bodyWriter := chunkedarchive.NewParallelBodyWriter(
+		8,
+		func(rc io.ReadCloser) (out []string, err error) {
+			buf := bufio.NewReader(rc)
+			for {
+				// TODO: hash the body before uploading to confirm it doesn't already exist
+				limited := io.LimitReader(buf, 4e6)
+				hash, err := cc.postChunk(ctx, limited)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, hash)
+				fmt.Println("Finished uploading chunk", hash)
+				if _, err := buf.Peek(1); err != nil {
+					break
+				}
+			}
+			return out, rc.Close()
+		},
+	)
+
+	uploaded := map[string]struct{}{}
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+
+	// Loop through derivations
+	for _, drv := range derivations {
+		// Normalize them with the fixed prefix path
+		normalized, err := s.normalizeDerivation(drv)
+		if err != nil {
+			return err
+		}
+		// Upload, could confirm hash
+		if _, err := cc.postDerivation(ctx, normalized); err != nil {
+			return err
+		}
+		// Loop through outputs and post them
+		for _, output := range normalized.Outputs {
+			if _, ok := uploaded[output.Path]; ok {
+				continue
+			}
+			uploaded[output.Path] = struct{}{}
+			wg.Add(1)
+			go func(output Output) {
+				// Limit parallelism
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				// This will upload using the spawned queue in parallel
+				toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
+				if err != nil {
+					errChan <- err
+				}
+
+				if err := cc.postOutout(ctx, outputRequestBody{
+					TOC:    toc,
+					Output: output,
+				}); err != nil {
+					errChan <- err
+				}
+				wg.Done()
+			}(output)
+		}
+	}
+
+	go func() {
+		wg.Wait()
+		doneChan <- struct{}{}
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-doneChan:
+		return nil
+	}
 }

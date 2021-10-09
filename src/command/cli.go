@@ -16,7 +16,9 @@ import (
 	"github.com/maxmcd/bramble/src/build"
 	"github.com/maxmcd/bramble/src/logger"
 	"github.com/maxmcd/bramble/src/project"
+	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/mitchellh/go-wordwrap"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pkg/errors"
 	cli "github.com/urfave/cli/v2"
@@ -47,8 +49,14 @@ Options:
 	{{end}}{{$option}}{{end}}`
 )
 
+var tracer trace.Tracer
+
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	tracer = tracing.Tracer("command")
+
+	defer tracing.Stop()
+
 	// Patch cli lib to remove bool default
 	oldFlagStringer := cli.FlagStringer
 	cli.FlagStringer = func(f cli.Flag) string {
@@ -105,15 +113,17 @@ bramble build ./tests
 					},
 				},
 				Action: func(c *cli.Context) error {
+					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
+					defer span.End()
 					b, err := newBramble()
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule("build", c.Args().Slice(), execModuleOptions{})
+					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{})
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuild(c.Context, output, buildOptions{
+					_, err = b.runBuild(ctx, output, buildOptions{
 						check: c.Bool("check"),
 					})
 					return err
@@ -152,15 +162,17 @@ final derivation it opens up a terminal into the build environment within a
 build directory with environment variables and dependencies populated. This is a
 good way to debug a derivation that you're building.`,
 				Action: func(c *cli.Context) error {
+					ctx, span := tracer.Start(c.Context, "bramble shell")
+					defer span.End()
 					b, err := newBramble()
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule("shell", c.Args().Slice(), execModuleOptions{})
+					output, err := b.execModule(ctx, "shell", c.Args().Slice(), execModuleOptions{})
 					if err != nil {
 						return err
 					}
-					_, err = b.runBuild(c.Context, output, buildOptions{
+					_, err = b.runBuild(ctx, output, buildOptions{
 						shell: true,
 					})
 					return err
