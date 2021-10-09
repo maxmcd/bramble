@@ -71,7 +71,7 @@ func (run Run) makePathsAbsolute() Run {
 func (rt *runtime) runBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (out starlark.Value, err error) {
 	// TODO do we need to run tests only in our project?
 	var (
-		run           = Run{Location: thread.CallStack().At(1).Pos.String()}
+		run           = Run{Location: filepath.Dir(thread.CallStack().At(1).Pos.Filename())}
 		runArgs       *starlark.List
 		paths         *starlark.List
 		readOnlyPaths *starlark.List
