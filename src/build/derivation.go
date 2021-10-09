@@ -201,10 +201,11 @@ func (drv Derivation) copy() Derivation {
 	return out
 }
 func (drv Derivation) Filename() (filename string) {
-	return fmt.Sprintf("%s-%s.drv", drv.hash(), drv.Name)
+	return fmt.Sprintf("%s-%s.drv", drv.Hash(), drv.Name)
 }
 
-func (drv Derivation) hash() string {
+func (drv Derivation) Hash() string {
+	// TODO: replace references to store path
 	copy := drv.copy()
 	copy.Outputs = nil
 	for i, input := range copy.InputDerivations {

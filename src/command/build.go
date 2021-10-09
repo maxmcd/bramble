@@ -36,6 +36,7 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 	}
 	output.AllDerivations = make(map[string]project.Derivation)
 	output.Output = make(map[string]project.Derivation)
+	output.Modules = make(map[string]map[string][]string)
 	for _, module := range modules {
 		o, err := b.project.ExecModule(ctx, project.ExecModuleInput{
 			Command:   command,
@@ -49,6 +50,11 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 		}
 		for k, v := range o.Output {
 			output.Output[k] = v
+		}
+		for m, fns := range o.Modules {
+			// TODO: is it possible for different sets of functions to be
+			// returned for a given module
+			output.Modules[m] = fns
 		}
 	}
 	return output, nil
@@ -217,11 +223,6 @@ type fullBuildOptions struct {
 	check bool
 }
 
-type buildResponse struct {
-	Output           project.ExecModuleOutput
-	FinalHashMapping map[string]build.Derivation
-}
-
 func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOptions) (br buildResponse, err error) {
 	br.FinalHashMapping = make(map[string]build.Derivation)
 	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
@@ -238,4 +239,22 @@ func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOpt
 		},
 	})
 	return
+}
+
+type buildResponse struct {
+	Output           project.ExecModuleOutput
+	FinalHashMapping map[string]build.Derivation
+}
+
+func (br buildResponse) moduleFunctionMapping() (mapping map[string]map[string][]string) {
+	mapping = map[string]map[string][]string{}
+	for module, functions := range br.Output.Modules {
+		mapping[module] = map[string][]string{}
+		for fn, derivations := range functions {
+			for _, drv := range derivations {
+				mapping[module][fn] = append(mapping[module][fn], br.FinalHashMapping[drv].Hash())
+			}
+		}
+	}
+	return mapping
 }

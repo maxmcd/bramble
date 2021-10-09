@@ -65,7 +65,7 @@ func StreamArchive(location string, output io.Writer) (err error) {
 	// Write toc
 	{
 		zw, _ = gzip.NewWriterLevel(countW, gzip.NoCompression)
-		tocJSON, err := json.MarshalIndent(toc, "", "\t")
+		tocJSON, err := json.MarshalIndent(toc, "", "  ")
 		if err != nil {
 			return err
 		}

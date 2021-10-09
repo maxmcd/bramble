@@ -14,7 +14,7 @@ import (
 )
 
 func TestDep_handler(t *testing.T) {
-	cmd := exec.Command("bramble", "dependency-server")
+	cmd := exec.Command("bramble", "server")
 	buf := &bytes.Buffer{}
 	cmd.Stdout = io.MultiWriter(os.Stdout, buf)
 	cmd.Stderr = os.Stderr
@@ -23,6 +23,7 @@ func TestDep_handler(t *testing.T) {
 	}
 	for {
 		if strings.Contains(buf.String(), "localhost") {
+			cmd.Stdout = os.Stdout
 			break
 		}
 		time.Sleep(time.Millisecond * 100)
@@ -30,11 +31,12 @@ func TestDep_handler(t *testing.T) {
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(Job{Module: "github.com/maxmcd/bramble"}); err != nil {
+	if err := json.NewEncoder(&body).Encode(Job{Module: "github.com/maxmcd/bramble", Reference: "dependencies"}); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.Post("http://localhost:2726/job", "application/json", &body)
+	resp, err := http.Post("https://bramble-server.fly.dev/job", "application/json", &body)
 	if err != nil {
+		time.Sleep(time.Second)
 		t.Fatal(err)
 	}
 	fmt.Println(resp.StatusCode)

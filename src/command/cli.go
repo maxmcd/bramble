@@ -21,13 +21,12 @@ import (
 	"github.com/maxmcd/bramble/src/project"
 	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/mitchellh/go-wordwrap"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/pkg/errors"
 	cli "github.com/urfave/cli/v2"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var (
+var (fl
 	commandHelpTemplate = `Usage: {{if .UsageText}}{{.UsageText}}{{else}}{{.HelpName}}{{if .VisibleFlags}} [command options]{{end}} {{if .ArgsUsage}}{{.ArgsUsage}}{{else}}[arguments...]{{end}}{{end}}{{if .Category}}
 
 Category:
@@ -288,8 +287,8 @@ their public functions with documentation. If an immediate subdirectory has a
 				},
 			},
 			{
-				Name:      "dependency-server",
-				UsageText: "bramble dependency-server",
+				Name:      "server",
+				UsageText: "bramble server",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "port",
@@ -297,18 +296,17 @@ their public functions with documentation. If an immediate subdirectory has a
 						Usage: "the port that the server will listen on",
 					},
 					&cli.StringFlag{
-						Name:  "hostname",
+						Name:  "host",
 						Value: "localhost",
-						Usage: "the hostname that the server will listen on",
+						Usage: "the host that the server will listen on",
 					},
 				},
 				Action: func(c *cli.Context) error {
-					dep := &DepServer{}
-					listenOn := fmt.Sprintf("%s:%s", c.String("hostname"), c.String("port"))
-					fmt.Printf("Dependency server listening on: %s\n", listenOn)
+					listenOn := fmt.Sprintf("%s:%s", c.String("host"), c.String("port"))
+					fmt.Printf("Server listening on: %s\n", listenOn)
 					srv := &http.Server{
 						Addr:    listenOn,
-						Handler: dep.handler(),
+						Handler: dependencyServerHandler(),
 					}
 					errChan := make(chan error)
 					go func() {

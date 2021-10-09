@@ -202,11 +202,8 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 		// they're not wiped during GC
 		"var/config-registry",
 
-		// Cache for starlark file compilation.
-		"var/star-cache",
-
-		// Location to mount chroots for builds
-		"var/builds",
+		// Dependency metadata
+		"var/dependencies",
 	}
 
 	for _, folder := range folders {
@@ -223,6 +220,36 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	}
 
 	return
+}
+
+func (s *Store) AddDependencyMetadata(module, version, src string, mapping map[string]map[string][]string) (err error) {
+	srcs := s.joinBramblePath("var/dependencies/src")
+	fileDest := filepath.Join(srcs, module+"@"+version)
+	drvs := s.joinBramblePath("var/dependencies/drvs")
+	metadataDest := filepath.Join(drvs, module+"@"+version)
+	if err := os.MkdirAll(fileDest, 0755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(metadataDest), 0755); err != nil {
+		return err
+	}
+	if err := fileutil.CopyDirectory(src, fileDest); err != nil {
+		return err
+	}
+
+	f, err := os.Create(metadataDest)
+	if err != nil {
+		return err
+	}
+	e := json.NewEncoder(f)
+	e.SetIndent("", "  ")
+	if err := e.Encode(mapping); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) joinStorePath(v ...string) string {

@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.0.1
 	go.starlark.net v0.0.0-20210901212718-87f333178d59
 	go.uber.org/zap v1.19.1
-	golang.org/x/sys v0.0.0-20210909193231-528a39cd75f3
+	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
 )
 
 replace (
