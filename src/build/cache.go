@@ -20,6 +20,15 @@ type cacheClient struct {
 	client *http.Client
 }
 
+func newCacheClient(host string) *cacheClient {
+	return &cacheClient{
+		host: host,
+		client: &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+	}
+}
+
 func (cc *cacheClient) request(ctx context.Context, method, path, contentType string, body io.Reader, resp interface{}) (err error) {
 	req, err := http.NewRequest(method,
 		fmt.Sprintf("%s/%s",
@@ -30,7 +39,6 @@ func (cc *cacheClient) request(ctx context.Context, method, path, contentType st
 		return err
 	}
 	// TODO: Move elsewhere?
-	cc.client.Transport = otelhttp.NewTransport(http.DefaultTransport)
 	req = req.WithContext(ctx)
 	if method == http.MethodPost {
 		req.Header.Add("Content-Type", contentType)

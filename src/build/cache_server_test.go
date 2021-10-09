@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -52,7 +51,7 @@ func TestStore_CacheServer(t *testing.T) {
 			}
 			drvs = append(drvs, drv)
 		}
-		cc := &cacheClient{host: server.URL, client: &http.Client{}}
+		cc := newCacheClient(server.URL)
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}

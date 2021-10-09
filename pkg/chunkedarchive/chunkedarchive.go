@@ -206,15 +206,12 @@ func (bw *ParallelBodyWriter) NewChunk(body io.ReadCloser) (func() ([]string, er
 	}
 	// Take slot to do work
 	bw.sem <- struct{}{}
-	fmt.Println("NewChunk scheduled")
 	out := make(chan result)
 	go func() {
 		r := result{}
 		r.hashes, r.err = bw.cb(body)
-		fmt.Println("cb returned")
 		out <- r
 	}()
-	fmt.Println("NewChunk returned")
 	return func() ([]string, error) {
 		r := <-out
 		// Free up slot
