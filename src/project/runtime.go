@@ -38,6 +38,7 @@ func newRuntime(workingDirectory, projectLocation, moduleName string) *runtime {
 	rt.predeclared = starlark.StringDict{
 		"derivation": derivation,
 		"test":       starlark.NewBuiltin("test", rt.testBuiltin),
+		"run":        starlark.NewBuiltin("run", rt.runBuiltin),
 		"assert":     assertGlobals["assert"],
 		"sys":        starlarkSys,
 		"files": starlark.NewBuiltin("files", filesBuiltin{

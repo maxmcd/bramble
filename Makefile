@@ -17,6 +17,7 @@ go_test:
 	go test -race -v ./...
 
 install:
+	go mod tidy
 	go install
 
 build: install

@@ -153,7 +153,6 @@ func (s *Store) CacheServer() http.Handler {
 			return unprocessable(errors.New("chunk size can't be larger than 4MB"))
 		}
 
-		fmt.Println("chunk", hash)
 		fmt.Fprint(c.ResponseWriter, hash)
 		return nil
 	}))

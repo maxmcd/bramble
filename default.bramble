@@ -1,0 +1,5 @@
+load("github.com/maxmcd/bramble/tests/simple/simple")
+
+
+def print_simple():
+    return run(simple.simple(), "simple", hidden_paths=["/"])

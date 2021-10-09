@@ -390,7 +390,7 @@ A `builder` can be on of the default built-ins: `["fetch_url", "fetch_git", "der
 The run function defines the attributes for running a program from a derivation output. If a call to a bramble function returns a run command that run command and parameters will be executed.
 
 ```python
-run(derivation, args=[], paths=[], write_paths=[], hidden_paths=[], network=False)
+run(derivation, cmd, args=[], paths=[], read_only_paths=[], hidden_paths=[], network=False)
 ```
 
 #### test()
