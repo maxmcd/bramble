@@ -63,12 +63,12 @@ func (s *Store) checkForBuiltDerivationOutputs(drv Derivation) (outputs []Output
 }
 
 type RunDerivationOptions struct {
-	Args   []string
-	Mounts []string
+	Args    []string
+	Network bool
+	Stdin   io.Reader
+	Dir     string
 
-	Stdin io.Reader
-	Dir   string
-
+	Mounts        []string
 	HiddenPaths   []string
 	ReadOnlyPaths []string
 }
@@ -94,7 +94,7 @@ func (s *Store) RunDerivation(ctx context.Context, drv Derivation, opts RunDeriv
 		HiddenPaths:   opts.HiddenPaths,
 		ReadOnlyPaths: opts.ReadOnlyPaths,
 
-		Network: false,
+		Network: opts.Network,
 	}
 	return sbx.Run(ctx)
 }

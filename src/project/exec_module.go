@@ -27,6 +27,7 @@ type ExecModuleOutput struct {
 	AllDerivations map[string]Derivation
 	Globals        []string
 	Tests          map[string][]Test
+	Run            []Run
 }
 
 func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output ExecModuleOutput, err error) {
@@ -85,6 +86,12 @@ func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output
 		values, err := starlarkCall(ctx, rt.newThread(ctx, "Calling "+fn), callable, nil, nil)
 		if err != nil {
 			return output, errors.Wrap(err, "error running")
+		}
+
+		// Add calls to run() to the output
+		if run, ok := values.(Run); ok {
+			output.Run = append(output.Run, run)
+			output.Output[run.Derivation.hash()] = run.Derivation
 		}
 		// The function must return a single derivation or a list of derivations, or
 		// a tuple of derivations. We turn them into an array.

@@ -1,0 +1,10 @@
+load("github.com/maxmcd/bramble/tests/simple/simple")
+load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+
+
+def print_simple():
+    return run(simple.simple(), "simple", hidden_paths=["/"])
+
+
+def bash():
+    return run(nix_seed.stdenv(), "bash", read_only_paths=["./"])

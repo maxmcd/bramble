@@ -7,6 +7,9 @@ import (
 )
 
 func IterableToStringSlice(list starlark.Iterable) (out []string, err error) {
+	if list == nil {
+		return nil, nil
+	}
 	iterator := list.Iterate()
 	defer iterator.Done()
 	var val starlark.Value

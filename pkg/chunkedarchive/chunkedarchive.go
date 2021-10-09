@@ -161,7 +161,6 @@ func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
 		if err != nil {
 			return fmt.Errorf("%s: opening: %w", path, err)
 		}
-		fmt.Println("file.NewChunk")
 		promise, err := bw.NewChunk(file)
 		if err != nil {
 			return fmt.Errorf("%s: reading: %w", path, err)
@@ -173,7 +172,6 @@ func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
 	}
 	for _, ep := range queue {
 		if ep.promise != nil {
-			fmt.Println("reap promise")
 			ep.entry.Body, err = ep.promise()
 			if err != nil {
 				return nil, err

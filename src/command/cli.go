@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -133,12 +134,60 @@ bramble build ./tests
 				Name:      "run",
 				Usage:     "Run an executable in a derivation output",
 				UsageText: "bramble run [options] [module]:<function> [args...]",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "paths",
+						Usage: "paths that the process has access to, to pass multiple paths use this flag multiple times",
+					},
+					&cli.StringSliceFlag{
+						Name:  "read_only_paths",
+						Usage: "paths the process can't write to, to pass multiple paths use this flag multiple times",
+					},
+					&cli.StringSliceFlag{
+						Name:  "hidden_paths",
+						Usage: "paths that are hidden from the process, to pass multiple paths use this flag multiple times",
+					},
+					&cli.BoolFlag{
+						Name:  "network",
+						Usage: "allow network access",
+					},
+				},
 				Action: func(c *cli.Context) error {
 					b, err := newBramble()
 					if err != nil {
 						return err
 					}
-					return b.run(c.Context, c.Args().Slice())
+					absoluteSlicePaths := func(v []string) error {
+						for i, p := range v {
+							a, err := filepath.Abs(p)
+							if err != nil {
+								return err
+							}
+							v[i] = a
+						}
+						return nil
+					}
+
+					paths := c.StringSlice("paths")
+					readOnlyPaths := c.StringSlice("read_only_paths")
+					hiddenPaths := c.StringSlice("hidden_paths")
+					network := c.Bool("network")
+					for _, err := range []error{
+						absoluteSlicePaths(paths),
+						absoluteSlicePaths(readOnlyPaths),
+						absoluteSlicePaths(hiddenPaths),
+					} {
+						if err != nil {
+							return err
+						}
+					}
+
+					return b.run(c.Context, c.Args().Slice(), runOptions{
+						paths:         paths,
+						readOnlyPaths: readOnlyPaths,
+						hiddenPaths:   hiddenPaths,
+						network:       network,
+					})
 				},
 			},
 			{
@@ -254,6 +303,8 @@ their public functions with documentation. If an immediate subdirectory has a
 			case *cli.BoolFlag:
 				c.Usage = formatFlag(c.Usage, longest)
 			case *cli.StringFlag:
+				c.Usage = formatFlag(c.Usage, longest)
+			case *cli.StringSliceFlag:
 				c.Usage = formatFlag(c.Usage, longest)
 			}
 		}

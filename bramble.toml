@@ -3,6 +3,7 @@
 [module]
 name = "github.com/maxmcd/bramble"
 version = "0.0.2"
+# default_read_only_paths?
 read_only_paths = ["./"]
 hidden_paths = ["./lib"]
 

@@ -2,7 +2,6 @@ package tracing
 
 import (
 	"context"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -85,6 +84,8 @@ func Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
 	defer cancel()
 	if err := tp.Shutdown(ctx); err != nil {
-		log.Println(err)
+		if _, ok := os.LookupEnv("JAEGER_TRACE"); ok {
+			panic(err)
+		}
 	}
 }

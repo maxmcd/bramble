@@ -6,9 +6,17 @@ import (
 	"os"
 
 	"github.com/maxmcd/bramble/src/build"
+	project "github.com/maxmcd/bramble/src/project"
 )
 
-func (b bramble) run(ctx context.Context, args []string) (err error) {
+type runOptions struct {
+	paths         []string
+	readOnlyPaths []string
+	hiddenPaths   []string
+	network       bool
+}
+
+func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err error) {
 	output, err := b.execModule(ctx, "run", args, execModuleOptions{})
 	if err != nil {
 		return
@@ -17,18 +25,41 @@ func (b bramble) run(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+
+	var run *project.Run
+	if len(output.Run) > 1 {
+		return errors.New("multiple run commands, not sure how to proceed")
+	}
+	if len(output.Run) == 1 {
+		run = &output.Run[0]
+	}
+
 	if len(outputDerivations) != 1 {
 		return errors.New("can't run a starlark function if it doesn't return a single derivation")
 	}
 
-	return b.store.RunDerivation(ctx, outputDerivations[0], build.RunDerivationOptions{
-		// Stdin:  io.MultiReader(os.Stdin),
-		Stdin:  os.Stdin,
-		Args:   args[1:],
-		Dir:    b.project.WD(),
-		Mounts: []string{b.project.Location()},
+	// use args after the module location
+	args = args[1:]
 
-		HiddenPaths:   b.project.HiddenPaths(),
-		ReadOnlyPaths: b.project.ReadOnlyPaths(),
+	if run != nil {
+		ro.paths = run.Paths
+		ro.readOnlyPaths = run.ReadOnlyPaths
+		ro.hiddenPaths = run.HiddenPaths
+		ro.network = run.Network
+		args = append([]string{run.Cmd}, run.Args...)
+	}
+	if len(ro.paths) == 0 {
+		ro.paths = []string{b.project.Location()}
+	}
+	return b.store.RunDerivation(ctx, outputDerivations[0], build.RunDerivationOptions{
+		Stdin: os.Stdin,
+		Args:  args,
+		Dir:   b.project.WD(),
+
+		Network: ro.network,
+
+		Mounts:        ro.paths,
+		HiddenPaths:   ro.hiddenPaths,
+		ReadOnlyPaths: ro.readOnlyPaths,
 	})
 }
