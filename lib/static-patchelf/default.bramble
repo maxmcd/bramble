@@ -17,7 +17,7 @@ def patchelf():
         builder="fetch_url",
         env={
             "url": "https://brmbl.s3.amazonaws.com/patchelf.tar.gz",
-            "hash": "67ee6623207754a18d81624d630d9addbf6234ab1e6c44ddba9179621720f960",
+            "hash": "icpfggjznz3jxnctxtcky55g7zhbsk4u",
         },
     )
 

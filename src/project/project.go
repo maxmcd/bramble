@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/src/tracing"
 	"github.com/pkg/errors"
@@ -44,27 +43,7 @@ func NewProject(wd string) (p *Project, err error) {
 		location: location,
 		wd:       absWD,
 	}
-	bDotToml := filepath.Join(location, "bramble.toml")
-	f, err := os.Open(bDotToml)
-	if err != nil {
-		return nil, errors.Wrapf(err, "error loading %q", bDotToml)
-	}
-	defer f.Close()
-	if _, err = toml.DecodeReader(f, &p.config); err != nil {
-		return nil, errors.Wrapf(err, "error decoding %q", bDotToml)
-	}
-	lockFile := filepath.Join(location, "bramble.lock")
-	if !fileutil.FileExists(lockFile) {
-		// Don't read the lockfile if we don't have one
-		return p, nil
-	}
-	f, err = os.Open(lockFile)
-	if err != nil {
-		return nil, errors.Wrapf(err, "error opening lockfile %q", lockFile)
-	}
-	defer f.Close()
-	_, err = toml.DecodeReader(f, &p.lockFile)
-	return p, errors.Wrapf(err, "error decoding lockfile %q", lockFile)
+	return p, p.readConfigs()
 }
 
 func findConfig(wd string) (found bool, location string) {

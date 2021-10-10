@@ -8,7 +8,6 @@ def link_test():
         env={
             "decompress": True,
             "url": "https://brmbl.s3.amazonaws.com/file-links.tar.gz",
-            "hash": "22fadd82e935b2f081ba07ab9a9c7ce174d10c237cc95182c4ed14c8c276e06a",
         },
     )
 

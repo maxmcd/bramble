@@ -152,16 +152,35 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 
 	drv.Outputs, err = outputsToOutput(drv.OutputNames, outputs)
 
-	if drv.Builder == "fetch_url" {
-		return drv, b.checkFetchDerivationHashes(drv)
+	switch {
+	case drv.Builder == "basic_fetch_url":
+		return drv, b.checkFetchDerivationHashes(drv, "basic_fetch_url "+drv.Env["url"])
+
+	// These two are just a contract with an environment variable. Any
+	// derivation could set these. I think that's ok from a security standpoint,
+	// although could indeed populate the lockfile with junk. Hard to think of
+	// another way to identify the fetcher derivations.
+
+	// TODO: maybe better to have this be a single environment variable and put
+	// the git logic into the derivation itself. Then other derivations could
+	// use this for their own lockfile needs.
+	case drv.Env["confirm_fetch_url"] == "true":
+		return drv, b.checkFetchDerivationHashes(drv, "fetch_url "+drv.Env["url"])
+	case drv.Env["confirm_fetch_git"] == "true":
+		url := "fetch_git " + drv.Env["url"]
+		reference := drv.Env["reference"]
+		if reference != "" {
+			url += "@" + reference
+		}
+		return drv, b.checkFetchDerivationHashes(drv, url)
 	}
+
 	return drv, err
 }
 
-func (b *Builder) checkFetchDerivationHashes(drv Derivation) error {
+func (b *Builder) checkFetchDerivationHashes(drv Derivation, url string) error {
 	// Check for a hash in the derivation
 	hash := drv.Env["hash"]
-	url := drv.Env["url"]
 	if hash == "" {
 		// If we don't have that then check in the config map for an
 		// existing value

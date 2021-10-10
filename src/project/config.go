@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/v/github.com/go4org/go4/lock"
 	"github.com/pkg/errors"
 )
@@ -39,6 +40,32 @@ func (p *Project) getConfigLock() (io.Closer, error) {
 		return done, nil
 	}
 }
+
+func (p *Project) readConfigs() error {
+	bDotToml := filepath.Join(p.location, "bramble.toml")
+	f, err := os.Open(bDotToml)
+	if err != nil {
+		return errors.Wrapf(err, "error loading %q", bDotToml)
+	}
+	defer f.Close()
+	if _, err = toml.DecodeReader(f, &p.config); err != nil {
+		return errors.Wrapf(err, "error decoding %q", bDotToml)
+	}
+	lockFile := filepath.Join(p.location, "bramble.lock")
+	if !fileutil.FileExists(lockFile) {
+		// Don't read the lockfile if we don't have one
+		p.lockFile.URLHashes = map[string]string{}
+		return nil
+	}
+	f, err = os.Open(lockFile)
+	if err != nil {
+		return errors.Wrapf(err, "error opening lockfile %q", lockFile)
+	}
+	defer f.Close()
+	_, err = toml.DecodeReader(f, &p.lockFile)
+	return errors.Wrapf(err, "error decoding lockfile %q", lockFile)
+}
+
 func (p *Project) WriteLockfile() (err error) {
 	p.lockFile.lock.Lock()
 	defer p.lockFile.lock.Unlock()

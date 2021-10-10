@@ -41,6 +41,7 @@ def new_fetch_url(name, env):
         ],
         env={"PATH": b.out + "/bin", "fetched": fetched},
     )
+    env["confirm_fetch_url"] = "true"
     return _derivation(
         name,
         url_fetcher.out + "/bin/url_fetcher",
@@ -93,6 +94,18 @@ def git(name, env):
         ],
         env=dict(src=src, PATH=busybox().out + "/bin"),
     )
+
+    env.update(
+        dict(
+            git=git,
+            confirm_fetch_git="true",
+            PATH=git.out + "/bin:" + busybox().out + "/bin",
+            GIT_EXEC_PATH=git.out + "/libexec/git-core",
+            GIT_SSL_CAINFO=cacerts().out + "/ca-certificates.crt",
+        )
+    )
+
+    # Optimize git pull to pull commit/branch/tag directly
     return _derivation(
         name=name,
         builder=busybox().out + "/bin/sh",
@@ -100,18 +113,17 @@ def git(name, env):
             "-c",
             """
         git clone $url $out
+
+        if [[ -z "${reference}" ]]; then
+            cd $out
+            git checkout $reference
+        fi
         rm -rf $out/.git
         """,
         ],
         network=True,
         _internal_key=internal_key,
-        env=dict(
-            git=git,
-            PATH=git.out + "/bin:" + busybox().out + "/bin",
-            GIT_EXEC_PATH=git.out + "/libexec/git-core",
-            GIT_SSL_CAINFO=cacerts().out + "/ca-certificates.crt",
-            url=env.get("url"),
-        ),
+        env=env,
     )
 
 
