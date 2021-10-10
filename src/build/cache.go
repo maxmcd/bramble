@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
-	"github.com/pkg/errors"
+	"github.com/maxmcd/bramble/pkg/httpx"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -30,47 +30,11 @@ func newCacheClient(host string) *cacheClient {
 }
 
 func (cc *cacheClient) request(ctx context.Context, method, path, contentType string, body io.Reader, resp interface{}) (err error) {
-	req, err := http.NewRequest(method,
-		fmt.Sprintf("%s/%s",
-			strings.TrimSuffix(cc.host, "/"),
-			strings.TrimPrefix(path, "/"),
-		), body)
-	if err != nil {
-		return err
-	}
-	// TODO: Move elsewhere?
-	req = req.WithContext(ctx)
-	if method == http.MethodPost {
-		req.Header.Add("Content-Type", contentType)
-	}
-	httpResp, err := cc.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer httpResp.Body.Close()
-	var buf bytes.Buffer
-	if httpResp.Body != nil {
-		_, _ = io.Copy(&buf, httpResp.Body)
-	}
-	if httpResp.StatusCode == http.StatusNotFound {
-		return os.ErrNotExist
-	}
-	if httpResp.StatusCode != http.StatusOK {
-		return errors.Errorf("Unexpected response code %d: %s",
-			httpResp.StatusCode, buf.String())
-	}
-	if resp == nil {
-		return nil
-	}
-	switch v := resp.(type) {
-	case *string:
-		*v = buf.String()
-	case io.Writer:
-		_, err = io.Copy(v, httpResp.Body)
-	default:
-		err = json.Unmarshal(buf.Bytes(), resp)
-	}
-	return err
+	url := fmt.Sprintf("%s/%s",
+		strings.TrimSuffix(cc.host, "/"),
+		strings.TrimPrefix(path, "/"),
+	)
+	return httpx.Request(ctx, cc.client, method, url, contentType, body, resp)
 }
 
 func (cc *cacheClient) postDerivation(ctx context.Context, drv Derivation) (filename string, err error) {

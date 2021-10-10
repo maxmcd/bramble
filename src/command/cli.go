@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (fl
+var (
 	commandHelpTemplate = `Usage: {{if .UsageText}}{{.UsageText}}{{else}}{{.HelpName}}{{if .VisibleFlags}} [command options]{{end}} {{if .ArgsUsage}}{{.ArgsUsage}}{{else}}[arguments...]{{end}}{{end}}{{if .Category}}
 
 Category:
@@ -287,8 +287,39 @@ their public functions with documentation. If an immediate subdirectory has a
 				},
 			},
 			{
-				Name:      "server",
-				UsageText: "bramble server",
+				Name:      "publish",
+				UsageText: `bramble publish module [reference]`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "url",
+						Value: "",
+						Usage: "The url (schema+host) of the module cache server. Eg: \"https://cache.bramble.bramble\"",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					args := c.Args().Slice()
+					if len(args) == 0 {
+						return errors.New("bramble publish takes at least one argument: \"module\"")
+					}
+					if len(args) > 2 {
+						return errors.New("bramble publish takes at most two arguments")
+					}
+
+					module := args[0]
+					reference := ""
+					if len(args) == 2 {
+						reference = args[1]
+					}
+					return postJob("http://localhost:2726", module, reference)
+				},
+			},
+			{
+				Name: "server",
+				UsageText: `bramble server
+
+server starts a server instance. The server can act as a build cache and a
+module cache.
+`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "port",
@@ -319,7 +350,8 @@ their public functions with documentation. If an immediate subdirectory has a
 						return err
 					case <-c.Context.Done():
 						fmt.Println("Shutting down server.")
-						ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+						ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+						defer cancel()
 						return srv.Shutdown(ctx)
 					}
 				},
@@ -356,12 +388,12 @@ their public functions with documentation. If an immediate subdirectory has a
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		s := make(chan os.Signal)
+		s := make(chan os.Signal, 5)
 		count := 0
 		// handle all signals for the process.
 		signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
 		for {
-			_ = <-s
+			<-s
 			count++
 			cancel()
 			if count == 3 {
@@ -370,17 +402,23 @@ their public functions with documentation. If an immediate subdirectory has a
 			}
 		}
 	}()
-
+	var exitCode int
 	if err := app.RunContext(ctx, os.Args); err != nil {
 		if er, ok := errors.Cause(err).(build.ExecError); ok {
 			fmt.Println(er.Logs.Len())
 			_, _ = io.Copy(os.Stdout, er.Logs)
 		}
 		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
-			os.Exit(er.ExitCode)
+			exitCode = er.ExitCode
+		} else {
+			logger.Print(starutil.AnnotateError(err))
+			exitCode = 1
 		}
-		logger.Print(starutil.AnnotateError(err))
-		os.Exit(1)
+	}
+	if exitCode != 0 {
+		// Explicitly call stop since the Exit will not call the defer
+		tracing.Stop()
+		os.Exit(exitCode)
 	}
 }
 

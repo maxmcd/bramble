@@ -2,10 +2,7 @@ package command
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -30,15 +27,8 @@ func TestDep_handler(t *testing.T) {
 	}
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(Job{Module: "github.com/maxmcd/bramble", Reference: "dependencies"}); err != nil {
+
+	if err := postJob("http://localhost:2726", "github.com/maxmcd/bramble", "dependencies"); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.Post("https://bramble-server.fly.dev/job", "application/json", &body)
-	if err != nil {
-		time.Sleep(time.Second)
-		t.Fatal(err)
-	}
-	fmt.Println(resp.StatusCode)
-	io.Copy(os.Stdout, resp.Body)
 }

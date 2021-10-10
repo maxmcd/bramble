@@ -227,6 +227,12 @@ func (s *Store) AddDependencyMetadata(module, version, src string, mapping map[s
 	fileDest := filepath.Join(srcs, module+"@"+version)
 	drvs := s.joinBramblePath("var/dependencies/drvs")
 	metadataDest := filepath.Join(drvs, module+"@"+version)
+
+	// If the metadata is here we already have a record of the output mapping. If we checked the src directory it might just be there as a dependency of another nomad project
+	if fileutil.PathExists(metadataDest) {
+		return errors.Errorf("version %s of module %q is already present on this server", version, module)
+	}
+
 	if err := os.MkdirAll(fileDest, 0755); err != nil {
 		return err
 	}

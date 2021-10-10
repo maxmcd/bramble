@@ -1,9 +1,15 @@
 package httpx
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"os"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/pkg/errors"
 )
 
 type Context struct {
@@ -58,4 +64,45 @@ func New() Router {
 	return Router{
 		Router: httprouter.New(),
 	}
+}
+
+// Request fn with mucho magic
+func Request(ctx context.Context, client *http.Client, method, url, contentType string, body io.Reader, resp interface{}) (err error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return err
+	}
+	// TODO: Move elsewhere?
+	req = req.WithContext(ctx)
+	if method == http.MethodPost {
+		req.Header.Add("Content-Type", contentType)
+	}
+	httpResp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer httpResp.Body.Close()
+	var buf bytes.Buffer
+	if httpResp.Body != nil {
+		_, _ = io.Copy(&buf, httpResp.Body)
+	}
+	if httpResp.StatusCode == http.StatusNotFound {
+		return os.ErrNotExist
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return errors.Errorf("Unexpected response code %d: %s",
+			httpResp.StatusCode, buf.String())
+	}
+	if resp == nil {
+		return nil
+	}
+	switch v := resp.(type) {
+	case *string:
+		*v = buf.String()
+	case io.Writer:
+		_, err = io.Copy(v, httpResp.Body)
+	default:
+		err = json.Unmarshal(buf.Bytes(), resp)
+	}
+	return err
 }
