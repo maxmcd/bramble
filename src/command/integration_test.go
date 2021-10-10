@@ -44,13 +44,13 @@ func TestRun(t *testing.T) {
 		// 	args:           []string{"go", "run", "testdata/main.go"},
 		// 	outputContains: "hello world",
 		// },
-		{
-			name:             "go run w/ exit code",
-			module:           "../../lib/go:bootstrap",
-			args:             []string{"go", "run", "testdata/main.go", "-exit-code", "2"},
-			outputContains:   "exit status 2",
-			expectedExitcode: 1, // go run will exit w/ 1 and print the non-1 exit code
-		},
+		// {
+		// 	name:             "go run w/ exit code",
+		// 	module:           "../../lib/go:bootstrap",
+		// 	args:             []string{"go", "run", "testdata/main.go", "-exit-code", "2"},
+		// 	outputContains:   "exit status 2",
+		// 	expectedExitcode: 1, // go run will exit w/ 1 and print the non-1 exit code
+		// },
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			output, exitCode := runRun(tt.module, tt.args)
