@@ -26,8 +26,7 @@ type Project struct {
 
 	wd string
 
-	lockFile     LockFile
-	lockFileLock sync.Mutex
+	lockFile LockFile
 }
 
 // NewProject checks for an existing bramble project in the provided working
@@ -85,6 +84,41 @@ func findConfig(wd string) (found bool, location string) {
 
 type LockFile struct {
 	URLHashes map[string]string
+	changed   bool
+	lock      sync.RWMutex
+}
+
+func (l *LockFile) AddEntry(k, v string) error {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	oldV, found := l.URLHashes[k]
+	if found && oldV != v {
+		return errors.Errorf(
+			"Existing lockfile entry found for %q, old hash %q does not equal new has value %q",
+			k, oldV, v)
+	}
+	if !found {
+		l.URLHashes[k] = v
+		l.changed = true
+	}
+	return nil
+}
+
+func (l *LockFile) LookupEntry(k string) (v string, found bool) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	v, found = l.URLHashes[k]
+	return v, found
+}
+
+// Interface is defined in both the project and build packages
+type LockfileWriter interface {
+	AddEntry(string, string) error
+	LookupEntry(string) (v string, found bool)
+}
+
+func (p *Project) LockfileWriter() LockfileWriter {
+	return &p.lockFile
 }
 
 func (p *Project) Location() string {

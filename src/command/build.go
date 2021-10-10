@@ -79,8 +79,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	if len(output.Output) != 1 && ops.shell {
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
 	}
-	builder := b.store.NewBuilder(false, b.project.URLHashes())
-
+	builder := b.store.NewBuilder(false, b.project.LockfileWriter())
 	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
 	var derivationDataLock sync.Mutex
 
@@ -210,12 +209,12 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	if err != nil {
 		return nil, err
 	}
-
-	err = b.project.AddURLHashesToLockfile(builder.URLHashes)
-	if err != nil {
-		return outputDerivations, err
+	if err := b.project.WriteLockfile(); err != nil {
+		return nil, err
 	}
-	_ = b.store.WriteConfigLink(b.project.Location())
+	if err = b.store.WriteConfigLink(b.project.Location()); err != nil {
+		return nil, err
+	}
 	return outputDerivations, err
 }
 

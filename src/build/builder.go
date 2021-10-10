@@ -31,16 +31,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (s *Store) NewBuilder(rootless bool, urlHashes map[string]string) *Builder {
+func (s *Store) NewBuilder(rootless bool, lockfileWriter LockfileWriter) *Builder {
 	return &Builder{
-		store:     s,
-		URLHashes: urlHashes,
+		store:          s,
+		lockfileWriter: lockfileWriter,
 	}
 }
 
 type Builder struct {
-	store     *Store
-	URLHashes map[string]string
+	store          *Store
+	lockfileWriter LockfileWriter
+}
+
+type LockfileWriter interface {
+	AddEntry(string, string) error
+	LookupEntry(string) (v string, found bool)
 }
 
 type BuildDerivationOptions struct {
@@ -148,30 +153,37 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	drv.Outputs, err = outputsToOutput(drv.OutputNames, outputs)
 
 	if drv.Builder == "fetch_url" {
-		// Check for a hash in the derivation
-		hash := drv.Env["hash"]
-		if hash == "" {
-			// If we don't have that then check in the config map
-			existingHash, ok := b.URLHashes[drv.Env["url"]]
-			if ok {
-				hash = existingHash
-			}
-		}
-		outputPath := drv.output("out").Path
-		// If we have a hash to validate, ensure it's valid
-		if hash != "" && outputPath != hash {
-			return drv, errors.Errorf(
-				"Urlfetch content doesn't match with the existing hash. "+
-					"Hash %q was provided by the output was %q",
-				hash, outputPath)
-		}
-		// If we never had a hash to validate, add it
-		if hash == "" {
-			// TODO: separate these from the input map!
-			b.URLHashes[drv.Env["url"]] = outputPath
-		}
+		return drv, b.checkFetchDerivationHashes(drv)
 	}
 	return drv, err
+}
+
+func (b *Builder) checkFetchDerivationHashes(drv Derivation) error {
+	// Check for a hash in the derivation
+	hash := drv.Env["hash"]
+	url := drv.Env["url"]
+	if hash == "" {
+		// If we don't have that then check in the config map for an
+		// existing value
+		if existingHash, found := b.lockfileWriter.LookupEntry(url); found {
+			hash = existingHash
+		}
+	}
+	outputPath := drv.output("out").Path
+	// If we have a hash to validate, ensure it's valid
+	if hash != "" && outputPath != hash {
+		return errors.Errorf(
+			"Urlfetch content doesn't match with the existing hash. "+
+				"Hash %q was provided by the output was %q",
+			hash, outputPath)
+	}
+	// If we never had a hash to validate, add it to lockfile
+	if hash == "" {
+		if err := b.lockfileWriter.AddEntry(url, outputPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {

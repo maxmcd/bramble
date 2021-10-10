@@ -18,8 +18,13 @@ func TestNewProject(t *testing.T) {
 		p, err := NewProject("./testdata/project")
 		require.NoError(t, err)
 		assert.Equal(t, p.config.Module.Name, "testproject")
-
-		require.NoError(t, p.AddURLHashesToLockfile(map[string]string{"foo": "bar"}))
+		writer := p.LockfileWriter()
+		if err := writer.AddEntry("foo", "bar"); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.WriteLockfile(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
