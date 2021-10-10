@@ -93,8 +93,8 @@ func TestStreamChunkedArchive(t *testing.T) {
 			var tempFileLocation string
 			{
 				streamFile, err := os.CreateTemp("", "")
-				tempFileLocation = streamFile.Name()
 				require.NoError(t, err)
+				tempFileLocation = streamFile.Name()
 				err = chunkedarchive.StreamArchive(loc, streamFile)
 				require.NoError(t, err)
 

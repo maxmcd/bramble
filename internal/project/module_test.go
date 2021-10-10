@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -144,6 +145,8 @@ func TestBramble_resolveModule(t *testing.T) {
 			for key := range gotGlobals {
 				globalNames = append(globalNames, key)
 			}
+			sort.Strings(globalNames)
+			sort.Strings(tt.wantGlobals)
 			if !reflect.DeepEqual(globalNames, tt.wantGlobals) {
 				t.Errorf("Bramble.resolveModule() = %v, want %v", globalNames, tt.wantGlobals)
 			}

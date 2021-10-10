@@ -103,6 +103,7 @@ type tarBodyWriter struct {
 
 func (bw *tarBodyWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), error) {
 	out := []string{}
+	defer f.Close()
 	for {
 		h := hasher.New()
 		tr := io.TeeReader(f, h)
@@ -128,9 +129,7 @@ func (bw *tarBodyWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), er
 			break
 		}
 	}
-	return func() ([]string, error) {
-		return out, nil
-	}, nil
+	return func() ([]string, error) { return out, nil }, nil
 }
 
 // footerBytes the 47 byte footer.
