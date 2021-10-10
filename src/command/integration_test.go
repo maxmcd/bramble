@@ -32,12 +32,13 @@ func TestRun(t *testing.T) {
 		expectedExitcode int
 	}
 	for _, tt := range []test{
-		{
-			name:           "go run",
-			module:         "../../lib/go:bootstrap",
-			args:           []string{"go", "run", "testdata/main.go"},
-			outputContains: "hello world",
-		},
+		// Removed until it's reproducible
+		// {
+		// 	name:           "go run",
+		// 	module:         "../../lib/go:bootstrap",
+		// 	args:           []string{"go", "run", "testdata/main.go"},
+		// 	outputContains: "hello world",
+		// },
 		{
 			name:             "go run w/ exit code",
 			module:           "../../lib/go:bootstrap",
