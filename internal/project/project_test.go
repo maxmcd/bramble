@@ -39,7 +39,7 @@ func TestProject_ListFunctions(t *testing.T) {
 			name: "foo",
 			path: "./testdata/main.bramble",
 			wantM: ModuleDoc{
-				Name:      "github.com/maxmcd/bramble/src/project/testdata/main",
+				Name:      "github.com/maxmcd/bramble/internal/project/testdata/main",
 				Docstring: "\"\"\"Hello this is the main module\"\"\"",
 				Functions: []FunctionDoc{
 					{

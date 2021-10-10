@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/src/tracing"
+	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/maxmcd/bramble/src/logger"
-	ds "github.com/maxmcd/bramble/src/types"
+	"github.com/maxmcd/bramble/internal/logger"
+	ds "github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"

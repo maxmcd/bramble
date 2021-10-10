@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maxmcd/bramble/src/tracing"
+	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/stretchr/testify/require"
 )
 

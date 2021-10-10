@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/src/assert"
+	"github.com/maxmcd/bramble/internal/assert"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.starlark.net/repl"

@@ -20,7 +20,7 @@ func TestBramble_filesBuiltin(t *testing.T) {
 		{script: `b = files([1])`,
 			errContains: "not a string"},
 		{script: `b = files(["."], include_directories=True)`,
-			respContains: "src/project"},
+			respContains: "internal/project"},
 		{script: `b = files(["*.go"])`,
 			respContains: "files_builtin.go"},
 		{script: `b = files(["*.go"], ["*_test.go"])`,

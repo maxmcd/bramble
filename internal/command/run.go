@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/maxmcd/bramble/src/build"
-	project "github.com/maxmcd/bramble/src/project"
+	"github.com/maxmcd/bramble/internal/build"
+	project "github.com/maxmcd/bramble/internal/project"
 )
 
 type runOptions struct {

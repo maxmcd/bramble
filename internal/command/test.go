@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	build "github.com/maxmcd/bramble/src/build"
-	"github.com/maxmcd/bramble/src/project"
+	build "github.com/maxmcd/bramble/internal/build"
+	"github.com/maxmcd/bramble/internal/project"
 )
 
 func (b bramble) test(ctx context.Context) (err error) {

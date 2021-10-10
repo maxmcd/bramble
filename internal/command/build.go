@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	build "github.com/maxmcd/bramble/src/build"
-	project "github.com/maxmcd/bramble/src/project"
+	build "github.com/maxmcd/bramble/internal/build"
+	project "github.com/maxmcd/bramble/internal/project"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 )

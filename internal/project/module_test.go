@@ -25,17 +25,17 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 		{
 			name:       "reference by name and fn",
 			args:       []string{"main:foo"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/main",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/main",
 			wantFn:     "foo",
 		}, {
 			name:       "no path provided",
 			args:       []string{":default"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata",
 			wantFn:     "default",
 		}, {
 			name:       "relative path to file",
 			args:       []string{"bar/main:other"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/bar/main",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
 			wantFn:     "other",
 		}, {
 			name:       "full module name",
@@ -45,26 +45,26 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 		}, {
 			name:       "relative path to file with slash",
 			args:       []string{"./bar/main:other"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/bar/main",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
 			wantFn:     "other",
 		}, {
 			name:       "relative path to file with extension",
 			args:       []string{"bar/main.bramble:other"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/bar/main",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
 			wantFn:     "other",
 		}, {
 			name:       "reference by subdirectory default",
 			args:       []string{"foo:ok"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/foo",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/foo",
 			wantFn:     "ok",
 		}, {
 			name:       "reference by subdirectory default with no function",
 			args:       []string{"foo"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata/foo",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/foo",
 		}, {
 			name:       "reference by default fn",
 			args:       []string{":default"},
-			wantModule: "github.com/maxmcd/bramble/src/project/testdata",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata",
 			wantFn:     "default",
 		}, {
 			name:    "missing file",
@@ -108,19 +108,19 @@ func TestBramble_resolveModule(t *testing.T) {
 	}{
 		{
 			name:        "direct file import",
-			module:      "github.com/maxmcd/bramble/src/project/testdata/main",
+			module:      "github.com/maxmcd/bramble/internal/project/testdata/main",
 			wantGlobals: []string{"foo", "thing"},
 		}, {
 			name:        "default directory import",
-			module:      "github.com/maxmcd/bramble/src/project/testdata",
+			module:      "github.com/maxmcd/bramble/internal/project/testdata",
 			wantGlobals: []string{"default"},
 		}, {
 			name:        "ambiguous module without default.bramble in subfolder",
-			module:      "github.com/maxmcd/bramble/src/project/testdata/bar",
+			module:      "github.com/maxmcd/bramble/internal/project/testdata/bar",
 			wantGlobals: []string{"hello"},
 		}, {
 			name:    "missing file",
-			module:  "github.com/maxmcd/bramble/src/project/testdata/mayne",
+			module:  "github.com/maxmcd/bramble/internal/project/testdata/mayne",
 			wantErr: "does not exist",
 		}, {
 			name:    "missing default",
@@ -163,13 +163,13 @@ func TestBramble_moduleNameFromFileName(t *testing.T) {
 	}{
 		{
 			filename:       "bar.bramble",
-			wantModuleName: "github.com/maxmcd/bramble/src/project/testdata/bar",
+			wantModuleName: "github.com/maxmcd/bramble/internal/project/testdata/bar",
 		}, {
 			filename: "noexist.bramble",
 			wantErr:  "doesn't exist",
 		}, {
 			filename:       "default.bramble",
-			wantModuleName: "github.com/maxmcd/bramble/src/project/testdata",
+			wantModuleName: "github.com/maxmcd/bramble/internal/project/testdata",
 		}, {
 			filename:       "../../../tests/basic.bramble",
 			wantModuleName: "github.com/maxmcd/bramble/tests/basic",
@@ -194,7 +194,7 @@ func TestBramble_moduleNameFromFileName(t *testing.T) {
 // TODO: move to its own module so that the regular module can build entirely
 // func TestCircularImport(t *testing.T) {
 // 	rt := newTestRuntime(t)
-// 	_, err := rt.execModule("github.com/maxmcd/bramble/src/project/testdata/circular/a")
+// 	_, err := rt.execModule("github.com/maxmcd/bramble/internal/project/testdata/circular/a")
 // 	require.Error(t, err)
 // 	assert.Contains(t, err.Error(), "cycle in load graph")
 // }

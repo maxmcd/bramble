@@ -23,7 +23,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/maxmcd/bramble/src/logger"
+	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
@@ -163,7 +163,8 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 
 	// TODO: maybe better to have this be a single environment variable and put
 	// the git logic into the derivation itself. Then other derivations could
-	// use this for their own lockfile needs.
+	// use this for their own lockfile needs. Would need to be sure it can't be
+	// abused to interact with our expected lockfile values.
 	case drv.Env["confirm_fetch_url"] == "true":
 		return drv, b.checkFetchDerivationHashes(drv, "fetch_url "+drv.Env["url"])
 	case drv.Env["confirm_fetch_git"] == "true":
