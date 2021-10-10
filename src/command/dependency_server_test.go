@@ -20,7 +20,6 @@ func TestDep_handler(t *testing.T) {
 	}
 	for {
 		if strings.Contains(buf.String(), "localhost") {
-			cmd.Stdout = os.Stdout
 			break
 		}
 		time.Sleep(time.Millisecond * 100)

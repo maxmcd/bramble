@@ -25,7 +25,7 @@ type Job struct {
 	ID        string
 	Start     time.Time
 	Emd       time.Time
-	Error     error
+	Error     string
 	Module    string
 	Reference string
 }
@@ -117,19 +117,19 @@ func dependencyServerHandler() http.Handler {
 			}()
 			loc, err := downloadGithubRepo(job.Module, job.Reference)
 			if err != nil {
-				job.Error = errors.Wrap(err, "error downloading git repo")
+				job.Error = errors.Wrap(err, "error downloading git repo").Error()
 				return
 			}
 			// TODO: support more than one project per repo
 			bramble, err := newBramble(loc, "")
 			if err != nil {
-				job.Error = err
+				job.Error = err.Error()
 				return
 			}
 
 			buildResponse, err := bramble.fullBuild(context.Background(), nil, fullBuildOptions{check: true})
 			if err != nil {
-				job.Error = err
+				job.Error = err.Error()
 				return
 			}
 			if err := bramble.store.AddDependencyMetadata(
@@ -138,7 +138,7 @@ func dependencyServerHandler() http.Handler {
 				loc,
 				buildResponse.moduleFunctionMapping(),
 			); err != nil {
-				job.Error = err
+				job.Error = err.Error()
 				return
 			}
 		}()
@@ -221,8 +221,8 @@ func postJob(url, module, reference string) (err error) {
 		if err != nil {
 			return err
 		}
-		if job.Error != nil {
-			return err
+		if job.Error != "" {
+			return errors.New(job.Error)
 		}
 		if !job.Emd.IsZero() {
 			break
