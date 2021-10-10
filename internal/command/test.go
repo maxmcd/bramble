@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	build "github.com/maxmcd/bramble/internal/build"
 	"github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/store"
 )
 
 func (b bramble) test(ctx context.Context) (err error) {
@@ -19,14 +19,14 @@ func (b bramble) test(ctx context.Context) (err error) {
 	type buildOutput struct {
 		dep      project.Dependency
 		drv      project.Derivation
-		buildDrv build.Derivation
+		buildDrv store.Derivation
 	}
 
 	finishedBuild := make(chan buildOutput, 100)
 	errChan := make(chan error)
 	go func() {
 		if _, err := b.runBuild(ctx, output, runBuildOptions{
-			callback: func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation) {
+			callback: func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation) {
 				finishedBuild <- buildOutput{
 					dep:      dep,
 					drv:      drv,
@@ -45,7 +45,7 @@ func (b bramble) test(ctx context.Context) (err error) {
 			fmt.Println(output.Tests)
 			// TODO: ensure tests aren't run twice
 			for _, test := range output.Tests[bo.dep.Hash] {
-				return b.store.RunDerivation(ctx, bo.buildDrv, build.RunDerivationOptions{
+				return b.store.RunDerivation(ctx, bo.buildDrv, store.RunDerivationOptions{
 					Args: test.Args,
 				})
 			}

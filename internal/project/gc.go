@@ -8,7 +8,7 @@ package project
 // 	"strings"
 // 	"sync"
 
-// 	"github.com/maxmcd/bramble/internal/build"
+// 	"github.com/maxmcd/bramble/internal/store"
 // 	ds "github.com/maxmcd/bramble/internal/types"
 // 	"github.com/maxmcd/bramble/pkg/fileutil"
 // 	"github.com/maxmcd/bramble/internal/logger"
@@ -153,7 +153,7 @@ package project
 // 		return nil, err
 // 	}
 
-// 	store, err := build.NewStore("")
+// 	store, err := store.NewStore("")
 // 	if err != nil {
 // 		return nil, err
 // 	}

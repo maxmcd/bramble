@@ -1,4 +1,4 @@
-package build
+package store
 
 import (
 	"bufio"
@@ -343,7 +343,7 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 
 func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc *cacheClient) (err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.UploadDerivationsToCache")
+	ctx, span = tracer.Start(ctx, "store.UploadDerivationsToCache")
 	defer span.End()
 	var cancel func()
 	ctx, cancel = context.WithCancel(ctx)

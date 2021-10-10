@@ -1,4 +1,4 @@
-package build
+package store
 
 import (
 	"bufio"
@@ -57,7 +57,7 @@ type BuildDerivationOptions struct {
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.BuildDerivation")
+	ctx, span = tracer.Start(ctx, "store.BuildDerivation")
 	defer span.End()
 	span.SetAttributes(attribute.String("name", drv.Name))
 
@@ -95,7 +95,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {
 	var err error
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.buildDerivation")
+	ctx, span = tracer.Start(ctx, "store.buildDerivation")
 	defer span.End()
 
 	buildDir, err := b.store.storeLengthTempDir()
@@ -208,7 +208,7 @@ func (b *Builder) checkFetchDerivationHashes(drv Derivation, url string) error {
 
 func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPaths map[string]string) (err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.fetchURLBuilder")
+	ctx, span = tracer.Start(ctx, "store.fetchURLBuilder")
 	defer span.End()
 	if _, ok := outputPaths["out"]; len(outputPaths) > 1 || !ok {
 		return errors.New("the fetch_url builder can only have the defalt output \"out\"")
@@ -302,7 +302,7 @@ func (b *Builder) downloadFile(ctx context.Context, url string) (dir, path strin
 func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
 	outputPaths map[string]string, shell bool) (err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.regularBuilder")
+	ctx, span = tracer.Start(ctx, "store.regularBuilder")
 	defer span.End()
 	builderLocation := drv.Builder
 	if _, err := os.Stat(builderLocation); err != nil {
@@ -350,7 +350,7 @@ func (err ExecError) Error() string {
 
 func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, outputPaths map[string]string, buildDir string) (outputs map[string]Output, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "build.store.hashAndMoveBuildOutputs")
+	ctx, span = tracer.Start(ctx, "store.store.hashAndMoveBuildOutputs")
 	defer span.End()
 	outputs = map[string]Output{}
 	for outputName, outputPath := range outputPaths {
@@ -397,7 +397,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 }
 func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
 	var span trace.Span
-	_, span = tracer.Start(ctx, "build.store.unarchiveAndReplaceOutputFolderName")
+	_, span = tracer.Start(ctx, "store.store.unarchiveAndReplaceOutputFolderName")
 	defer span.End()
 	pipeReader, pipWriter := io.Pipe()
 	f, err := os.Open(archive)
@@ -445,7 +445,7 @@ func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive
 func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, hashOutput io.Writer, drv Derivation, storeFolder, buildDir string) (
 	matches []string, err error) {
 	var span trace.Span
-	_, span = tracer.Start(ctx, "build.store.archiveAndScanOutputDirectory")
+	_, span = tracer.Start(ctx, "store.store.archiveAndScanOutputDirectory")
 	defer span.End()
 	var storeValues []string
 

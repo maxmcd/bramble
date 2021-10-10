@@ -1,4 +1,4 @@
-package build
+package store
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type SourceFiles struct {
 }
 
 func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out Source, err error) {
-	_, span := tracer.Start(ctx, "build.StoreLocalSources")
+	_, span := tracer.Start(ctx, "store.StoreLocalSources")
 	defer span.End()
 
 	if len(sources.Files) == 0 {

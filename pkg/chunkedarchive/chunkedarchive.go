@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/pkg/errors"
 )
 
@@ -90,7 +89,6 @@ func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
 	type entryPromise struct {
 		entry   TOCEntry
 		promise func() ([]string, error)
-		hasher  *hasher.Hasher
 	}
 	queue := []entryPromise{}
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	build "github.com/maxmcd/bramble/internal/build"
-	project "github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/store"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -64,10 +64,10 @@ type runBuildOptions struct {
 	check        bool
 	shell        bool
 	includeTests bool
-	callback     func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation)
+	callback     func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation)
 }
 
-func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops runBuildOptions) (outputDerivations []build.Derivation, err error) {
+func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, ops runBuildOptions) (outputDerivations []store.Derivation, err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "command.runBuild")
 	defer span.End()
@@ -80,7 +80,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
 	}
 	builder := b.store.NewBuilder(false, b.project.LockfileWriter())
-	derivationIDUpdates := map[project.Dependency]build.DerivationOutput{}
+	derivationIDUpdates := map[project.Dependency]store.DerivationOutput{}
 	var derivationDataLock sync.Mutex
 
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
@@ -89,7 +89,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			return
 		default:
 		}
-		inputDerivations := []build.DerivationOutput{}
+		inputDerivations := []store.DerivationOutput{}
 
 		// job := jobPrinter.StartJob(drv.Name)
 		// defer jobPrinter.EndJob(job)
@@ -106,7 +106,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		}
 		derivationDataLock.Unlock()
 
-		source, err := b.store.StoreLocalSources(ctx, build.SourceFiles{
+		source, err := b.store.StoreLocalSources(ctx, store.SourceFiles{
 			ProjectLocation: b.project.Location(),
 			Location:        drv.Sources.Location,
 			Files:           drv.Sources.Files,
@@ -115,7 +115,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			return nil, nil, errors.Wrap(err, "error moving local files to the store")
 		}
 
-		_, buildDrv, err := b.store.NewDerivation(build.NewDerivationOptions{
+		_, buildDrv, err := b.store.NewDerivation(store.NewDerivationOptions{
 			Args:             drv.Args,
 			Builder:          drv.Builder,
 			Env:              drv.Env,
@@ -142,7 +142,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			}
 		}
 
-		if buildDrv, didBuild, err = builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
+		if buildDrv, didBuild, err = builder.BuildDerivation(ctx, buildDrv, store.BuildDerivationOptions{
 			Shell:      runShell,
 			ForceBuild: runShell,
 		}); err != nil {
@@ -150,7 +150,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		}
 
 		if ops.check {
-			secondBuildDrv, _, err := builder.BuildDerivation(ctx, buildDrv, build.BuildDerivationOptions{
+			secondBuildDrv, _, err := builder.BuildDerivation(ctx, buildDrv, store.BuildDerivationOptions{
 				ForceBuild: true,
 			})
 			if err != nil {
@@ -188,14 +188,14 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			derivationIDUpdates[project.Dependency{
 				Hash:   dep.Hash,
 				Output: o,
-			}] = build.DerivationOutput{
+			}] = store.DerivationOutput{
 				Filename:   buildDrv.Filename(),
 				OutputName: o,
 				Output:     out.Path,
 			}
 			buildOutputs = append(buildOutputs, project.BuildOutput{
 				Dep:        project.Dependency{Hash: dep.Hash, Output: o},
-				OutputPath: build.BramblePrefixOfRecord + "/" + out.Path,
+				OutputPath: store.BramblePrefixOfRecord + "/" + out.Path,
 			})
 		}
 		for hash := range output.Output {
@@ -223,7 +223,7 @@ type fullBuildOptions struct {
 }
 
 func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOptions) (br buildResponse, err error) {
-	br.FinalHashMapping = make(map[string]build.Derivation)
+	br.FinalHashMapping = make(map[string]store.Derivation)
 	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
 	if err != nil {
 		return
@@ -231,7 +231,7 @@ func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOpt
 	var lock sync.Mutex
 	_, err = b.runBuild(ctx, br.Output, runBuildOptions{
 		check: opts.check,
-		callback: func(dep project.Dependency, drv project.Derivation, buildDrv build.Derivation) {
+		callback: func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation) {
 			lock.Lock()
 			br.FinalHashMapping[dep.Hash] = buildDrv
 			lock.Unlock()
@@ -242,7 +242,7 @@ func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOpt
 
 type buildResponse struct {
 	Output           project.ExecModuleOutput
-	FinalHashMapping map[string]build.Derivation
+	FinalHashMapping map[string]store.Derivation
 }
 
 func (br buildResponse) moduleFunctionMapping() (mapping map[string]map[string][]string) {

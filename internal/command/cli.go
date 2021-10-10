@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maxmcd/bramble/pkg/sandbox"
-	"github.com/maxmcd/bramble/pkg/starutil"
-	"github.com/maxmcd/bramble/internal/build"
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
+	"github.com/maxmcd/bramble/pkg/sandbox"
+	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/pkg/errors"
 	cli "github.com/urfave/cli/v2"
@@ -404,7 +404,7 @@ module cache.
 	}()
 	var exitCode int
 	if err := app.RunContext(ctx, os.Args); err != nil {
-		if er, ok := errors.Cause(err).(build.ExecError); ok {
+		if er, ok := errors.Cause(err).(store.ExecError); ok {
 			fmt.Println(er.Logs.Len())
 			_, _ = io.Copy(os.Stdout, er.Logs)
 		}

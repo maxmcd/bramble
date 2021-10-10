@@ -1,12 +1,12 @@
 package command
 
 import (
-	build "github.com/maxmcd/bramble/internal/build"
-	project "github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/store"
 )
 
 type bramble struct {
-	store   *build.Store
+	store   *store.Store
 	project *project.Project
 }
 
@@ -14,7 +14,7 @@ func newBramble(wd string, bramblePath string) (b bramble, err error) {
 	if b.project, err = project.NewProject(wd); err != nil {
 		return
 	}
-	if b.store, err = build.NewStore(bramblePath); err != nil {
+	if b.store, err = store.NewStore(bramblePath); err != nil {
 		return
 	}
 

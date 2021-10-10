@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/maxmcd/bramble/internal/build"
+	"github.com/maxmcd/bramble/internal/store"
 	project "github.com/maxmcd/bramble/internal/project"
 )
 
@@ -51,7 +51,7 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 	if len(ro.paths) == 0 {
 		ro.paths = []string{b.project.Location()}
 	}
-	return b.store.RunDerivation(ctx, outputDerivations[0], build.RunDerivationOptions{
+	return b.store.RunDerivation(ctx, outputDerivations[0], store.RunDerivationOptions{
 		Stdin: os.Stdin,
 		Args:  args,
 		Dir:   b.project.WD(),
