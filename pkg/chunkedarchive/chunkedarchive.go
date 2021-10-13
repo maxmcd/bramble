@@ -85,7 +85,7 @@ type BodyWriter interface {
 	NewChunk(io.ReadCloser) (func() ([]string, error), error)
 }
 
-func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
+func Archive(bw BodyWriter, location string) (toc []TOCEntry, err error) {
 	type entryPromise struct {
 		entry   TOCEntry
 		promise func() ([]string, error)

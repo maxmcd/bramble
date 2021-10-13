@@ -1,5 +1,8 @@
 load("github.com/maxmcd/bramble/tests/simple/simple")
 load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load("github.com/maxmcd/bramble/lib")
+load("github.com/maxmcd/bramble/tests/nested-sources/another-folder/nested")
+load("github.com/maxmcd/busybox")
 
 
 def print_simple():
@@ -8,3 +11,16 @@ def print_simple():
 
 def bash():
     return run(nix_seed.stdenv(), "bash", read_only_paths=["./"])
+
+
+def ash():
+    return run(busybox.busybox(), "sh")
+
+
+def all():
+    return [
+        lib.busybox(),
+        lib.git_fetcher(),
+        nested.nested(),
+        simple.simple(),
+    ]

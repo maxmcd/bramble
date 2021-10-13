@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/deps"
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
@@ -232,6 +233,14 @@ good way to debug a derivation that you're building.`,
 				},
 			},
 			{
+				Name:      "init",
+				Usage:     "Initialize a new directory as a bramble project",
+				UsageText: `bramble init`,
+				Action: func(c *cli.Context) error {
+					return nil
+				},
+			},
+			{
 				Name:  "repl",
 				Usage: "Open a read-eval-print-loop to interact with the Bramble config language",
 				UsageText: `bramble repl
@@ -310,7 +319,12 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) == 2 {
 						reference = args[1]
 					}
-					return postJob("http://localhost:2726", module, reference)
+					store, err := store.NewStore("")
+					if err != nil {
+						return err
+					}
+					depsClient := deps.New(store.BramblePath)
+					return depsClient.PostJob("http://localhost:2726", module, reference)
 				},
 			},
 			{
@@ -335,9 +349,32 @@ module cache.
 				Action: func(c *cli.Context) error {
 					listenOn := fmt.Sprintf("%s:%s", c.String("host"), c.String("port"))
 					fmt.Printf("Server listening on: %s\n", listenOn)
+
+					// TODO: add build cache handler to this server
+
+					store, err := store.NewStore("")
+					if err != nil {
+						return err
+					}
+					depsClient := deps.New(store.BramblePath)
 					srv := &http.Server{
-						Addr:    listenOn,
-						Handler: dependencyServerHandler(),
+						Addr: listenOn,
+						Handler: depsClient.DependencyServerHandler(func(location string) (resp deps.DependencyBuildResponse, err error) {
+							// TODO: support more than one project per repo
+							bramble, err := newBramble(location, store.BramblePath)
+							if err != nil {
+								return resp, err
+							}
+
+							buildResponse, err := bramble.fullBuild(context.Background(), nil, fullBuildOptions{check: true})
+							if err != nil {
+								return resp, err
+							}
+							return deps.DependencyBuildResponse{
+								ProjectVersion:        bramble.project.Version(),
+								ModuleFunctionOutputs: buildResponse.moduleFunctionMapping(),
+							}, nil
+						}),
 					}
 					errChan := make(chan error)
 					go func() {

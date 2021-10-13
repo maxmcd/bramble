@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/maxmcd/bramble/internal/store"
 	project "github.com/maxmcd/bramble/internal/project"
+	"github.com/maxmcd/bramble/internal/store"
 )
 
 type runOptions struct {
@@ -50,6 +50,10 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 	}
 	if len(ro.paths) == 0 {
 		ro.paths = []string{b.project.Location()}
+	}
+
+	if len(args) == 0 {
+		return errors.New("can't run a derivation without any arguments")
 	}
 	return b.store.RunDerivation(ctx, outputDerivations[0], store.RunDerivationOptions{
 		Stdin: os.Stdin,

@@ -69,10 +69,10 @@ package project
 // 			if childDRV == nil {
 // 				continue
 // 			}
-// 			for i, input := range childDRV.InputDerivations {
+// 			for i, input := range childDRV.Dependencies {
 // 				// Add the output to the derivation input
 // 				if input.Filename == do.Filename && input.OutputName == do.OutputName {
-// 					childDRV.InputDerivations[i].Output = drv.Output(do.OutputName).Path
+// 					childDRV.Dependencies[i].Output = drv.Output(do.OutputName).Path
 // 				}
 // 			}
 // 			if err := childDRV.replaceValueInDerivation(oldTemplateName, newTemplateName); err != nil {

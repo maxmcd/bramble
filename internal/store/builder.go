@@ -18,12 +18,13 @@ import (
 
 	"github.com/certifi/gocertifi"
 	"github.com/djherbis/buffer"
+	"github.com/maxmcd/bramble/internal/logger"
+	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
@@ -31,7 +32,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (s *Store) NewBuilder(rootless bool, lockfileWriter LockfileWriter) *Builder {
+func (s *Store) NewBuilder(rootless bool, lockfileWriter types.LockfileWriter) *Builder {
 	return &Builder{
 		store:          s,
 		lockfileWriter: lockfileWriter,
@@ -40,12 +41,7 @@ func (s *Store) NewBuilder(rootless bool, lockfileWriter LockfileWriter) *Builde
 
 type Builder struct {
 	store          *Store
-	lockfileWriter LockfileWriter
-}
-
-type LockfileWriter interface {
-	AddEntry(string, string) error
-	LookupEntry(string) (v string, found bool)
+	lockfileWriter types.LockfileWriter
 }
 
 type BuildDerivationOptions struct {
@@ -449,7 +445,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	defer span.End()
 	var storeValues []string
 
-	for _, do := range drv.InputDerivations {
+	for _, do := range drv.Dependencies {
 		drv, found, err := s.LoadDerivation(do.Filename)
 		if err != nil || !found {
 			panic(fmt.Sprint(drv, err, do.Filename, found))

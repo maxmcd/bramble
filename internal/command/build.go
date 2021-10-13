@@ -89,7 +89,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			return
 		default:
 		}
-		inputDerivations := []store.DerivationOutput{}
+		dependencies := []store.DerivationOutput{}
 
 		// job := jobPrinter.StartJob(drv.Name)
 		// defer jobPrinter.EndJob(job)
@@ -102,7 +102,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 				derivationDataLock.Unlock()
 				return nil, nil, errors.Errorf("Missing build output for dep %q but we should have it", dep)
 			}
-			inputDerivations = append(inputDerivations, do)
+			dependencies = append(dependencies, do)
 		}
 		derivationDataLock.Unlock()
 
@@ -116,15 +116,15 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		}
 
 		_, buildDrv, err := b.store.NewDerivation(store.NewDerivationOptions{
-			Args:             drv.Args,
-			Builder:          drv.Builder,
-			Env:              drv.Env,
-			InputDerivations: inputDerivations,
-			Name:             drv.Name,
-			Network:          drv.Network,
-			Outputs:          drv.Outputs,
-			Platform:         drv.Platform,
-			Source:           source,
+			Args:         drv.Args,
+			Builder:      drv.Builder,
+			Env:          drv.Env,
+			Dependencies: dependencies,
+			Name:         drv.Name,
+			Network:      drv.Network,
+			Outputs:      drv.Outputs,
+			Platform:     drv.Platform,
+			Source:       source,
 		})
 		if err != nil {
 			return nil, nil, err

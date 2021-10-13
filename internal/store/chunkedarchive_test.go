@@ -30,7 +30,7 @@ func TestChunkedArchive(t *testing.T) {
 		t.Run(dir.Name(), func(t *testing.T) {
 			mw := &memWriter{chunks: map[string][]byte{}}
 			loc := store.joinStorePath(dir.Name())
-			toc, err := chunkedarchive.Archive(loc, mw)
+			toc, err := chunkedarchive.Archive(mw, loc)
 			require.NoError(t, err)
 			tempDir, err := ioutil.TempDir("", "")
 			require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestStreamChunkedArchive(t *testing.T) {
 				streamFile, err := os.CreateTemp("", "")
 				require.NoError(t, err)
 				tempFileLocation = streamFile.Name()
-				err = chunkedarchive.StreamArchive(loc, streamFile)
+				err = chunkedarchive.StreamArchive(streamFile, loc)
 				require.NoError(t, err)
 
 				_ = streamFile.Close()

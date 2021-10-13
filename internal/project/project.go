@@ -6,8 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/internal/tracing"
+	"github.com/maxmcd/bramble/internal/types"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -67,6 +68,8 @@ type LockFile struct {
 	lock      sync.RWMutex
 }
 
+var _ types.LockfileWriter = new(LockFile)
+
 func (l *LockFile) AddEntry(k, v string) error {
 	l.lock.Lock()
 	defer l.lock.Unlock()
@@ -90,13 +93,7 @@ func (l *LockFile) LookupEntry(k string) (v string, found bool) {
 	return v, found
 }
 
-// Interface is defined in both the project and build packages
-type LockfileWriter interface {
-	AddEntry(string, string) error
-	LookupEntry(string) (v string, found bool)
-}
-
-func (p *Project) LockfileWriter() LockfileWriter {
+func (p *Project) LockfileWriter() types.LockfileWriter {
 	return &p.lockFile
 }
 

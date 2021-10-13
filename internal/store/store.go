@@ -10,14 +10,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
+	"github.com/maxmcd/bramble/internal/logger"
+	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
-	"github.com/maxmcd/bramble/internal/logger"
-	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -222,44 +223,6 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	return
 }
 
-func (s *Store) AddDependencyMetadata(module, version, src string, mapping map[string]map[string][]string) (err error) {
-	srcs := s.joinBramblePath("var/dependencies/src")
-	fileDest := filepath.Join(srcs, module+"@"+version)
-	drvs := s.joinBramblePath("var/dependencies/drvs")
-	metadataDest := filepath.Join(drvs, module+"@"+version)
-
-	// If the metadata is here we already have a record of the output mapping.
-	// If we checked the src directory it might just be there as a dependency of
-	// another nomad project
-	if fileutil.PathExists(metadataDest) {
-		return errors.Errorf("version %s of module %q is already present on this server", version, module)
-	}
-
-	if err := os.MkdirAll(fileDest, 0755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(metadataDest), 0755); err != nil {
-		return err
-	}
-	if err := fileutil.CopyDirectory(src, fileDest); err != nil {
-		return err
-	}
-
-	f, err := os.Create(metadataDest)
-	if err != nil {
-		return err
-	}
-	e := json.NewEncoder(f)
-	e.SetIndent("", "  ")
-	if err := e.Encode(mapping); err != nil {
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (s *Store) joinStorePath(v ...string) string {
 	return filepath.Join(append([]string{s.StorePath}, v...)...)
 }
@@ -399,7 +362,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				// This will upload using the spawned queue in parallel
-				toc, err := chunkedarchive.Archive(s.joinStorePath(output.Path), bodyWriter)
+				toc, err := chunkedarchive.Archive(bodyWriter, s.joinStorePath(output.Path))
 				if err != nil {
 					errChan <- err
 				}
@@ -425,4 +388,17 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	case <-doneChan:
 		return nil
 	}
+}
+
+func (s *Store) softwareVersionsAvailable(module string) (versions []string, err error) {
+	path := s.joinBramblePath("var/dependencies/src", module)
+	searchGlob := fmt.Sprintf("%s*", path)
+	matches, err := filepath.Glob(searchGlob)
+	if err != nil {
+		return nil, err
+	}
+	for i, match := range matches {
+		matches[i] = strings.TrimPrefix(match, path+"@")
+	}
+	return
 }

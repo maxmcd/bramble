@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/deps"
+	"github.com/maxmcd/bramble/internal/store"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,8 +95,9 @@ func TestDep_handler(t *testing.T) {
 	}
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-
-	if err := postJob("http://localhost:2726", "github.com/maxmcd/bramble", "dependencies"); err != nil {
+	store, _ := store.NewStore("")
+	depsClient := deps.New(store.BramblePath)
+	if err := depsClient.PostJob("http://localhost:2726", "github.com/maxmcd/bramble", "dependencies"); err != nil {
 		t.Fatal(err)
 	}
 }

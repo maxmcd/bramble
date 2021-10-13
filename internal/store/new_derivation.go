@@ -12,15 +12,15 @@ import (
 )
 
 type NewDerivationOptions struct {
-	Args             []string
-	Builder          string
-	Env              map[string]string
-	InputDerivations DerivationOutputs
-	Name             string
-	Outputs          []string
-	Platform         string
-	Source           Source
-	Network          bool
+	Args         []string
+	Builder      string
+	Env          map[string]string
+	Dependencies DerivationOutputs
+	Name         string
+	Outputs      []string
+	Platform     string
+	Source       Source
+	Network      bool
 }
 
 type SourceFiles struct {
@@ -102,7 +102,7 @@ func (s *Store) NewDerivation(options NewDerivationOptions) (exists bool, drv De
 	drv.Network = options.Network
 	drv.Name = options.Name
 	drv.Env = options.Env
-	drv.InputDerivations = options.InputDerivations
+	drv.Dependencies = options.Dependencies
 	drv.Platform = options.Platform
 	drv.OutputNames = options.Outputs // TODO: Validate, and others
 

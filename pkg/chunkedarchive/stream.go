@@ -40,7 +40,7 @@ const (
 // network requests for files will download individual chunks from an index, but
 // for now it seemed good to follow in this general direction over picking
 // something arbitrary.
-func StreamArchive(location string, output io.Writer) (err error) {
+func StreamArchive(output io.Writer, location string) (err error) {
 	buf := bufio.NewWriter(output)
 	countW := &countWriter{w: buf}
 
@@ -50,7 +50,7 @@ func StreamArchive(location string, output io.Writer) (err error) {
 		writer: tw,
 		buf:    make([]byte, chunkSize),
 	}
-	toc, err := Archive(location, bw)
+	toc, err := Archive(bw, location)
 	if err != nil {
 		return err
 	}

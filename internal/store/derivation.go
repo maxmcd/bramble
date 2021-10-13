@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
+	ds "github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	ds "github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
 )
@@ -29,9 +29,9 @@ type Derivation struct {
 	Builder string
 	// Env are environment variables set during the build
 	Env map[string]string
-	// InputDerivations are derivations that are using as imports to this build,
+	// Dependencies are derivations that are using as imports to this build,
 	// outputs dependencies are tracked in the outputs
-	InputDerivations DerivationOutputs
+	Dependencies DerivationOutputs
 	// Name is the name of the derivation
 	Name string
 
@@ -70,7 +70,7 @@ func (drv Derivation) derivationOutputs() (dos DerivationOutputs) {
 	return
 }
 
-func sortAndUniqueInputDerivations(dos DerivationOutputs) DerivationOutputs {
+func sortAndUniqueDependencies(dos DerivationOutputs) DerivationOutputs {
 	// sort
 	if !sort.IsSorted(dos) {
 		sort.Sort(dos)
@@ -172,15 +172,15 @@ func (drv Derivation) makeConsistentNullJSONValues() Derivation {
 	if len(drv.Outputs) == 0 {
 		drv.Outputs = nil
 	}
-	if len(drv.InputDerivations) == 0 {
-		drv.InputDerivations = nil
+	if len(drv.Dependencies) == 0 {
+		drv.Dependencies = nil
 	}
 	return drv
 }
 
 func formatDerivation(drv Derivation) Derivation {
 	drv = drv.makeConsistentNullJSONValues()
-	drv.InputDerivations = sortAndUniqueInputDerivations(drv.InputDerivations)
+	drv.Dependencies = sortAndUniqueDependencies(drv.Dependencies)
 	return drv
 }
 
@@ -208,10 +208,10 @@ func (drv Derivation) Hash() string {
 	// TODO: replace references to store path
 	copy := drv.copy()
 	copy.Outputs = nil
-	for i, input := range copy.InputDerivations {
+	for i, input := range copy.Dependencies {
 		// Only use the output name and value when hashing and the output is available
 		if input.Output != "" {
-			copy.InputDerivations[i].Filename = ""
+			copy.Dependencies[i].Filename = ""
 		}
 	}
 	jsonBytesForHashing := copy.json()
@@ -220,10 +220,10 @@ func (drv Derivation) Hash() string {
 
 func (drv Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error) {
 	graph = &dag.AcyclicGraph{}
-	var processInputDerivations func(drv Derivation, do DerivationOutput) error
-	processInputDerivations = func(drv Derivation, do DerivationOutput) error {
+	var processDependencies func(drv Derivation, do DerivationOutput) error
+	processDependencies = func(drv Derivation, do DerivationOutput) error {
 		graph.Add(do)
-		for _, id := range drv.InputDerivations {
+		for _, id := range drv.Dependencies {
 			inputDrv, found, err := drv.store.LoadDerivation(id.Filename)
 			if err != nil {
 				return err
@@ -233,7 +233,7 @@ func (drv Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error
 			}
 			graph.Add(id)
 			graph.Connect(dag.BasicEdge(do, id))
-			if err := processInputDerivations(inputDrv, id); err != nil {
+			if err := processDependencies(inputDrv, id); err != nil {
 				return err
 			}
 		}
@@ -250,7 +250,7 @@ func (drv Derivation) BuildDependencyGraph() (graph *dag.AcyclicGraph, err error
 		}
 	}
 	for _, do := range dos {
-		if err = processInputDerivations(drv, do); err != nil {
+		if err = processDependencies(drv, do); err != nil {
 			return
 		}
 	}
@@ -300,7 +300,7 @@ func (drv Derivation) RuntimeDependencyGraph() (graph *ds.AcyclicGraph, err erro
 }
 
 func (drv Derivation) runtimeDependencies() (dependencies map[string][]DerivationOutput, err error) {
-	inputDerivations, err := drv.loadInputDerivations()
+	inputDerivations, err := drv.loadDependencies()
 	if err != nil {
 		return nil, err
 	}
@@ -324,9 +324,9 @@ func (drv Derivation) runtimeDependencies() (dependencies map[string][]Derivatio
 	return dependencies, err
 }
 
-func (drv Derivation) loadInputDerivations() (inputDerivations map[DerivationOutput]Derivation, err error) {
-	inputDerivations = make(map[DerivationOutput]Derivation)
-	for _, do := range drv.InputDerivations {
+func (drv Derivation) loadDependencies() (dependencies map[DerivationOutput]Derivation, err error) {
+	dependencies = make(map[DerivationOutput]Derivation)
+	for _, do := range drv.Dependencies {
 		inputDrv, found, err := drv.store.LoadDerivation(do.Filename)
 		if err != nil {
 			return nil, err
@@ -334,7 +334,7 @@ func (drv Derivation) loadInputDerivations() (inputDerivations map[DerivationOut
 		if !found {
 			return nil, errors.Errorf("derivation not found with name %s", do.Filename)
 		}
-		inputDerivations[do] = inputDrv
+		dependencies[do] = inputDrv
 	}
 	return
 }
@@ -371,7 +371,7 @@ func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error
 func (s *Store) normalizeDerivation(drv Derivation) (normalized Derivation, err error) {
 	stringDrv := string(drv.json())
 	replacements := []string{}
-	for _, dep := range drv.InputDerivations {
+	for _, dep := range drv.Dependencies {
 		replacements = append(replacements,
 			filepath.Join(s.StorePath, dep.Filename),
 			filepath.Join(BramblePrefixOfRecord, dep.Filename))

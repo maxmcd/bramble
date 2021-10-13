@@ -18,6 +18,11 @@ type Context struct {
 	Params         httprouter.Params
 }
 
+func (c Context) JSON(v interface{}) error {
+	c.ResponseWriter.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(c.ResponseWriter).Encode(v)
+}
+
 type Router struct {
 	*httprouter.Router
 	errHandler func(http.ResponseWriter, string, int)
@@ -27,6 +32,8 @@ type ErrHTTPResponse struct {
 	err  error
 	code int
 }
+
+type IM map[interface{}]interface{}
 
 func (err ErrHTTPResponse) Error() string { return err.err.Error() }
 func ErrNotFound(err error) error         { return ErrHTTPResponse{err: err, code: http.StatusNotFound} }

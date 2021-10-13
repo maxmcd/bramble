@@ -10,7 +10,7 @@ func FileArchive(location string, archive string) error {
 	if err != nil {
 		return err
 	}
-	if err := StreamArchive(location, f); err != nil {
+	if err := StreamArchive(f, location); err != nil {
 		return err
 	}
 	return f.Close()

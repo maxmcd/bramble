@@ -4,4 +4,6 @@ max-line-length = 100 # black's default
 builtins =
     derivation,
     load,
-    files
+    files,
+    run,
+    test
