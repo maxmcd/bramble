@@ -59,7 +59,7 @@ func TestExecModuleAndWalk(t *testing.T) {
 
 	gotOutput, err := project.ExecModule(context.Background(), ExecModuleInput{
 		Command:   "build",
-		Arguments: []string{"github.com/maxmcd/bramble/all:all"},
+		Arguments: []string{"github.com/maxmcd/bramble:all"},
 	})
 	require.NoError(t, err)
 

@@ -40,8 +40,8 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 			wantFn:     "other",
 		}, {
 			name:       "full module name",
-			args:       []string{"github.com/maxmcd/bramble/all:all"},
-			wantModule: "github.com/maxmcd/bramble/all",
+			args:       []string{"github.com/maxmcd/bramble:all"},
+			wantModule: "github.com/maxmcd/bramble",
 			wantFn:     "all",
 		}, {
 			name:       "relative path to file with slash",
