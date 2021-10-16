@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maxmcd/bramble/internal/deps"
+	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
@@ -323,7 +323,7 @@ their public functions with documentation. If an immediate subdirectory has a
 					if err != nil {
 						return err
 					}
-					depsClient := deps.New(store.BramblePath)
+					depsClient := project.NewDependencyManager(store.BramblePath)
 					return depsClient.PostJob("http://localhost:2726", module, reference)
 				},
 			},
@@ -356,10 +356,10 @@ module cache.
 					if err != nil {
 						return err
 					}
-					depsClient := deps.New(store.BramblePath)
+					depsClient := dependency.NewDependencyManager(store.BramblePath)
 					srv := &http.Server{
 						Addr: listenOn,
-						Handler: depsClient.DependencyServerHandler(func(location string) (resp deps.DependencyBuildResponse, err error) {
+						Handler: depsClient.DependencyServerHandler(func(location string) (resp project.DependencyBuildResponse, err error) {
 							// TODO: support more than one project per repo
 							bramble, err := newBramble(location, store.BramblePath)
 							if err != nil {
@@ -370,7 +370,7 @@ module cache.
 							if err != nil {
 								return resp, err
 							}
-							return deps.DependencyBuildResponse{
+							return dependency.DependencyBuildResponse{
 								ProjectVersion:        bramble.project.Version(),
 								ModuleFunctionOutputs: buildResponse.moduleFunctionMapping(),
 							}, nil

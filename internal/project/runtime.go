@@ -2,7 +2,6 @@ package project
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -10,10 +9,9 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/internal/assert"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/trace"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -101,43 +99,6 @@ func (rt *runtime) relativePathFromConfig() string {
 type entry struct {
 	globals starlark.StringDict
 	err     error
-}
-
-func (rt *runtime) load(thread *starlark.Thread, module string) (globals starlark.StringDict, err error) {
-	return rt.execModule(thread.Local("ctx").(context.Context), module)
-}
-
-func (rt *runtime) execModule(ctx context.Context, module string) (globals starlark.StringDict, err error) {
-	var span trace.Span
-	ctx, span = tracer.Start(ctx, "project.rt.execModule "+module)
-	defer span.End()
-	if rt.predeclared == nil {
-		return nil, errors.New("thread is not initialized")
-	}
-
-	e, ok := rt.cache[module]
-	// If we've loaded the module already, return the cached values
-	if e != nil {
-		return e.globals, e.err
-	}
-
-	// If e == nil and we have a cache value then we've tried to import a module
-	// while we're still loading it.
-	if ok {
-		return nil, fmt.Errorf("cycle in load graph")
-	}
-
-	// Add a placeholder to indicate "load in progress".
-	rt.cache[module] = nil
-
-	path, err := rt.moduleToPath(module)
-	if err != nil {
-		return nil, err
-	}
-	// Load and initialize the module in a new thread.
-	globals, err = rt.starlarkExecFile(rt.newThread(ctx, "module "+module), path)
-	rt.cache[module] = &entry{globals: globals, err: err}
-	return globals, err
 }
 
 func (rt *runtime) moduleToPath(module string) (path string, err error) {

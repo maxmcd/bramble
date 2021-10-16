@@ -91,3 +91,13 @@ We have a load("github.com/maxmcd/busybox").
    1. Download if they have it, error if they don't
 3. If we have the source we return the path in the store to the execModule input
 4. If we have multiple dependencies and those dependencies have dependencies we need to be sure to resolve them all beforehand. We do this by resolving all inputs (Can we confirm there are no unused imports?). When we need to pick versions we pick the latest minor version of each major version. Different major versions get to be imported simultaneously. Projects can pass a version number to an import statement.
+
+---------------------
+
+```go
+
+type Dependencies interface {
+
+}
+
+```

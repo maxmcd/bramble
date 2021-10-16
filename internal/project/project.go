@@ -1,11 +1,12 @@
+// Package project handles language execution, package management and configuration for bramble projects.
 package project
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
+	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
@@ -21,12 +22,12 @@ var (
 )
 
 type Project struct {
-	config   Config
+	config   config.Config
 	location string
 
 	wd string
 
-	lockFile LockFile
+	lockFile *config.LockFile
 }
 
 // NewProject checks for an existing bramble project in the provided working
@@ -44,7 +45,8 @@ func NewProject(wd string) (p *Project, err error) {
 		location: location,
 		wd:       absWD,
 	}
-	return p, p.readConfigs()
+	p.config, p.lockFile, err = config.ReadConfigs(location)
+	return p, err
 }
 
 func findConfig(wd string) (found bool, location string) {
@@ -62,39 +64,8 @@ func findConfig(wd string) (found bool, location string) {
 	}
 }
 
-type LockFile struct {
-	URLHashes map[string]string
-	changed   bool
-	lock      sync.RWMutex
-}
-
-var _ types.LockfileWriter = new(LockFile)
-
-func (l *LockFile) AddEntry(k, v string) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	oldV, found := l.URLHashes[k]
-	if found && oldV != v {
-		return errors.Errorf(
-			"Existing lockfile entry found for %q, old hash %q does not equal new has value %q",
-			k, oldV, v)
-	}
-	if !found {
-		l.URLHashes[k] = v
-		l.changed = true
-	}
-	return nil
-}
-
-func (l *LockFile) LookupEntry(k string) (v string, found bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	v, found = l.URLHashes[k]
-	return v, found
-}
-
 func (p *Project) LockfileWriter() types.LockfileWriter {
-	return &p.lockFile
+	return p.lockFile
 }
 
 func (p *Project) Location() string {
@@ -128,6 +99,10 @@ func (p *Project) HiddenPaths() (out []string) {
 
 func (p *Project) URLHashes() map[string]string {
 	return p.lockFile.URLHashes
+}
+
+func (p *Project) WriteLockfile() error {
+	return config.WriteLockfile(p.lockFile, p.location)
 }
 
 func (p *Project) filepathToModuleName(path string) (module string, err error) {

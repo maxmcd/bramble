@@ -1,4 +1,4 @@
-package deps
+package dependency
 
 import (
 	"bytes"
@@ -11,30 +11,36 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/httpx"
+	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/pkg/errors"
+	"golang.org/x/mod/semver"
 )
 
-type Client struct {
-	bramblePath string
+type DependencyManager struct {
+	dependencyDirectory string
+	dc                  *dependencyClient
 }
 
-func New(bramblePath string) *Client {
-	return &Client{bramblePath: bramblePath}
-}
-func (c *Client) joinBramblePath(v ...string) string {
-	return filepath.Join(append([]string{c.bramblePath}, v...)...)
+func NewDependencyManager(bramblePath string, cfg config.Config) *DependencyManager {
+	return &DependencyManager{dependencyDirectory: bramblePath}
 }
 
-func (c *Client) LocalVersions(module string) ([]string, error) {
-	path := c.joinBramblePath("var/dependencies/src", module)
+func (deps *DependencyManager) joinBramblePath(v ...string) string {
+	return filepath.Join(append([]string{deps.dependencyDirectory}, v...)...)
+}
+
+func (deps *DependencyManager) localModuleVersions(module string) ([]string, error) {
+	path := deps.joinBramblePath("src", module)
 	searchGlob := fmt.Sprintf("%s*", path)
 	matches, err := filepath.Glob(searchGlob)
 	if err != nil {
@@ -46,7 +52,65 @@ func (c *Client) LocalVersions(module string) ([]string, error) {
 	return matches, nil
 }
 
-func (c *Client) PostJob(url, module, reference string) (err error) {
+type Version struct {
+	Module  string
+	Version string
+}
+
+func (m Version) String() string {
+	return m.Module + "@" + m.Version
+}
+func (m Version) mvsVersion() mvs.Version {
+	parts := strings.SplitN(m.Version, ".", 2)
+	return mvs.Version{Name: m.Module + "@" + parts[0], Version: parts[1]}
+}
+
+func versionFromMVSVersion(m mvs.Version) Version {
+	loc := strings.LastIndex(m.Name, "@")
+	return Version{Version: m.Name[loc+1:] + "." + m.Version, Module: m.Name[:loc]}
+}
+
+func sortVersions(vs []Version) {
+	sort.Slice(vs, func(i, j int) bool { return vs[i].Module < vs[j].Module })
+}
+
+func configVersions(cfg config.Config) (vs []Version) {
+	for module, dep := range cfg.Dependencies {
+		vs = append(vs, Version{Module: module, Version: dep.Version})
+	}
+	sortVersions(vs)
+	return vs
+}
+
+func (deps *DependencyManager) existsLocally(m Version) bool {
+	return fileutil.PathExists(deps.localModuleLocation(m))
+}
+
+func (deps *DependencyManager) localModuleDependencies(m Version) (vs []Version, err error) {
+	cfg, err := config.ReadConfig(filepath.Join(deps.localModuleLocation(m), "bramble.toml"))
+	if err != nil {
+		return nil, err
+	}
+	return configVersions(cfg), nil
+}
+
+func (deps *DependencyManager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
+	cfg, err := deps.dc.getModuleConfig(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return configVersions(cfg), nil
+}
+
+func (deps *DependencyManager) localModuleLocation(m Version) (path string) {
+	return deps.joinBramblePath("src", m.String())
+}
+
+func (deps *DependencyManager) allVersions(ctx context.Context, module string) (vs []string, err error) {
+	return deps.dc.getModuleVersions(ctx, module)
+}
+
+func (deps *DependencyManager) PostJob(url, module, reference string) (err error) {
 	jr := JobRequest{Module: module, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
 	id, err := dc.postJob(context.Background(), jr)
@@ -67,6 +131,50 @@ func (c *Client) PostJob(url, module, reference string) (err error) {
 		time.Sleep(time.Second)
 	}
 	return nil
+}
+
+func (deps *DependencyManager) reqs() mvs.Reqs {
+	return dependencyManagerReqs{deps: deps}
+}
+
+type dependencyManagerReqs struct {
+	deps *DependencyManager
+}
+
+var _ mvs.Reqs = dependencyManagerReqs{}
+
+func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, err error) {
+	v := versionFromMVSVersion(m)
+	var vs []Version
+	if r.deps.existsLocally(v) {
+		vs, err = r.deps.localModuleDependencies(v)
+	} else {
+		// TODO: tracing
+		vs, err = r.deps.remoteModuleDependencies(context.Background(), v)
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range vs {
+		versions = append(versions, v.mvsVersion())
+	}
+	return
+}
+func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
+	switch semver.Compare("v0."+v1, "v0."+v2) {
+	case -1:
+		return v2
+	default:
+		return v1
+	}
+}
+func (r dependencyManagerReqs) Upgrade(m mvs.Version) (v mvs.Version, err error) {
+	panic("")
+	return
+}
+func (r dependencyManagerReqs) Previous(m mvs.Version) (v mvs.Version, err error) {
+	panic("")
+	return
 }
 
 type dependencyClient struct {
@@ -104,6 +212,28 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 		&job)
 }
 
+func (dc *dependencyClient) getModuleVersions(ctx context.Context, name string) (vs []string, err error) {
+	return vs, dc.request(ctx,
+		http.MethodGet,
+		"/module/"+name,
+		"application/json",
+		nil,
+		&vs)
+}
+
+func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg config.Config, err error) {
+	var buf bytes.Buffer
+	var w io.Writer = &buf
+	if err := dc.request(ctx,
+		http.MethodGet,
+		"/module/config/"+m.String(),
+		"application/json",
+		nil, w); err != nil {
+		return cfg, err
+	}
+	return config.ParseConfig(&buf)
+}
+
 type Job struct {
 	ID        string
 	Start     time.Time
@@ -121,12 +251,12 @@ type JobRequest struct {
 	Reference string
 }
 
-func (c *Client) AddDependencyMetadata(module, version, src string, mapping map[string]map[string][]string) (err error) {
-	srcs := c.joinBramblePath("var/dependencies/src")
+func (deps *DependencyManager) addDependencyMetadata(module, version, src string, mapping map[string]map[string][]string) (err error) {
+	srcs := deps.joinBramblePath("src")
 	fileDest := filepath.Join(srcs, module+"@"+version)
 
 	// TODO, should be platform specific
-	drvs := c.joinBramblePath("var/dependencies/" + types.Platform())
+	drvs := deps.joinBramblePath("" + types.Platform())
 	metadataDest := filepath.Join(drvs, module+"@"+version)
 
 	// If the metadata is here we already have a record of the output mapping.
@@ -215,7 +345,7 @@ type DependencyBuildResponse struct {
 	ProjectVersion        string
 }
 
-func (client *Client) DependencyServerHandler(buildHandler func(location string) (DependencyBuildResponse, error)) http.Handler {
+func (deps *DependencyManager) DependencyServerHandler(buildHandler func(location string) (DependencyBuildResponse, error)) http.Handler {
 	router := httpx.New()
 	router.GET("/job/:id", func(c httpx.Context) error {
 		job := jq.Lookup(c.Params.ByName("id"))
@@ -254,7 +384,7 @@ func (client *Client) DependencyServerHandler(buildHandler func(location string)
 				job.Error = err.Error()
 				return
 			}
-			if err := client.AddDependencyMetadata(job.Module, resp.ProjectVersion, loc, resp.ModuleFunctionOutputs); err != nil {
+			if err := deps.addDependencyMetadata(job.Module, resp.ProjectVersion, loc, resp.ModuleFunctionOutputs); err != nil {
 				job.Error = err.Error()
 				return
 			}
@@ -276,27 +406,34 @@ func (client *Client) DependencyServerHandler(buildHandler func(location string)
 	// 	return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	// })
 	// This is hard because :name can have slashes...
-	router.GET("/module/platform/:platform/:name/", func(c httpx.Context) error { return nil })
-	router.GET("/module/:name", func(c httpx.Context) error {
+	router.GET("/module/platform/:platform/:name_version/", func(c httpx.Context) error { return nil })
+	router.GET("/module/versions/:name", func(c httpx.Context) error {
 		// TODO: Return all matches for cached derivation outputs that we have
 		// as well?
 		name := c.Params.ByName("name")
-
-		path := filepath.Join(client.bramblePath, "var/dependencies/src", name)
-		searchGlob := fmt.Sprintf("%s*", path)
-		matches, err := filepath.Glob(searchGlob)
+		matches, err := deps.localModuleVersions(name)
 		if err != nil {
 			return err
 		}
-		for i, match := range matches {
-			matches[i] = strings.TrimPrefix(match, path+"@")
-		}
 		return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	})
-	router.GET("/module/:name/:version/source", func(c httpx.Context) error {
-		name := c.Params.ByName("name")
-		path := filepath.Join(client.bramblePath, "var/dependencies/src", name)
+	router.GET("/module/source/:name_version", func(c httpx.Context) error {
+		name := c.Params.ByName("name_version")
+		path := filepath.Join(deps.dependencyDirectory, "src", name)
 		return chunkedarchive.StreamArchive(c.ResponseWriter, path)
+	})
+	router.GET("/module/config/:name_version", func(c httpx.Context) error {
+		name := c.Params.ByName("name_version")
+		path := filepath.Join(deps.dependencyDirectory, "src", name, "bramble.toml")
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(c.ResponseWriter, f); err != nil {
+			return err
+		}
+		return nil
 	})
 	// for fun?
 	// router.GET("/module/:name/:version/source.tar", func(c httpx.Context) error

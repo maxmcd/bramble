@@ -91,7 +91,9 @@ func Request(ctx context.Context, client *http.Client, method, url, contentType 
 	defer httpResp.Body.Close()
 	var buf bytes.Buffer
 	if httpResp.Body != nil {
-		_, _ = io.Copy(&buf, httpResp.Body)
+		if _, err = io.Copy(&buf, httpResp.Body); err != nil {
+			return errors.Wrap(err, "error reading body")
+		}
 	}
 	if httpResp.StatusCode == http.StatusNotFound {
 		return os.ErrNotExist
@@ -107,7 +109,7 @@ func Request(ctx context.Context, client *http.Client, method, url, contentType 
 	case *string:
 		*v = buf.String()
 	case io.Writer:
-		_, err = io.Copy(v, httpResp.Body)
+		_, err = io.Copy(v, &buf)
 	default:
 		err = json.Unmarshal(buf.Bytes(), resp)
 	}
