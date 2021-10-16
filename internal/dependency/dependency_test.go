@@ -1,6 +1,7 @@
 package dependency
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -12,24 +13,22 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/internal/config"
+	"github.com/maxmcd/bramble/internal/types"
+	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/semver"
 )
 
-func Test_downloadGithubRepo(t *testing.T) {
-}
-
 func module(m string, deps ...string) func() (string, []string) {
 	return func() (string, []string) { return m, deps }
 }
 
-func testDepMgr(t *testing.T, deps ...func() (string, []string)) *DependencyManager {
-	dir := t.TempDir()
-	dm := &DependencyManager{dependencyDirectory: dir}
+func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
+	dm := &Manager{dir: dir(t.TempDir())}
 	for _, dep := range deps {
 		module, deps := dep()
-		if err := os.MkdirAll(filepath.Join(dir, "src", module), 0755); err != nil {
+		if err := os.MkdirAll(dm.dir.join("src", module), 0755); err != nil {
 			t.Fatal(err)
 		}
 		parts := strings.Split(module, "@")
@@ -45,7 +44,7 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) *DependencyMana
 			name, version := parts[0], parts[1]
 			cfg.Dependencies[name] = config.ConfigDependency{Version: version}
 		}
-		f, err := os.Create(filepath.Join(dir, "src", module, "bramble.toml"))
+		f, err := os.Create(dm.dir.join("src", module, "bramble.toml"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +57,7 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) *DependencyMana
 	return dm
 }
 
-func blogScenario(t *testing.T) *DependencyManager {
+func blogScenario(t *testing.T) *Manager {
 	return testDepMgr(t,
 		module("A@1.1.0", "B@1.2.0", "C@1.2.0"),
 		module("B@1.1.0", "D@1.1.0"),
@@ -119,7 +118,8 @@ func TestDMReqsUpgrade(t *testing.T) {
 
 	// Patch local A@1.1.0 to have new version of C before we upgrade
 	{
-		cfgLocation := filepath.Join(dm.dependencyDirectory, "src", "A@1.1.0", "bramble.toml")
+		dm.dir.join()
+		cfgLocation := dm.dir.join("src", "A@1.1.0", "bramble.toml")
 		cfg, err := config.ReadConfig(cfgLocation)
 		if err != nil {
 			t.Fatal(err)
@@ -164,7 +164,7 @@ func TestDMReqsRemote(t *testing.T) {
 			{
 				// Delete half of the dependencies in the local DM to simulate a
 				// partially present subset
-				list, err := filepath.Glob(filepath.Join(localDM.dependencyDirectory, "src", "*"))
+				list, err := filepath.Glob(localDM.dir.join("src", "*"))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -176,9 +176,10 @@ func TestDMReqsRemote(t *testing.T) {
 					}
 				}
 			}
-			server := httptest.NewServer(remoteDM.DependencyServerHandler(nil))
 
-			localDM.dc = &dependencyClient{
+			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+
+			localDM.dependencyClient = &dependencyClient{
 				client: &http.Client{},
 				host:   server.URL,
 			}
@@ -252,4 +253,68 @@ func Test_versionFromMVSVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+type testBuilder struct {
+	cfg config.Config
+	t   *testing.T
+}
+
+var (
+	_ types.NewBuilder = testBuilder{}.NewBuilder
+	_ types.Builder    = testBuilder{}
+)
+
+func (tb testBuilder) NewBuilder(location string) (types.Builder, error) {
+	return tb, nil
+}
+
+func (tb testBuilder) Module() (string, string) {
+	return tb.cfg.Module.Name, tb.cfg.Module.Version
+}
+
+func (tb testBuilder) Build(ctx context.Context, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+	return
+}
+
+func (tb testBuilder) testGithubDownloader(url, reference string) (location string, err error) {
+	location = tb.t.TempDir()
+	f, err := os.Create(location + "/bramble.toml")
+	if err != nil {
+		return "", err
+	}
+	tb.cfg.Render(f)
+	return location, f.Close()
+}
+
+func TestPushJob(t *testing.T) {
+	tb := testBuilder{
+		t: t,
+		cfg: config.Config{
+			Module: config.ConfigModule{
+				Name:    "x.y",
+				Version: "2.0.0",
+			},
+		},
+	}
+
+	server := httptest.NewServer(
+		serverHandler(t.TempDir(), tb.NewBuilder, tb.testGithubDownloader),
+	)
+
+	if err := PostJob(server.URL, "x.y", ""); err != nil {
+		fmtutil.Printpvln(err)
+		t.Fatal(err)
+	}
+	dc := &dependencyClient{
+		host:   server.URL,
+		client: &http.Client{},
+	}
+	cfg, err := dc.getModuleConfig(context.Background(), Version{Module: "x.y", Version: "2.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Dependencies = nil
+	tb.cfg.Dependencies = nil
+	require.Equal(t, cfg, tb.cfg)
 }

@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/maxmcd/bramble/internal/config"
@@ -26,21 +24,28 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-type DependencyManager struct {
-	dependencyDirectory string
-	dc                  *dependencyClient
+type Manager struct {
+	dir              dir
+	cfg              config.Config
+	dependencyClient *dependencyClient
 }
 
-func NewDependencyManager(bramblePath string, cfg config.Config) *DependencyManager {
-	return &DependencyManager{dependencyDirectory: bramblePath}
+func NewManager(dependencyDir string, cfg config.Config, packageHost string) *Manager {
+	return &Manager{
+		dir:              dir(dependencyDir),
+		cfg:              cfg,
+		dependencyClient: &dependencyClient{host: packageHost},
+	}
 }
 
-func (deps *DependencyManager) joinBramblePath(v ...string) string {
-	return filepath.Join(append([]string{deps.dependencyDirectory}, v...)...)
+type dir string
+
+func (dd dir) join(v ...string) string {
+	return filepath.Join(append([]string{string(dd)}, v...)...)
 }
 
-func (deps *DependencyManager) localModuleVersions(module string) ([]string, error) {
-	path := deps.joinBramblePath("src", module)
+func (dd dir) localModuleVersions(module string) ([]string, error) {
+	path := dd.join("src", module)
 	searchGlob := fmt.Sprintf("%s*", path)
 	matches, err := filepath.Glob(searchGlob)
 	if err != nil {
@@ -50,6 +55,10 @@ func (deps *DependencyManager) localModuleVersions(module string) ([]string, err
 		matches[i] = strings.TrimPrefix(match, path+"@")
 	}
 	return matches, nil
+}
+
+func (dd dir) localModuleLocation(m Version) (path string) {
+	return dd.join("src", m.String())
 }
 
 type Version struct {
@@ -82,35 +91,31 @@ func configVersions(cfg config.Config) (vs []Version) {
 	return vs
 }
 
-func (deps *DependencyManager) existsLocally(m Version) bool {
-	return fileutil.PathExists(deps.localModuleLocation(m))
+func (deps *Manager) existsLocally(m Version) bool {
+	return fileutil.PathExists(deps.dir.localModuleLocation(m))
 }
 
-func (deps *DependencyManager) localModuleDependencies(m Version) (vs []Version, err error) {
-	cfg, err := config.ReadConfig(filepath.Join(deps.localModuleLocation(m), "bramble.toml"))
+func (deps *Manager) localModuleDependencies(m Version) (vs []Version, err error) {
+	cfg, err := config.ReadConfig(filepath.Join(deps.dir.localModuleLocation(m), "bramble.toml"))
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
 }
 
-func (deps *DependencyManager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
-	cfg, err := deps.dc.getModuleConfig(ctx, m)
+func (deps *Manager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
+	cfg, err := deps.dependencyClient.getModuleConfig(ctx, m)
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
 }
 
-func (deps *DependencyManager) localModuleLocation(m Version) (path string) {
-	return deps.joinBramblePath("src", m.String())
+func (deps *Manager) allVersions(ctx context.Context, module string) (vs []string, err error) {
+	return deps.dependencyClient.getModuleVersions(ctx, module)
 }
 
-func (deps *DependencyManager) allVersions(ctx context.Context, module string) (vs []string, err error) {
-	return deps.dc.getModuleVersions(ctx, module)
-}
-
-func (deps *DependencyManager) PostJob(url, module, reference string) (err error) {
+func PostJob(url, module, reference string) (err error) {
 	jr := JobRequest{Module: module, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
 	id, err := dc.postJob(context.Background(), jr)
@@ -133,12 +138,12 @@ func (deps *DependencyManager) PostJob(url, module, reference string) (err error
 	return nil
 }
 
-func (deps *DependencyManager) reqs() mvs.Reqs {
+func (deps *Manager) reqs() mvs.Reqs {
 	return dependencyManagerReqs{deps: deps}
 }
 
 type dependencyManagerReqs struct {
-	deps *DependencyManager
+	deps *Manager
 }
 
 var _ mvs.Reqs = dependencyManagerReqs{}
@@ -234,29 +239,12 @@ func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg
 	return config.ParseConfig(&buf)
 }
 
-type Job struct {
-	ID        string
-	Start     time.Time
-	Emd       time.Time
-	Error     string
-	Module    string
-	Reference string
-}
-
-type JobRequest struct {
-	// The location of the version control repository.
-	Module string
-	// Reference is a version control reference. With Git this could be a
-	// branch, tag, or commit. This value is optional.
-	Reference string
-}
-
-func (deps *DependencyManager) addDependencyMetadata(module, version, src string, mapping map[string]map[string][]string) (err error) {
-	srcs := deps.joinBramblePath("src")
+func addDependencyMetadata(dependencyDir, module, version, src string, mapping map[string]map[string][]string) (err error) {
+	srcs := filepath.Join(dependencyDir, "src")
 	fileDest := filepath.Join(srcs, module+"@"+version)
 
 	// TODO, should be platform specific
-	drvs := deps.joinBramblePath("" + types.Platform())
+	drvs := filepath.Join(dependencyDir, ""+types.Platform())
 	metadataDest := filepath.Join(drvs, module+"@"+version)
 
 	// If the metadata is here we already have a record of the output mapping.
@@ -291,61 +279,9 @@ func (deps *DependencyManager) addDependencyMetadata(module, version, src string
 	return nil
 }
 
-type jobQueue struct {
-	jobs map[string]*Job
-	lock sync.Mutex
-}
+func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) http.Handler {
+	dependencyDirectory := dir(dependencyDir)
 
-func (jq *jobQueue) AddJob(job *Job) {
-	jq.lock.Lock()
-	defer jq.lock.Unlock()
-
-	for {
-		// unique id
-		job.ID = fmt.Sprint(rand.Int())
-		if _, found := jq.jobs[job.ID]; !found {
-			break
-		}
-	}
-	job.Start = time.Now()
-	if len(jq.jobs) > 5 {
-		jq.kickOldest()
-	}
-	jq.jobs[job.ID] = job
-}
-
-func (jq *jobQueue) Lookup(id string) *Job {
-	jq.lock.Lock()
-	defer jq.lock.Unlock()
-	job := jq.jobs[id]
-	if job != nil {
-		// make copy, a read only record
-		v := *job
-		return &v
-	}
-	return nil
-}
-
-func (jq *jobQueue) kickOldest() {
-	oldest := time.Now()
-	id := ""
-	for i, j := range jq.jobs {
-		if j.Start.Before(oldest) {
-			oldest = j.Start
-			id = i
-		}
-	}
-	delete(jq.jobs, id)
-}
-
-var jq = &jobQueue{jobs: map[string]*Job{}}
-
-type DependencyBuildResponse struct {
-	ModuleFunctionOutputs map[string]map[string][]string
-	ProjectVersion        string
-}
-
-func (deps *DependencyManager) DependencyServerHandler(buildHandler func(location string) (DependencyBuildResponse, error)) http.Handler {
 	router := httpx.New()
 	router.GET("/job/:id", func(c httpx.Context) error {
 		job := jq.Lookup(c.Params.ByName("id"))
@@ -379,12 +315,28 @@ func (deps *DependencyManager) DependencyServerHandler(buildHandler func(locatio
 				job.Error = errors.Wrap(err, "error downloading git repo").Error()
 				return
 			}
-			resp, err := buildHandler(loc)
+			builder, err := newBuilder(loc)
 			if err != nil {
 				job.Error = err.Error()
 				return
 			}
-			if err := deps.addDependencyMetadata(job.Module, resp.ProjectVersion, loc, resp.ModuleFunctionOutputs); err != nil {
+			name, version := builder.Module()
+			if name != job.Module {
+				job.Error = fmt.Sprintf("Project module name %q does not match the location the project was fetched from: %q",
+					name,
+					job.Module)
+			}
+			resp, err := builder.Build(context.Background(), nil, types.BuildOptions{Check: true})
+			if err != nil {
+				job.Error = err.Error()
+				return
+			}
+			if err := addDependencyMetadata(
+				dependencyDir,
+				name,
+				version,
+				loc,
+				resp.Modules); err != nil {
 				job.Error = err.Error()
 				return
 			}
@@ -411,7 +363,7 @@ func (deps *DependencyManager) DependencyServerHandler(buildHandler func(locatio
 		// TODO: Return all matches for cached derivation outputs that we have
 		// as well?
 		name := c.Params.ByName("name")
-		matches, err := deps.localModuleVersions(name)
+		matches, err := dependencyDirectory.localModuleVersions(name)
 		if err != nil {
 			return err
 		}
@@ -419,12 +371,12 @@ func (deps *DependencyManager) DependencyServerHandler(buildHandler func(locatio
 	})
 	router.GET("/module/source/:name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
-		path := filepath.Join(deps.dependencyDirectory, "src", name)
+		path := filepath.Join(dependencyDir, "src", name)
 		return chunkedarchive.StreamArchive(c.ResponseWriter, path)
 	})
 	router.GET("/module/config/:name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
-		path := filepath.Join(deps.dependencyDirectory, "src", name, "bramble.toml")
+		path := filepath.Join(dependencyDir, "src", name, "bramble.toml")
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -435,10 +387,12 @@ func (deps *DependencyManager) DependencyServerHandler(buildHandler func(locatio
 		}
 		return nil
 	})
-	// for fun?
-	// router.GET("/module/:name/:version/source.tar", func(c httpx.Context) error
-	// router.GET("/module/:name/:version/source.tar.gz", func(c httpx.Context) error
+
 	return router
+}
+
+func ServerHandler(dependencyDir string, newBuilder types.NewBuilder) http.Handler {
+	return serverHandler(dependencyDir, newBuilder, downloadGithubRepo)
 }
 
 func downloadGithubRepo(url string, reference string) (location string, err error) {

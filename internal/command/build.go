@@ -7,6 +7,7 @@ import (
 
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
+	"github.com/maxmcd/bramble/internal/types"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -218,11 +219,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	return outputDerivations, err
 }
 
-type fullBuildOptions struct {
-	check bool
-}
-
-func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOptions) (br buildResponse, err error) {
+func (b bramble) fullBuild(ctx context.Context, args []string, opts types.BuildOptions) (br buildResponse, err error) {
 	br.FinalHashMapping = make(map[string]store.Derivation)
 	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
 	if err != nil {
@@ -230,7 +227,7 @@ func (b bramble) fullBuild(ctx context.Context, args []string, opts fullBuildOpt
 	}
 	var lock sync.Mutex
 	_, err = b.runBuild(ctx, br.Output, runBuildOptions{
-		check: opts.check,
+		check: opts.Check,
 		callback: func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation) {
 			lock.Lock()
 			br.FinalHashMapping[dep.Hash] = buildDrv
@@ -256,4 +253,35 @@ func (br buildResponse) moduleFunctionMapping() (mapping map[string]map[string][
 		}
 	}
 	return mapping
+}
+
+func (b bramble) newBuilder(location string) (types.Builder, error) {
+	b, err := newBramble(location, b.store.BramblePath)
+	if err != nil {
+		return nil, err
+	}
+	return builder{bramble: b}, nil
+}
+
+type builder struct {
+	bramble bramble
+}
+
+var _ types.Builder = builder{}
+
+func (b builder) Build(ctx context.Context, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+	br, err := b.bramble.fullBuild(ctx, args, opts)
+	if err != nil {
+		return resp, err
+	}
+	resp.Modules = br.moduleFunctionMapping()
+	resp.FinalHashMapping = map[string]string{}
+	for hash, drv := range br.FinalHashMapping {
+		resp.FinalHashMapping[hash] = drv.Filename()
+	}
+	return resp, err
+}
+
+func (b builder) Module() (string, string) {
+	return b.bramble.project.Module(), b.bramble.project.Version()
 }

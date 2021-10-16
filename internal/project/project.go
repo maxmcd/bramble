@@ -80,6 +80,11 @@ func (p *Project) Version() string {
 	return p.config.Module.Version
 }
 
+func (p *Project) Config() config.Config {
+	// Copy it?
+	return p.config
+}
+
 func (p *Project) WD() string {
 	return p.wd
 }

@@ -319,12 +319,7 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) == 2 {
 						reference = args[1]
 					}
-					store, err := store.NewStore("")
-					if err != nil {
-						return err
-					}
-					depsClient := project.NewDependencyManager(store.BramblePath)
-					return depsClient.PostJob("http://localhost:2726", module, reference)
+					return dependency.PostJob("http://localhost:2726", module, reference)
 				},
 			},
 			{
@@ -351,30 +346,17 @@ module cache.
 					fmt.Printf("Server listening on: %s\n", listenOn)
 
 					// TODO: add build cache handler to this server
-
-					store, err := store.NewStore("")
+					b, err := newBramble(".", "")
 					if err != nil {
 						return err
 					}
-					depsClient := dependency.NewDependencyManager(store.BramblePath)
+
 					srv := &http.Server{
 						Addr: listenOn,
-						Handler: depsClient.DependencyServerHandler(func(location string) (resp project.DependencyBuildResponse, err error) {
-							// TODO: support more than one project per repo
-							bramble, err := newBramble(location, store.BramblePath)
-							if err != nil {
-								return resp, err
-							}
-
-							buildResponse, err := bramble.fullBuild(context.Background(), nil, fullBuildOptions{check: true})
-							if err != nil {
-								return resp, err
-							}
-							return dependency.DependencyBuildResponse{
-								ProjectVersion:        bramble.project.Version(),
-								ModuleFunctionOutputs: buildResponse.moduleFunctionMapping(),
-							}, nil
-						}),
+						Handler: dependency.ServerHandler(
+							filepath.Join(b.store.BramblePath, "var/dependency"),
+							b.newBuilder,
+						),
 					}
 					errChan := make(chan error)
 					go func() {
