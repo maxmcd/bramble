@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/maxmcd/bramble/internal/logger"
@@ -388,17 +387,4 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	case <-doneChan:
 		return nil
 	}
-}
-
-func (s *Store) softwareVersionsAvailable(module string) (versions []string, err error) {
-	path := s.joinBramblePath("var/dependencies/src", module)
-	searchGlob := fmt.Sprintf("%s*", path)
-	matches, err := filepath.Glob(searchGlob)
-	if err != nil {
-		return nil, err
-	}
-	for i, match := range matches {
-		matches[i] = strings.TrimPrefix(match, path+"@")
-	}
-	return
 }

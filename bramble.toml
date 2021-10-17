@@ -13,8 +13,8 @@ hidden_paths = ["./lib"]
 
 
 [dependencies]
-"github.com/maxmcd/busybox" = "0.1.12"
-"github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
+"github.com/maxmcd/busybox" = "0.0.1"
+# "github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
 
 [commands]
 foo = "github.com/maxmcd/bramble/all:all"

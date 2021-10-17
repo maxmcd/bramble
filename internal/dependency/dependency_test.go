@@ -321,7 +321,7 @@ func TestPushJob(t *testing.T) {
 		t: t,
 		cfg: config.Config{
 			Module: config.ConfigModule{
-				Name:    "x.y",
+				Name:    "x.y/z",
 				Version: "2.0.0",
 			},
 		},
@@ -331,18 +331,27 @@ func TestPushJob(t *testing.T) {
 		serverHandler(t.TempDir(), tb.NewBuilder, tb.testGithubDownloader),
 	)
 
-	if err := PostJob(server.URL, "x.y", ""); err != nil {
+	if err := PostJob(server.URL, "x.y/z", ""); err != nil {
 		t.Fatal(err)
 	}
 	dc := &dependencyClient{
 		host:   server.URL,
 		client: &http.Client{},
 	}
-	cfg, err := dc.getModuleConfig(context.Background(), Version{Module: "x.y", Version: "2.0.0"})
-	if err != nil {
-		t.Fatal(err)
+	{
+		cfg, err := dc.getModuleConfig(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Dependencies = nil
+		tb.cfg.Dependencies = nil
+		require.Equal(t, cfg, tb.cfg)
 	}
-	cfg.Dependencies = nil
-	tb.cfg.Dependencies = nil
-	require.Equal(t, cfg, tb.cfg)
+	{
+		body, err := dc.getModuleSource(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = body
+	}
 }

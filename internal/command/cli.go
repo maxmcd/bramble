@@ -358,7 +358,7 @@ module cache.
 					srv := &http.Server{
 						Addr: listenOn,
 						Handler: dependency.ServerHandler(
-							filepath.Join(store.BramblePath, "var/dependency"),
+							filepath.Join(store.BramblePath, "var/dependencies"),
 							newBuilder(store),
 						),
 					}

@@ -6,22 +6,23 @@ import (
 	"os"
 	"path/filepath"
 	stdruntime "runtime"
-	"runtime/debug"
 	"strings"
 
 	"github.com/maxmcd/bramble/internal/assert"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-func newRuntime(workingDirectory, projectLocation, moduleName string) *runtime {
+func newRuntime(workingDirectory, projectLocation, moduleName string, externalModuleFetcher externalModuleFetcher) *runtime {
 	rt := &runtime{
-		workingDirectory: workingDirectory,
-		projectLocation:  projectLocation,
-		moduleName:       moduleName,
+		workingDirectory:      workingDirectory,
+		projectLocation:       projectLocation,
+		moduleName:            moduleName,
+		externalModuleFetcher: externalModuleFetcher,
 	}
 	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
@@ -71,7 +72,11 @@ type runtime struct {
 	cache map[string]*entry
 
 	predeclared starlark.StringDict
+
+	externalModuleFetcher externalModuleFetcher
 }
+
+type externalModuleFetcher func(ctx context.Context, module string) (path string, err error)
 
 var starlarkSys = &starlarkstruct.Module{
 	Name: "sys",
@@ -83,7 +88,7 @@ var starlarkSys = &starlarkstruct.Module{
 }
 
 func (p *Project) REPL() {
-	rt := newRuntime(p.wd, p.location, p.config.Module.Name)
+	rt := newRuntime(p.wd, p.location, p.config.Module.Name, p.fetchExternalModule)
 	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
 }
 
@@ -102,16 +107,17 @@ type entry struct {
 }
 
 func (rt *runtime) moduleToPath(module string) (path string, err error) {
-
+	// If it's an external module
 	if !strings.HasPrefix(module, rt.moduleName) {
-		// TODO: support other modules
-		debug.PrintStack()
-		err = errors.Errorf("We don't support external modules yet! %s", module)
-		return
+		if path, err = rt.externalModuleFetcher(context.Background(), module); err != nil {
+			fmtutil.Printpvln(err)
+			return "", err
+		}
+	} else {
+		path = module[len(rt.moduleName):]
+		path = filepath.Join(rt.projectLocation, path)
 	}
-
-	path = module[len(rt.moduleName):]
-	path = filepath.Join(rt.projectLocation, path)
+	fmtutil.Printqln(module, path)
 
 	directoryWithNameExists := fileutil.PathExists(path)
 

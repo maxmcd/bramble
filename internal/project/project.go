@@ -2,11 +2,13 @@
 package project
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/maxmcd/bramble/internal/config"
+	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
@@ -21,6 +23,8 @@ var (
 	tracer          = tracing.Tracer("project")
 )
 
+type ModuleFetcher func(context.Context, dependency.Version) (path string, err error)
+
 type Project struct {
 	config   config.Config
 	location string
@@ -28,6 +32,8 @@ type Project struct {
 	wd string
 
 	lockFile *config.LockFile
+
+	moduleFetcher ModuleFetcher
 }
 
 // NewProject checks for an existing bramble project in the provided working
@@ -66,6 +72,10 @@ func findConfig(wd string) (found bool, location string) {
 
 func (p *Project) LockfileWriter() types.LockfileWriter {
 	return p.lockFile
+}
+
+func (p *Project) AddModuleFetcher(mf ModuleFetcher) {
+	p.moduleFetcher = mf
 }
 
 func (p *Project) Location() string {
@@ -108,6 +118,23 @@ func (p *Project) URLHashes() map[string]string {
 
 func (p *Project) WriteLockfile() error {
 	return config.WriteLockfile(p.lockFile, p.location)
+}
+
+// TODO: function that takes load() argument values and references the config and pulls down the needed version
+func (p *Project) fetchExternalModule(ctx context.Context, module string) (path string, err error) {
+	if strings.HasPrefix(module, p.config.Module.Name) {
+		return "", errors.Errorf("%q is not an external module", module)
+	}
+	cd, found := p.config.Dependencies[module]
+	if !found {
+		return "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", module)
+	}
+	if cd.Path != "" {
+		// TODO: Does this actually work
+		// TODO: cd.Path must be relative?
+		return filepath.Join(p.location, cd.Path), nil
+	}
+	return p.moduleFetcher(ctx, dependency.Version{Module: module, Version: cd.Version})
 }
 
 func (p *Project) filepathToModuleName(path string) (module string, err error) {
@@ -162,7 +189,7 @@ func (p *Project) ListModuleDoc() (modules []ModuleDoc, err error) {
 }
 
 func (p *Project) parsedModuleDocFromPath(path string) (m ModuleDoc, err error) {
-	rt := newRuntime("", "", "") // don't need a real one, just need the list of predeclared values
+	rt := newRuntime("", "", "", nil) // don't need a real one, just need the list of predeclared values
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return m, errors.Wrap(err, "list functions path is invalid")

@@ -35,7 +35,7 @@ func NewManager(dependencyDir string, cfg config.Config, packageHost string) *Ma
 	return &Manager{
 		dir:              dir(dependencyDir),
 		cfg:              cfg,
-		dependencyClient: &dependencyClient{host: packageHost},
+		dependencyClient: &dependencyClient{host: packageHost, client: &http.Client{}},
 	}
 }
 
@@ -66,11 +66,14 @@ func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path st
 	path = dm.dir.localModuleLocation(m)
 	// If we have it, return it
 	if fileutil.DirExists(path) {
-		return path, err
+		return path, nil
 	}
 	// If we don't have it, download it
 	body, err := dm.dependencyClient.getModuleSource(ctx, m)
 	if err != nil {
+		if err == os.ErrNotExist {
+			return "", errors.Errorf("Module %q doesn't exist in the remote cache, do you need to publish it?", m)
+		}
 		return "", err
 	}
 	defer body.Close()
@@ -92,7 +95,7 @@ func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path st
 		}
 	}
 	if err := chunkedarchive.FileUnarchive(name, path); err != nil {
-		return "", err
+		return "", errors.Wrap(err, "error unwrapping chunked archive")
 	}
 	return path, os.RemoveAll(name)
 }
@@ -407,8 +410,8 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	// 	return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	// })
 	// This is hard because :name can have slashes...
-	router.GET("/module/platform/:platform/:name_version/", func(c httpx.Context) error { return nil })
-	router.GET("/module/versions/:name", func(c httpx.Context) error {
+	// router.GET("/module/platform/:platform/:name_version/", func(c httpx.Context) error { return nil })
+	router.GET("/module/versions/*name", func(c httpx.Context) error {
 		// TODO: Return all matches for cached derivation outputs that we have
 		// as well?
 		name := c.Params.ByName("name")
@@ -418,14 +421,20 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 		}
 		return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	})
-	router.GET("/module/source/:name_version", func(c httpx.Context) error {
+	router.GET("/module/source/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
 		path := filepath.Join(dependencyDir, "src", name)
+		if !fileutil.FileExists(path) {
+			return httpx.ErrNotFound(errors.New("can't find module"))
+		}
 		return chunkedarchive.StreamArchive(c.ResponseWriter, path)
 	})
-	router.GET("/module/config/:name_version", func(c httpx.Context) error {
+	router.GET("/module/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
 		path := filepath.Join(dependencyDir, "src", name, "bramble.toml")
+		if !fileutil.FileExists(path) {
+			return httpx.ErrNotFound(errors.New("can't find module"))
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return err
