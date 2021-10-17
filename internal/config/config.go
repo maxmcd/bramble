@@ -130,7 +130,7 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		lockFileLocation := filepath.Join(dir, "bramble.lock")
 		if !fileutil.FileExists(lockFileLocation) {
 			// Don't read the lockfile if we don't have one
-			return cfg, nil, err
+			return cfg, &LockFile{}, err
 		}
 		f, err := os.Open(lockFileLocation)
 		if err != nil {
@@ -203,6 +203,9 @@ func (l *LockFile) AddEntry(k, v string) error {
 			k, oldV, v)
 	}
 	if !found {
+		if l.URLHashes == nil {
+			l.URLHashes = map[string]string{}
+		}
 		l.URLHashes[k] = v
 		l.changed = true
 	}

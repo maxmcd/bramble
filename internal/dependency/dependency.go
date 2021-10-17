@@ -128,7 +128,7 @@ func PostJob(url, module, reference string) (err error) {
 			return err
 		}
 		if job.Error != "" {
-			return errors.New(job.Error)
+			return errors.Wrap(errors.New(job.Error), "got error posting job")
 		}
 		if !job.Emd.IsZero() {
 			break

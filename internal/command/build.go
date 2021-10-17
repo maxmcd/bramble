@@ -255,12 +255,14 @@ func (br buildResponse) moduleFunctionMapping() (mapping map[string]map[string][
 	return mapping
 }
 
-func (b bramble) newBuilder(location string) (types.Builder, error) {
-	b, err := newBramble(location, b.store.BramblePath)
-	if err != nil {
-		return nil, err
+func newBuilder(store *store.Store) func(location string) (types.Builder, error) {
+	return func(location string) (types.Builder, error) {
+		b, err := newBramble(location, store.BramblePath)
+		if err != nil {
+			return nil, err
+		}
+		return builder{bramble: b}, nil
 	}
-	return builder{bramble: b}, nil
 }
 
 type builder struct {

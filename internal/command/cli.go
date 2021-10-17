@@ -319,7 +319,11 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) == 2 {
 						reference = args[1]
 					}
-					return dependency.PostJob("http://localhost:2726", module, reference)
+					url := "http://localhost:2726"
+					if u := c.String("url"); u != "" {
+						url = u
+					}
+					return dependency.PostJob(url, module, reference)
 				},
 			},
 			{
@@ -346,7 +350,7 @@ module cache.
 					fmt.Printf("Server listening on: %s\n", listenOn)
 
 					// TODO: add build cache handler to this server
-					b, err := newBramble(".", "")
+					store, err := store.NewStore("")
 					if err != nil {
 						return err
 					}
@@ -354,8 +358,8 @@ module cache.
 					srv := &http.Server{
 						Addr: listenOn,
 						Handler: dependency.ServerHandler(
-							filepath.Join(b.store.BramblePath, "var/dependency"),
-							b.newBuilder,
+							filepath.Join(store.BramblePath, "var/dependency"),
+							newBuilder(store),
 						),
 					}
 					errChan := make(chan error)
