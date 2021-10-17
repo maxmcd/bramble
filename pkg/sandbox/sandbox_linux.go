@@ -1,7 +1,9 @@
 package sandbox
 
 import (
+	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -41,6 +43,7 @@ func init() {
 		if err := factory.StartInitialization(); err != nil {
 			panic(err)
 		}
+
 		panic("unreachable")
 	}
 }
@@ -344,7 +347,7 @@ func defaultRootlessConfig() *configs.Config {
 		RootlessEUID:    true,
 		RootlessCgroups: true,
 		Cgroups: &configs.Cgroup{
-			Name:   "bramble",
+			Name:   fmt.Sprint(rand.Int()), // TODO: give more scrutiny
 			Parent: "system",
 			Resources: &configs.Resources{
 				MemorySwappiness: nil,

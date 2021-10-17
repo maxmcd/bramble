@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.15.0
 	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/containerd/console v1.0.3
+	github.com/davecgh/go-spew v1.1.1
 	github.com/djherbis/buffer v1.2.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
@@ -27,7 +28,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.0.1
 	go.starlark.net v0.0.0-20210901212718-87f333178d59
 	go.uber.org/zap v1.19.1
-	golang.org/x/sys v0.0.0-20210909193231-528a39cd75f3
+	golang.org/x/mod v0.4.2
+	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
 )
 
 replace (

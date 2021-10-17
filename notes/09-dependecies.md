@@ -62,3 +62,52 @@ What if:
 "github.com/maxmcd/bramble" = "0.1.12"
 "github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
 ```
+
+
+------------------------
+
+
+We're going with the plan where the dependency server can be prompted to pull from a git/VC repo and then will build and load the derivation into its stores.
+
+From there the dependency server stores references to bramble projects at various versions. When a project tries to load or fetch one of these dependencies the latest version is pulled down and added to the bramble.toml and the lockfile.
+
+So we can start with the server. We'll need something that will accept a git repo location and an optional hash/commit/tag. The server will then pull that repo, download it and build the included derivations. It will check that the project is reproducible and if it is not it will reject it outright.
+
+
+-------------------
+
+This brought up the idea of function caching. When we pull in dependencies they are frozen, they won't change. So when a function is called and we know that its output is going to be a derivation then we can skip on actually calling and downloading all the dependencies for that function. We can merely crawl the dependency graph, download all the runtime derivations that we'll need to run that derivation and then skip everything else.
+
+If we inject these parentless nodes into the build graph I think it will "just work" since all the local files needed for the build will be there and we don't do exhaustive graph checking before starting a build (we expect the language to do this).
+
+This could also be used to cache in-project builds. If we kept track of file modification times like git we could prune subgraphs from the local project source that we didn't need to rebuild.
+
+---------------
+
+We have a load("github.com/maxmcd/busybox").
+
+1. Looks in the local dependency store for sources
+2. If they're not there it checks the remote store
+   1. Download if they have it, error if they don't
+3. If we have the source we return the path in the store to the execModule input
+4. If we have multiple dependencies and those dependencies have dependencies we need to be sure to resolve them all beforehand. We do this by resolving all inputs (Can we confirm there are no unused imports?). When we need to pick versions we pick the latest minor version of each major version. Different major versions get to be imported simultaneously. Projects can pass a version number to an import statement.
+
+---------------------
+
+```go
+
+type Dependencies interface {
+
+}
+
+```
+
+
+-------------------------
+
+
+We need the load() statements to be loaded in parallel so that we can download needed dependencies on the fly without blocking. These load statements wil have to download the missing dependencies that are references in the bramble.toml and then they'll have to crawl sub0dependencies using the version numbers from bramble.lock. This would allow a `bramble build` that only downloads what it needs.
+
+Oh, or maybe not? We could also ignore inputs, and pass through lazy-load modules. Annoyingly this kills parallelism Yah I think we have to download the dependencies, but then the build-response optimizations still apply after the sources are downloaded.
+
+Ok, so parallel loading, fetch what we need.

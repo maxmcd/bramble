@@ -3,14 +3,20 @@
 [module]
 name = "github.com/maxmcd/bramble"
 version = "0.0.2"
+
+# Just ideas from here down....................
+
 # default_read_only_paths?
 read_only_paths = ["./"]
 hidden_paths = ["./lib"]
 
+
+
 [dependencies]
-"github.com/maxmcd/bramble" = "0.1.12"
-"github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
+"github.com/maxmcd/busybox" = "0.0.1"
+# "github.com/maxmcd/bramble/foo" = {version="0.1.12", path="./foo"}
 
 [commands]
 foo = "github.com/maxmcd/bramble/all:all"
-bar = {location="github.com/maxmcd/bramble/all:all", read_only_paths=["./"], network=true}
+bar = ":bash"
+

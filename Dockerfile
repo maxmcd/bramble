@@ -10,6 +10,8 @@ COPY . .
 
 RUN go install
 
-# FROM alpine
+FROM alpine
+RUN apk add bash git
+COPY --from=0 /go/bin/bramble /bin/bramble
 
-# COPY --from=0 /go/src/github.com/maxmcd/bramble/bramble /bin/bramble
+CMD ["/bin/bramble", "server", "--host=0.0.0.0", "--port=8080"]

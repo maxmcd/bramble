@@ -40,7 +40,7 @@ const (
 // network requests for files will download individual chunks from an index, but
 // for now it seemed good to follow in this general direction over picking
 // something arbitrary.
-func StreamArchive(location string, output io.Writer) (err error) {
+func StreamArchive(output io.Writer, location string) (err error) {
 	buf := bufio.NewWriter(output)
 	countW := &countWriter{w: buf}
 
@@ -50,7 +50,7 @@ func StreamArchive(location string, output io.Writer) (err error) {
 		writer: tw,
 		buf:    make([]byte, chunkSize),
 	}
-	toc, err := Archive(location, bw)
+	toc, err := Archive(bw, location)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func StreamArchive(location string, output io.Writer) (err error) {
 	// Write toc
 	{
 		zw, _ = gzip.NewWriterLevel(countW, gzip.NoCompression)
-		tocJSON, err := json.MarshalIndent(toc, "", "\t")
+		tocJSON, err := json.MarshalIndent(toc, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -103,6 +103,7 @@ type tarBodyWriter struct {
 
 func (bw *tarBodyWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), error) {
 	out := []string{}
+	defer f.Close()
 	for {
 		h := hasher.New()
 		tr := io.TeeReader(f, h)
@@ -128,9 +129,7 @@ func (bw *tarBodyWriter) NewChunk(f io.ReadCloser) (func() ([]string, error), er
 			break
 		}
 	}
-	return func() ([]string, error) {
-		return out, nil
-	}, nil
+	return func() ([]string, error) { return out, nil }, nil
 }
 
 // footerBytes the 47 byte footer.

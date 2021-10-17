@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/pkg/errors"
 )
 
@@ -86,11 +85,10 @@ type BodyWriter interface {
 	NewChunk(io.ReadCloser) (func() ([]string, error), error)
 }
 
-func Archive(location string, bw BodyWriter) (toc []TOCEntry, err error) {
+func Archive(bw BodyWriter, location string) (toc []TOCEntry, err error) {
 	type entryPromise struct {
 		entry   TOCEntry
 		promise func() ([]string, error)
-		hasher  *hasher.Hasher
 	}
 	queue := []entryPromise{}
 

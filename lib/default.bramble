@@ -57,11 +57,14 @@ def git_fetcher():
     )
 
 
+# TODO: make reproducible
 def git_test():
     return derivation(
         "git-test",
         "fetch_git",
-        env=dict(url="https://github.com/maxmcd/bramble.git", cachebust=1),
+        env=dict(
+            url="https://github.com/maxmcd/bramble.git", reference="v0", cachebust=1
+        ),
     )
 
 
