@@ -14,6 +14,7 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
+	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/semver"
@@ -119,22 +120,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 	dm := blogScenario(t)
 
 	// Patch local A@1.1.0 to have new version of C before we upgrade
-	{
-		dm.dir.join()
-		cfgLocation := dm.dir.join("src", "A@1.1.0", "bramble.toml")
-		cfg, err := config.ReadConfig(cfgLocation)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
-		f, err := os.Create(cfgLocation)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cfg.Render(f)
-		cfg.Render(os.Stdout)
-		f.Close()
-	}
+	dm.cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},
 		dm.reqs(),
@@ -218,6 +204,7 @@ func TestDMPathOrDownload(t *testing.T) {
 
 	path, err := localDM.ModulePathOrDownload(context.Background(), Version{"A", "1.1.0"})
 	if err != nil {
+		fmtutil.Printpvln(err)
 		t.Fatal(err)
 	}
 	cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))

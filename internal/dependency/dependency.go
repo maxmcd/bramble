@@ -166,7 +166,7 @@ func PostJob(url, module, reference string) (err error) {
 		if job.Error != "" {
 			return errors.Wrap(errors.New(job.Error), "got error posting job")
 		}
-		if !job.Emd.IsZero() {
+		if !job.End.IsZero() {
 			break
 		}
 		time.Sleep(time.Second)
@@ -358,29 +358,26 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 		go func() {
 			var err error
 			defer func() {
-				job.Emd = time.Now()
-				fmt.Println(err)
+				jq.End(job.ID, err)
 			}()
 
 			loc, err := downloadGithubRepo(job.Module, job.Reference)
 			if err != nil {
-				job.Error = errors.Wrap(err, "error downloading git repo").Error()
+				err = errors.Wrap(err, "error downloading git repo")
 				return
 			}
 			builder, err := newBuilder(loc)
 			if err != nil {
-				job.Error = err.Error()
 				return
 			}
 			name, version := builder.Module()
 			if name != job.Module {
-				job.Error = fmt.Sprintf("Project module name %q does not match the location the project was fetched from: %q",
+				err = errors.Errorf("Project module name %q does not match the location the project was fetched from: %q",
 					name,
 					job.Module)
 			}
 			resp, err := builder.Build(context.Background(), nil, types.BuildOptions{Check: true})
 			if err != nil {
-				job.Error = err.Error()
 				return
 			}
 			if err := addDependencyMetadata(
@@ -389,7 +386,6 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 				version,
 				loc,
 				resp.Modules); err != nil {
-				job.Error = err.Error()
 				return
 			}
 		}()
@@ -424,7 +420,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	router.GET("/module/source/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
 		path := filepath.Join(dependencyDir, "src", name)
-		if !fileutil.FileExists(path) {
+		if !fileutil.DirExists(path) {
 			return httpx.ErrNotFound(errors.New("can't find module"))
 		}
 		return chunkedarchive.StreamArchive(c.ResponseWriter, path)

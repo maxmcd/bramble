@@ -10,7 +10,6 @@ import (
 
 	"github.com/maxmcd/bramble/internal/assert"
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
@@ -110,14 +109,12 @@ func (rt *runtime) moduleToPath(module string) (path string, err error) {
 	// If it's an external module
 	if !strings.HasPrefix(module, rt.moduleName) {
 		if path, err = rt.externalModuleFetcher(context.Background(), module); err != nil {
-			fmtutil.Printpvln(err)
 			return "", err
 		}
 	} else {
 		path = module[len(rt.moduleName):]
 		path = filepath.Join(rt.projectLocation, path)
 	}
-	fmtutil.Printqln(module, path)
 
 	directoryWithNameExists := fileutil.PathExists(path)
 

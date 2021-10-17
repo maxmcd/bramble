@@ -10,7 +10,7 @@ import (
 type Job struct {
 	ID        string
 	Start     time.Time
-	Emd       time.Time
+	End       time.Time
 	Error     string
 	Module    string
 	Reference string
@@ -48,6 +48,16 @@ func (jq *jobQueue) AddJob(job *Job) {
 	jq.jobs[job.ID] = job
 }
 
+func (jq *jobQueue) End(id string, err error) {
+	jq.lock.Lock()
+	defer jq.lock.Unlock()
+	job := jq.jobs[id]
+	if err != nil {
+		job.Error = err.Error()
+	}
+	job.End = time.Now()
+}
+
 func (jq *jobQueue) Lookup(id string) *Job {
 	jq.lock.Lock()
 	defer jq.lock.Unlock()
@@ -64,7 +74,7 @@ func (jq *jobQueue) kickOldest() {
 	oldest := time.Now()
 	id := ""
 	for i, j := range jq.jobs {
-		if j.Emd.IsZero() {
+		if j.End.IsZero() {
 			// Skip running jobs
 			continue
 		}
