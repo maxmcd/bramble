@@ -41,7 +41,8 @@ func (jq *jobQueue) AddJob(job *Job) {
 		}
 	}
 	job.Start = time.Now()
-	if len(jq.jobs) > 5 {
+	// Remove stale jobs from in-memory
+	if len(jq.jobs) > 100 {
 		jq.kickOldest()
 	}
 	jq.jobs[job.ID] = job
@@ -63,6 +64,10 @@ func (jq *jobQueue) kickOldest() {
 	oldest := time.Now()
 	id := ""
 	for i, j := range jq.jobs {
+		if j.Emd.IsZero() {
+			// Skip running jobs
+			continue
+		}
 		if j.Start.Before(oldest) {
 			oldest = j.Start
 			id = i

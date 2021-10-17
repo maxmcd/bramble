@@ -14,7 +14,6 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/semver"
@@ -26,7 +25,7 @@ func module(m string, deps ...string) func() (string, []string) {
 
 func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
 	dm := &Manager{dir: dir(t.TempDir())}
-	for _, dep := range deps {
+	for i, dep := range deps {
 		module, deps := dep()
 		if err := os.MkdirAll(dm.dir.join("src", module), 0755); err != nil {
 			t.Fatal(err)
@@ -51,6 +50,9 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
 		cfg.Render(f)
 		if err := f.Close(); err != nil {
 			t.Fatal(err)
+		}
+		if i == 0 {
+			dm.cfg = cfg
 		}
 	}
 
@@ -153,6 +155,20 @@ func TestDMReqsUpgrade(t *testing.T) {
 	})
 }
 
+func (dm *Manager) deleteHalfDeps(t *testing.T) {
+	list, err := filepath.Glob(dm.dir.join("src", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
+	half := list[:len(list)/2]
+	for _, p := range half {
+		if err := os.RemoveAll(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestDMReqsRemote(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
@@ -161,21 +177,9 @@ func TestDMReqsRemote(t *testing.T) {
 			remoteDM := blogScenario(t)
 			localDM := blogScenario(t)
 
-			{
-				// Delete half of the dependencies in the local DM to simulate a
-				// partially present subset
-				list, err := filepath.Glob(localDM.dir.join("src", "*"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
-				half := list[:len(list)/2]
-				for _, p := range half {
-					if err := os.RemoveAll(p); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
+			// Delete half of the dependencies in the local DM to simulate a
+			// partially present subset
+			localDM.deleteHalfDeps(t)
 
 			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
 
@@ -199,6 +203,31 @@ func TestDMReqsRemote(t *testing.T) {
 			}, vs)
 		})
 	}
+}
+
+func TestDMPathOrDownload(t *testing.T) {
+	remoteDM := blogScenario(t)
+	localDM := testDepMgr(t) // no deps
+
+	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+
+	localDM.dependencyClient = &dependencyClient{
+		client: &http.Client{},
+		host:   server.URL,
+	}
+
+	path, err := localDM.ModulePathOrDownload(context.Background(), Version{"A", "1.1.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This is strange, since we just happen to know that "A@1.1.0" is going to
+	// be the default config for remoteDM. We might want to fetch the "A@1.1.0"
+	// config more directly in the future
+	require.Equal(t, cfg, remoteDM.cfg)
 }
 
 func TestVersion_mvsVersion(t *testing.T) {
@@ -303,7 +332,6 @@ func TestPushJob(t *testing.T) {
 	)
 
 	if err := PostJob(server.URL, "x.y", ""); err != nil {
-		fmtutil.Printpvln(err)
 		t.Fatal(err)
 	}
 	dc := &dependencyClient{

@@ -101,3 +101,13 @@ type Dependencies interface {
 }
 
 ```
+
+
+-------------------------
+
+
+We need the load() statements to be loaded in parallel so that we can download needed dependencies on the fly without blocking. These load statements wil have to download the missing dependencies that are references in the bramble.toml and then they'll have to crawl sub0dependencies using the version numbers from bramble.lock. This would allow a `bramble build` that only downloads what it needs.
+
+Oh, or maybe not? We could also ignore inputs, and pass through lazy-load modules. Annoyingly this kills parallelism Yah I think we have to download the dependencies, but then the build-response optimizations still apply after the sources are downloaded.
+
+Ok, so parallel loading, fetch what we need.

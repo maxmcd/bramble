@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
@@ -61,6 +62,41 @@ func (dd dir) localModuleLocation(m Version) (path string) {
 	return dd.join("src", m.String())
 }
 
+func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path string, err error) {
+	path = dm.dir.localModuleLocation(m)
+	// If we have it, return it
+	if fileutil.DirExists(path) {
+		return path, err
+	}
+	// If we don't have it, download it
+	body, err := dm.dependencyClient.getModuleSource(ctx, m)
+	if err != nil {
+		return "", err
+	}
+	defer body.Close()
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return "", err
+	}
+	// Copy body to file, we can stream the unarchive if we figure out how to
+	// get the final size earlier and/or seek over http.
+	var name string
+	{
+		f, err := os.CreateTemp("", "")
+		if err != nil {
+			return "", err
+		}
+		name = f.Name()
+		_, _ = io.Copy(f, body)
+		if err := f.Close(); err != nil {
+			return "", err
+		}
+	}
+	if err := chunkedarchive.FileUnarchive(name, path); err != nil {
+		return "", err
+	}
+	return path, os.RemoveAll(name)
+}
+
 type Version struct {
 	Module  string
 	Version string
@@ -91,28 +127,24 @@ func configVersions(cfg config.Config) (vs []Version) {
 	return vs
 }
 
-func (deps *Manager) existsLocally(m Version) bool {
-	return fileutil.PathExists(deps.dir.localModuleLocation(m))
+func (dm *Manager) existsLocally(m Version) bool {
+	return fileutil.PathExists(dm.dir.localModuleLocation(m))
 }
 
-func (deps *Manager) localModuleDependencies(m Version) (vs []Version, err error) {
-	cfg, err := config.ReadConfig(filepath.Join(deps.dir.localModuleLocation(m), "bramble.toml"))
+func (dm *Manager) localModuleDependencies(m Version) (vs []Version, err error) {
+	cfg, err := config.ReadConfig(filepath.Join(dm.dir.localModuleLocation(m), "bramble.toml"))
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
 }
 
-func (deps *Manager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
-	cfg, err := deps.dependencyClient.getModuleConfig(ctx, m)
+func (dm *Manager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
+	cfg, err := dm.dependencyClient.getModuleConfig(ctx, m)
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
-}
-
-func (deps *Manager) allVersions(ctx context.Context, module string) (vs []string, err error) {
-	return deps.dependencyClient.getModuleVersions(ctx, module)
 }
 
 func PostJob(url, module, reference string) (err error) {
@@ -124,6 +156,7 @@ func PostJob(url, module, reference string) (err error) {
 	}
 	for {
 		job, err := dc.getJob(context.Background(), id)
+		spew.Dump(job)
 		if err != nil {
 			return err
 		}
@@ -138,8 +171,8 @@ func PostJob(url, module, reference string) (err error) {
 	return nil
 }
 
-func (deps *Manager) reqs() mvs.Reqs {
-	return dependencyManagerReqs{deps: deps}
+func (dm *Manager) reqs() mvs.Reqs {
+	return dependencyManagerReqs{deps: dm}
 }
 
 type dependencyManagerReqs struct {
@@ -151,10 +184,18 @@ var _ mvs.Reqs = dependencyManagerReqs{}
 func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, err error) {
 	v := versionFromMVSVersion(m)
 	var vs []Version
-	if r.deps.existsLocally(v) {
+
+	switch {
+	case r.deps.cfg.Module.Name == v.Module && r.deps.cfg.Module.Version == v.Version:
+		for module, cd := range r.deps.cfg.Dependencies {
+			vs = append(vs, Version{Module: module, Version: cd.Version})
+			sortVersions(vs)
+		}
+	case r.deps.existsLocally(v):
 		vs, err = r.deps.localModuleDependencies(v)
-	} else {
+	default:
 		// TODO: tracing
+		// TODO: cache this result locally?
 		vs, err = r.deps.remoteModuleDependencies(context.Background(), v)
 	}
 	if err != nil {
@@ -212,7 +253,7 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 	return job, dc.request(ctx,
 		http.MethodGet,
 		"/job/"+id,
-		"application/json",
+		"",
 		nil,
 		&job)
 }
@@ -221,9 +262,17 @@ func (dc *dependencyClient) getModuleVersions(ctx context.Context, name string) 
 	return vs, dc.request(ctx,
 		http.MethodGet,
 		"/module/"+name,
-		"application/json",
+		"",
 		nil,
 		&vs)
+}
+
+func (dc *dependencyClient) getModuleSource(ctx context.Context, m Version) (body io.ReadCloser, err error) {
+	return body, dc.request(ctx,
+		http.MethodGet,
+		"/module/source/"+m.String(),
+		"",
+		nil, &body)
 }
 
 func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg config.Config, err error) {
@@ -232,7 +281,7 @@ func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg
 	if err := dc.request(ctx,
 		http.MethodGet,
 		"/module/config/"+m.String(),
-		"application/json",
+		"",
 		nil, w); err != nil {
 		return cfg, err
 	}

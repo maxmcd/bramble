@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.15.0
 	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/containerd/console v1.0.3
+	github.com/davecgh/go-spew v1.1.1
 	github.com/djherbis/buffer v1.2.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95

@@ -420,9 +420,10 @@ module cache.
 			count++
 			cancel()
 			if count == 3 {
-				fmt.Println("Three interrupt attempts, exiting")
+				fmt.Println("Three interrupt attempts, exiting immediately")
 				os.Exit(1)
 			}
+			fmt.Println("Got interrupt, shutting down")
 		}
 	}()
 	var exitCode int

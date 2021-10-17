@@ -102,10 +102,11 @@ type entry struct {
 }
 
 func (rt *runtime) moduleToPath(module string) (path string, err error) {
+
 	if !strings.HasPrefix(module, rt.moduleName) {
 		// TODO: support other modules
 		debug.PrintStack()
-		err = errors.Errorf("We don't support other projects yet! %s", module)
+		err = errors.Errorf("We don't support external modules yet! %s", module)
 		return
 	}
 

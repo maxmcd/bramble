@@ -88,30 +88,41 @@ func Request(ctx context.Context, client *http.Client, method, url, contentType 
 	if err != nil {
 		return err
 	}
-	defer httpResp.Body.Close()
-	var buf bytes.Buffer
-	if httpResp.Body != nil {
-		if _, err = io.Copy(&buf, httpResp.Body); err != nil {
-			return errors.Wrap(err, "error reading body")
-		}
-	}
 	if httpResp.StatusCode == http.StatusNotFound {
+		httpResp.Body.Close()
 		return os.ErrNotExist
 	}
 	if httpResp.StatusCode != http.StatusOK {
+		defer httpResp.Body.Close()
+		var buf bytes.Buffer
+		if _, err = io.Copy(&buf, httpResp.Body); err != nil {
+			return errors.Wrap(err, "error reading body")
+		}
 		return errors.Errorf("Unexpected response code %d: %s",
 			httpResp.StatusCode, buf.String())
 	}
 	if resp == nil {
+		httpResp.Body.Close()
 		return nil
 	}
-	switch v := resp.(type) {
-	case *string:
-		*v = buf.String()
-	case io.Writer:
-		_, err = io.Copy(v, &buf)
-	default:
-		err = json.Unmarshal(buf.Bytes(), resp)
+	if v, ok := resp.(*io.ReadCloser); ok {
+		*v = httpResp.Body
+		return nil
+	}
+	defer httpResp.Body.Close()
+	{
+		var buf bytes.Buffer
+		if _, err = io.Copy(&buf, httpResp.Body); err != nil {
+			return errors.Wrap(err, "error reading body")
+		}
+		switch v := resp.(type) {
+		case *string:
+			*v = buf.String()
+		case io.Writer:
+			_, err = io.Copy(v, &buf)
+		default:
+			err = json.Unmarshal(buf.Bytes(), resp)
+		}
 	}
 	return err
 }
