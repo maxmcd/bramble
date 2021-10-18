@@ -429,8 +429,9 @@ module cache.
 	var exitCode int
 	if err := app.RunContext(ctx, os.Args); err != nil {
 		if er, ok := errors.Cause(err).(store.ExecError); ok {
-			fmt.Println(er.Logs.Len())
+			_, _ = er.Logs.Seek(0, 0)
 			_, _ = io.Copy(os.Stdout, er.Logs)
+			_ = er.Logs.Close()
 		}
 		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
 			exitCode = er.ExitCode

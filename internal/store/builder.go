@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/certifi/gocertifi"
-	"github.com/djherbis/buffer"
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
@@ -313,12 +312,16 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
 		mounts = append(mounts, outputPath)
 	}
-	buf := buffer.NewUnboundedBuffer(32*1024, 100*1024*1024)
+	f, err := os.CreateTemp("", "")
+	if err != nil {
+		return err
+	}
+	buf := bufio.NewWriter(f)
 	sbx := sandbox.Sandbox{
 		Args:    append([]string{builderLocation}, drv.Args...),
-		Stdout:  os.Stdout,
+		Stdout:  buf,
 		Network: drv.Network,
-		Stderr:  os.Stderr,
+		Stderr:  buf,
 		Env:     env,
 		Dir:     filepath.Join(buildDir, drv.Source.RelativeBuildPath),
 		Mounts:  mounts,
@@ -328,16 +331,17 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		sbx.Args = []string{builderLocation}
 		sbx.Stdin = os.Stdin
 	}
-	defer buf.Reset()
 	if err := sbx.Run(ctx); err != nil {
-		return ExecError{Err: err, Logs: buf}
+		_ = buf.Flush()
+		return ExecError{Err: err, Logs: f}
 	}
-	return nil
+	_ = f.Close()
+	return os.Remove(f.Name())
 }
 
 type ExecError struct {
 	Err  error
-	Logs buffer.Buffer
+	Logs *os.File
 }
 
 func (err ExecError) Error() string {

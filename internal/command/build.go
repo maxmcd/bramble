@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
@@ -65,6 +66,7 @@ type runBuildOptions struct {
 	check        bool
 	shell        bool
 	includeTests bool
+	quiet        bool
 	callback     func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation)
 }
 
@@ -94,7 +96,6 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 
 		// job := jobPrinter.StartJob(drv.Name)
 		// defer jobPrinter.EndJob(job)
-		fmt.Println("building", drv.Name, dep.Hash)
 		derivationDataLock.Lock()
 		// Populate the input derivation from previous builds
 		for _, dep := range drv.Dependencies {
@@ -131,7 +132,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			return nil, nil, err
 		}
 		var didBuild bool
-		// start := time.Now()
+		start := time.Now()
 
 		runShell := false
 		if len(output.Output) == 1 && ops.shell {
@@ -174,12 +175,14 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			ops.callback(dep, drv, buildDrv)
 		}
 		_ = didBuild
-		// ts := time.Since(start).String()
+		ts := time.Since(start).String()
 		if !didBuild && !ops.check {
-			// job.ReplaceTS("(cached)")
+			ts = "(cached)"
 		}
-		fmt.Println("built", drv.Name, didBuild)
-		// fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
+		// Don't print if we're quiet, unless we built something
+		if !ops.quiet || didBuild {
+			fmt.Printf("✔ %s - %s\n", buildDrv.Name, ts)
+		}
 		derivationDataLock.Lock()
 		// allDerivations = append(allDerivations, buildDrv)
 		// Store the derivation outputs in the map for reference when building
