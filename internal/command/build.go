@@ -127,6 +127,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 			Outputs:      drv.Outputs,
 			Platform:     drv.Platform,
 			Source:       source,
+			Target:       drv.Target,
 		})
 		if err != nil {
 			return nil, nil, err

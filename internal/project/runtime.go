@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/internal/assert"
+	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 	"go.starlark.net/repl"
@@ -16,7 +17,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 )
 
-func newRuntime(workingDirectory, projectLocation, moduleName string, externalModuleFetcher externalModuleFetcher) *runtime {
+func newRuntime(workingDirectory, projectLocation, moduleName, target string, externalModuleFetcher externalModuleFetcher) *runtime {
 	rt := &runtime{
 		workingDirectory:      workingDirectory,
 		projectLocation:       projectLocation,
@@ -32,13 +33,14 @@ func newRuntime(workingDirectory, projectLocation, moduleName string, externalMo
 		repl.PrintError(err)
 		panic(err)
 	}
+
 	assertGlobals, _ := assert.LoadAssertModule()
 	rt.predeclared = starlark.StringDict{
 		"derivation": derivation,
 		"test":       starlark.NewBuiltin("test", rt.testBuiltin),
 		"run":        starlark.NewBuiltin("run", rt.runBuiltin),
 		"assert":     assertGlobals["assert"],
-		"sys":        starlarkSys,
+		"sys":        starlarkSys(target),
 		"files": starlark.NewBuiltin("files", filesBuiltin{
 			projectLocation: rt.projectLocation,
 		}.filesBuiltin),
@@ -77,17 +79,23 @@ type runtime struct {
 
 type externalModuleFetcher func(ctx context.Context, module string) (path string, err error)
 
-var starlarkSys = &starlarkstruct.Module{
-	Name: "sys",
-	Members: starlark.StringDict{
-		"os":       starlark.String(stdruntime.GOOS),
-		"arch":     starlark.String(stdruntime.GOARCH),
-		"platform": starlark.String(stdruntime.GOOS + "-" + stdruntime.GOARCH),
-	},
+func starlarkSys(target string) *starlarkstruct.Module {
+	if target == "" {
+		target = types.Platform()
+	}
+	return &starlarkstruct.Module{
+		Name: "sys",
+		Members: starlark.StringDict{
+			"os":       starlark.String(stdruntime.GOOS),
+			"arch":     starlark.String(stdruntime.GOARCH),
+			"platform": starlark.String(types.Platform()),
+			"target":   starlark.String(target),
+		},
+	}
 }
 
 func (p *Project) REPL() {
-	rt := newRuntime(p.wd, p.location, p.config.Module.Name, p.fetchExternalModule)
+	rt := newRuntime(p.wd, p.location, p.config.Module.Name, "", p.fetchExternalModule)
 	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
 }
 
@@ -98,6 +106,10 @@ func (rt *runtime) relativePathFromConfig() string {
 		return ""
 	}
 	return relativePath
+}
+
+func (rt *runtime) platform() string {
+	return rt.predeclared["sys"].(*starlarkstruct.Module).Members["platform"].(starlark.String).GoString()
 }
 
 type entry struct {

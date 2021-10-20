@@ -20,6 +20,7 @@ type NewDerivationOptions struct {
 	Outputs      []string
 	Platform     string
 	Source       Source
+	Target       string
 	Network      bool
 }
 

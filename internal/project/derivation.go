@@ -54,12 +54,15 @@ type Derivation struct {
 	// Env are environment variables set during the build
 	Env map[string]string
 
-	Name     string
-	Network  bool `json:",omitempty"`
-	Outputs  []string
+	Name    string
+	Network bool `json:",omitempty"`
+	Outputs []string
+
 	Platform string
 
 	Sources FilesList
+
+	Target string `json:",omitempty"`
 }
 
 var (
@@ -233,13 +236,18 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 		"sources?", &drv.Sources,
 		"env?", &env,
 		"outputs?", &outputs,
-		"platform?", &drv.Platform,
+		"target?", &drv.Platform,
 		"network?", &drv.Network,
 		"_internal_key?", &internalKey,
 	); err != nil {
 		return
 	}
 
+	drv.Platform = rt.platform()
+
+	if drv.Platform == drv.Target {
+		drv.Target = ""
+	}
 	if (rt.internalKey != internalKey.BigInt().Int64()) && drv.Network {
 		return drv, errors.New("derivations aren't allowed to use the network")
 	}

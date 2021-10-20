@@ -1,5 +1,5 @@
-load("github.com/maxmcd/busybox")
+# load("github.com/maxmcd/busybox")
 
 
-def ash():
-    return run(busybox.busybox(), "sh")
+# def ash():
+#     return run(busybox.busybox(), "sh")

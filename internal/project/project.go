@@ -189,7 +189,7 @@ func (p *Project) ListModuleDoc() (modules []ModuleDoc, err error) {
 }
 
 func (p *Project) parsedModuleDocFromPath(path string) (m ModuleDoc, err error) {
-	rt := newRuntime("", "", "", nil) // don't need a real one, just need the list of predeclared values
+	rt := newRuntime("", "", "", "", nil) // don't need a real one, just need the list of predeclared values
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return m, errors.Wrap(err, "list functions path is invalid")

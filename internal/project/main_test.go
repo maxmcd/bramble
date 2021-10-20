@@ -22,7 +22,7 @@ func newTestRuntime(t *testing.T, wd string) *runtime {
 	projectLocation, err := filepath.Abs("../../")
 	require.NoError(t, err)
 
-	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", nil)
+	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", "", nil)
 	return rt
 }
 
