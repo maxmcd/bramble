@@ -29,6 +29,7 @@ require (
 	go.uber.org/zap v1.19.1
 	golang.org/x/mod v0.4.2
 	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
+	gotest.tools/gotestsum v1.7.0 // indirect
 )
 
 replace (

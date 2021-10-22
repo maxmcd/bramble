@@ -1,0 +1,4 @@
+"""at one point the module finding function would skip a dir after reading files
+in that dir, so this file is added to ensure that we don't read a file that
+appears alphabetically before bramble.toml
+"""
