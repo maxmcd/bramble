@@ -32,8 +32,8 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 		})
 	}
 
-	// Building everything in the project
-	modules, err := b.project.FindAllModules()
+	// Building everything in this directory and its children
+	modules, err := b.project.FindAllModules(b.project.WD())
 	if err != nil {
 		return output, err
 	}

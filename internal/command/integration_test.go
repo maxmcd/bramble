@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -99,7 +98,13 @@ func TestDep_handler(t *testing.T) {
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
-	if err := dependency.PostJob("http://localhost:2726", "github.com/maxmcd/bramble", "dependencies"); err != nil {
-		t.Fatal(err)
+	{
+		cmd := exec.Command("bramble", "publish", "github.com/maxmcd/busybox")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
 	}
+
 }

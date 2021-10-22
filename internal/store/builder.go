@@ -324,7 +324,7 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		}
 		buf = bufio.NewWriter(f)
 		stdout, stderr = buf, buf
-
+		// Clean up if we use the
 		defer func() {
 			if err != nil {
 				_ = buf.Flush()

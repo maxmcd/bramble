@@ -70,3 +70,45 @@ func TestProject_ListFunctions(t *testing.T) {
 		})
 	}
 }
+
+func TestProject_FindAllModules(t *testing.T) {
+	tests := []struct {
+		wd                    string
+		path                  string
+		modulesContains       []string
+		modulesDoesNotContain []string
+		wantErr               bool
+	}{
+		{"../../", "./tests",
+			[]string{"github.com/maxmcd/bramble/tests/basic"},
+			[]string{"github.com/maxmcd/bramble"}, false},
+		{"../../", ".",
+			[]string{"github.com/maxmcd/bramble/lib"}, nil, false},
+		{"../../../", ".", nil, nil, true},
+		{"./testdata/project", ".", []string{"testproject/a"}, nil, false},
+		{"./testdata/", ".", nil, []string{
+			"github.com/maxmcd/bramble/internal/project/testdata/project/a",
+			"github.com/maxmcd/bramble/internal/project/testdata/project/",
+			"github.com/maxmcd/bramble/internal/project/testdata/project",
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.wd+"&"+tt.path, func(t *testing.T) {
+			p, err := NewProject(tt.wd)
+			if err != nil && tt.wantErr {
+				return
+			}
+			gotModules, err := p.FindAllModules(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Project.FindAllModules() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			for _, m := range tt.modulesContains {
+				require.Contains(t, gotModules, m)
+			}
+			for _, m := range tt.modulesDoesNotContain {
+				require.NotContains(t, gotModules, m)
+			}
+		})
+	}
+}

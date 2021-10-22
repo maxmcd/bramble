@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
@@ -47,7 +46,7 @@ func fixUpScript(script string) string {
 
 func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
 	var err error
-	dir := fileutil.TestTmpDir(t)
+	dir := t.TempDir()
 	previous := os.Getenv("BRAMBLE_PATH")
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir); os.Setenv("BRAMBLE_PATH", previous) })

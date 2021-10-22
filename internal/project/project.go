@@ -3,6 +3,7 @@ package project
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -210,16 +211,22 @@ func (p *Project) parsedModuleDocFromPath(path string) (m ModuleDoc, err error) 
 	return m, nil
 }
 
-func (p *Project) FindAllModules() (modules []string, err error) {
-	return modules, filepath.Walk(
-		p.Location(),
-		func(path string, fi os.FileInfo, err error) error {
+func (p *Project) FindAllModules(path string) (modules []string, err error) {
+	path, err = fileutil.Abs(p.wd, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := fileutil.PathWithinDir(p.location, path); err != nil {
+		return nil, err
+	}
+	return modules, filepath.WalkDir(
+		path,
+		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if filepath.Base(path) == "bramble.toml" &&
-				path != filepath.Join(p.Location(), "bramble.toml") {
-				return filepath.SkipDir
+			if path != p.location && d.IsDir() && fileutil.FileExists(filepath.Join(path, "bramble.toml")) {
+				return fs.SkipDir
 			}
 			// TODO: ignore .git, ignore .gitignore?
 			if strings.HasSuffix(path, ".bramble") {
