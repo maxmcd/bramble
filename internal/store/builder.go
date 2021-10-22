@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -41,6 +42,8 @@ func (s *Store) NewBuilder(lockfileWriter types.LockfileWriter) *Builder {
 type Builder struct {
 	store          *Store
 	lockfileWriter types.LockfileWriter
+
+	disableSandbox bool
 }
 
 type BuildDerivationOptions struct {
@@ -333,6 +336,17 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 			_ = f.Close()
 			err = os.Remove(f.Name())
 		}()
+	}
+	if b.disableSandbox {
+		cmd := exec.Cmd{
+			Path:   builderLocation,
+			Args:   append([]string{builderLocation}, drv.Args...),
+			Stdout: stdout,
+			Stderr: stderr,
+			Env:    env,
+			Dir:    filepath.Join(buildDir, drv.Source.RelativeBuildPath),
+		}
+		return cmd.Run()
 	}
 	sbx := sandbox.Sandbox{
 		Args:    append([]string{builderLocation}, drv.Args...),

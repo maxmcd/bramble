@@ -64,6 +64,8 @@ func TestFetchURLBuilder(t *testing.T) {
 			args{[]byte("hi"), "hi.txt", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r", ""}, ""},
 		{"hi wrong hash",
 			args{[]byte("hi"), "hi.txt", "wronghash", ""}, "doesn't match"},
+		{"hi bad url",
+			args{nil, "", "", ""}, "requires the environment variable"},
 		{"tar.gz",
 			args{gziptar.Bytes(), "hi.tar.gz", "", "vl3rnztinfimffplwkrj45vdt4ihq72e"}, ""},
 		{"tar.gz",
@@ -87,6 +89,9 @@ func TestFetchURLBuilder(t *testing.T) {
 			if tt.args.drvHash != "" {
 				env["hash"] = tt.args.drvHash
 			}
+			if tt.args.urlPath == "" {
+				delete(env, "url")
+			}
 
 			builder := store.NewBuilder(lfw)
 			_, _, err = builder.BuildDerivation(context.Background(), Derivation{
@@ -101,6 +106,7 @@ func TestFetchURLBuilder(t *testing.T) {
 				} else {
 					require.Contains(t, err.Error(), tt.errContains)
 				}
+				return
 			}
 			fmt.Println(lfw)
 			if tt.args.confirmHash != "" {
@@ -111,6 +117,14 @@ func TestFetchURLBuilder(t *testing.T) {
 				}
 				require.Equal(t, tt.args.confirmHash, first)
 			}
+			// Ensure rebuild is possible
+			_, _, err = builder.BuildDerivation(context.Background(), Derivation{
+				Name:        "test",
+				Builder:     "basic_fetch_url",
+				OutputNames: []string{"out"},
+				Env:         env,
+			}, BuildDerivationOptions{})
+			require.NoError(t, err)
 		})
 	}
 }
