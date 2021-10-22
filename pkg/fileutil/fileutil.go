@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"testing"
 
 	"github.com/pkg/errors"
 )
@@ -394,4 +395,19 @@ func Abs(wd, path string) (string, error) {
 		return filepath.Clean(path), nil
 	}
 	return filepath.Join(wd, path), nil
+}
+
+// TestTmpDir is intended to be used in tests and will remove itself when the
+// test run is over
+func TestTmpDir(t *testing.T) string {
+	dir, err := ioutil.TempDir("", "bramble-test-")
+	if err != nil {
+		panic(err)
+	}
+	if t != nil {
+		t.Cleanup(func() {
+			os.RemoveAll(dir)
+		})
+	}
+	return dir
 }

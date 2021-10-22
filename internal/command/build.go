@@ -84,7 +84,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	if len(output.Output) != 1 && ops.shell {
 		return nil, errors.New("Can't open a shell if the function doesn't return a single derivation")
 	}
-	builder := b.store.NewBuilder(false, b.project.LockfileWriter())
+	builder := b.store.NewBuilder(b.project.LockfileWriter())
 	derivationIDUpdates := map[project.Dependency]store.DerivationOutput{}
 	var derivationDataLock sync.Mutex
 

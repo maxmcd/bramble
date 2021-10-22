@@ -31,7 +31,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (s *Store) NewBuilder(rootless bool, lockfileWriter types.LockfileWriter) *Builder {
+func (s *Store) NewBuilder(lockfileWriter types.LockfileWriter) *Builder {
 	return &Builder{
 		store:          s,
 		lockfileWriter: lockfileWriter,
