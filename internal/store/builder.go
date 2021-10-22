@@ -47,7 +47,8 @@ type BuildDerivationOptions struct {
 	// ForceBuild will make sure we build even if the derivation already exists
 	ForceBuild bool
 
-	Shell bool
+	Shell   bool
+	Verbose bool
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
@@ -79,7 +80,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	}
 	// logger.Print("Building derivation", filename)
 	logger.Debugw(drv.PrettyJSON())
-	if drv, err = b.buildDerivation(ctx, drv, opts.Shell); err != nil {
+	if drv, err = b.buildDerivation(ctx, drv, opts); err != nil {
 		return drv, false, errors.Wrap(err, "error building "+filename)
 	}
 	_, err = b.store.WriteDerivation(drv)
@@ -87,7 +88,7 @@ func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts Buil
 	return drv, true, err
 }
 
-func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell bool) (Derivation, error) {
+func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (Derivation, error) {
 	var err error
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.buildDerivation")
@@ -114,7 +115,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 		return drv, err
 	}
 
-	if shell && (drv.Builder == "basic_fetch_url" || drv.Builder == "fetch_git") {
+	if opts.Shell && (drv.Builder == "basic_fetch_url" || drv.Builder == "fetch_git") {
 		return drv, errors.New("can't spawn a shell with a builtin builder")
 	}
 
@@ -131,7 +132,7 @@ func (b *Builder) buildDerivation(ctx context.Context, drv Derivation, shell boo
 	case "basic_fetch_url":
 		err = b.fetchURLBuilder(ctx, drvCopy, outputPaths)
 	default:
-		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, shell)
+		err = b.regularBuilder(ctx, drvCopy, buildDir, outputPaths, opts)
 	}
 	if err != nil {
 		return drv, err
@@ -295,7 +296,7 @@ func (b *Builder) downloadFile(ctx context.Context, url string) (dir, path strin
 }
 
 func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir string,
-	outputPaths map[string]string, shell bool) (err error) {
+	outputPaths map[string]string, opts BuildDerivationOptions) (err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.regularBuilder")
 	defer span.End()
@@ -312,31 +313,45 @@ func (b *Builder) regularBuilder(ctx context.Context, drv Derivation, buildDir s
 		env = append(env, fmt.Sprintf("%s=%s", outputName, outputPath))
 		mounts = append(mounts, outputPath)
 	}
-	f, err := os.CreateTemp("", "")
-	if err != nil {
-		return err
+	var stdout io.Writer = os.Stdout
+	var stderr io.Writer = os.Stderr
+	var f *os.File
+	var buf *bufio.Writer
+	if !opts.Verbose {
+		f, err = os.CreateTemp("", "")
+		if err != nil {
+			return err
+		}
+		buf = bufio.NewWriter(f)
+		stdout, stderr = buf, buf
+
+		defer func() {
+			if err != nil {
+				_ = buf.Flush()
+				return
+			}
+			_ = f.Close()
+			err = os.Remove(f.Name())
+		}()
 	}
-	buf := bufio.NewWriter(f)
 	sbx := sandbox.Sandbox{
 		Args:    append([]string{builderLocation}, drv.Args...),
-		Stdout:  buf,
+		Stdout:  stdout,
 		Network: drv.Network,
-		Stderr:  buf,
+		Stderr:  stderr,
 		Env:     env,
 		Dir:     filepath.Join(buildDir, drv.Source.RelativeBuildPath),
 		Mounts:  mounts,
 	}
-	if shell {
+	if opts.Shell {
 		fmt.Printf("Opening shell for derivation %q\n", drv.Name)
 		sbx.Args = []string{builderLocation}
 		sbx.Stdin = os.Stdin
 	}
 	if err := sbx.Run(ctx); err != nil {
-		_ = buf.Flush()
 		return ExecError{Err: err, Logs: f}
 	}
-	_ = f.Close()
-	return os.Remove(f.Name())
+	return nil
 }
 
 type ExecError struct {

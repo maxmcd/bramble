@@ -169,12 +169,16 @@ type FunctionDoc struct {
 	Definition string
 }
 
-func (p *Project) ListModuleDoc() (modules []ModuleDoc, err error) {
-	files, err := filepath.Glob("*.bramble")
+func (p *Project) ListModuleDoc(wd string) (modules []ModuleDoc, err error) {
+	wd, err = filepath.Abs(wd)
+	if err != nil {
+		return nil, err
+	}
+	files, err := filepath.Glob(filepath.Join(wd, "*.bramble"))
 	if err != nil {
 		return nil, errors.Wrap(err, "error finding bramble files in the current directory")
 	}
-	dirs, err := filepath.Glob("*/default.bramble")
+	dirs, err := filepath.Glob(filepath.Join(wd, "*/default.bramble"))
 	if err != nil {
 		return nil, errors.Wrap(err, "error finding default.bramble files in subdirectories")
 	}

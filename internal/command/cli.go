@@ -117,6 +117,17 @@ bramble build ./tests
 						Value: false,
 						Usage: "verify that builds are reproducible by running them twice and comparing their output",
 					},
+					&cli.StringFlag{
+						Name:  "target",
+						Value: "",
+						Usage: "the target that you'd like to build for",
+					},
+					&cli.BoolFlag{
+						Name:    "verbose",
+						Aliases: []string{"v"},
+						Value:   false,
+						Usage:   "print build logs",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
@@ -125,12 +136,15 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{})
+					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{
+						target: c.String("target"),
+					})
 					if err != nil {
 						return err
 					}
 					_, err = b.runBuild(ctx, output, runBuildOptions{
-						check: c.Bool("check"),
+						check:   c.Bool("check"),
+						verbose: c.Bool("verbose"),
 					})
 					return err
 				},
@@ -273,7 +287,15 @@ their public functions with documentation. If an immediate subdirectory has a
 					if err != nil {
 						return err
 					}
-					modules, err := project.ListModuleDoc()
+					wd := project.WD()
+					args := c.Args().Slice()
+					if len(args) > 1 {
+						return errors.New("bramble ls takes one or zero arguments")
+					}
+					if len(args) == 1 {
+						wd = args[0]
+					}
+					modules, err := project.ListModuleDoc(wd)
 					if err != nil {
 						return err
 					}
@@ -428,7 +450,7 @@ module cache.
 	}()
 	var exitCode int
 	if err := app.RunContext(ctx, os.Args); err != nil {
-		if er, ok := errors.Cause(err).(store.ExecError); ok {
+		if er, ok := errors.Cause(err).(store.ExecError); ok && er.Logs != nil {
 			_, _ = er.Logs.Seek(0, 0)
 			_, _ = io.Copy(os.Stdout, er.Logs)
 			_ = er.Logs.Close()

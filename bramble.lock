@@ -8,5 +8,6 @@
   "fetch_url https://brmbl.s3.amazonaws.com/ca-certificates.crt" = "qucryjlyakz2x2asktkm6dtzpx4qz5rj"
   "fetch_url https://brmbl.s3.amazonaws.com/file-links.tar.gz" = "rdk4ljksk75wjx7fflcv5vyc7a4dgbbt"
   "fetch_url https://github.com/denoland/deno/releases/download/v1.14.0/deno-x86_64-unknown-linux-gnu.zip" = "k5fftqwt46izovwwttzh5ebmjiccxuhz"
+  "fetch_url https://golang.org/dl/go1.17.2.linux-amd64.tar.gz" = "fm3ujt23vqou74mr5fz5dyygzisllhnq"
   "fetch_url https://maxmcd.com/" = "y6yjtwbeq54vudyqh573msqquk67lbd6"
   "fetch_url https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.946+6237dc0ab.tar.xz" = "3yhnkjln5ctjemvbvyf7uiff4523lway"

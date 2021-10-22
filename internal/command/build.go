@@ -15,19 +15,20 @@ import (
 
 type execModuleOptions struct {
 	includeTests bool
+	target       string
 }
 
-func (b bramble) execModule(ctx context.Context, command string, args []string, ops execModuleOptions) (output project.ExecModuleOutput, err error) {
+func (b bramble) execModule(ctx context.Context, command string, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "command.execModule "+command+" "+fmt.Sprintf("%q", args))
 	defer span.End()
-
 	if len(args) > 0 {
 		// Building something specific
 		return b.project.ExecModule(ctx, project.ExecModuleInput{
 			Command:      command,
 			Arguments:    args,
-			IncludeTests: ops.includeTests,
+			IncludeTests: opt.includeTests,
+			Target:       opt.target,
 		})
 	}
 
@@ -65,6 +66,7 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 type runBuildOptions struct {
 	check        bool
 	shell        bool
+	verbose      bool
 	includeTests bool
 	quiet        bool
 	callback     func(dep project.Dependency, drv project.Derivation, buildDrv store.Derivation)
@@ -147,6 +149,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 
 		if buildDrv, didBuild, err = builder.BuildDerivation(ctx, buildDrv, store.BuildDerivationOptions{
 			Shell:      runShell,
+			Verbose:    ops.verbose,
 			ForceBuild: runShell,
 		}); err != nil {
 			return nil, nil, err
