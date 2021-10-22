@@ -1,9 +1,11 @@
 package store
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
-	"io"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,24 +30,44 @@ func (lfw testLockfileWriter) LookupEntry(k string) (v string, found bool) {
 
 func TestFetchURLBuilder(t *testing.T) {
 	type args struct {
-		httpResp    io.Reader
+		httpResp    []byte
 		urlPath     string
 		drvHash     string
 		confirmHash string
 	}
+
+	gziptar := bytes.NewBuffer(nil)
+	{
+		gzw := gzip.NewWriter(gziptar)
+		tw := tar.NewWriter(gzw)
+		_ = tw.WriteHeader(&tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeReg,
+			Size:     7,
+			Mode:     int64(0755),
+		})
+		_, _ = tw.Write([]byte("bramble"))
+		_ = tw.Close()
+		_ = gzw.Close()
+	}
+
 	tests := []struct {
 		name        string
 		args        args
 		errContains string
 	}{
 		{"hi",
-			args{bytes.NewBufferString("hi"), "hi.txt", "", ""}, ""},
+			args{[]byte("hi"), "hi.txt", "", ""}, ""},
 		{"hi confirm",
-			args{bytes.NewBufferString("hi"), "hi.txt", "", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r"}, ""},
+			args{[]byte("hi"), "hi.txt", "", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r"}, ""},
 		{"hi confirm drv",
-			args{bytes.NewBufferString("hi"), "hi.txt", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r", ""}, ""},
+			args{[]byte("hi"), "hi.txt", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r", ""}, ""},
 		{"hi wrong hash",
-			args{bytes.NewBufferString("hi"), "hi.txt", "wronghash", ""}, "doesn't match"},
+			args{[]byte("hi"), "hi.txt", "wronghash", ""}, "doesn't match"},
+		{"tar.gz",
+			args{gziptar.Bytes(), "hi.tar.gz", "", "vl3rnztinfimffplwkrj45vdt4ihq72e"}, ""},
+		{"tar.gz",
+			args{gziptar.Bytes(), "hi.tar.gz", "vl3rnztinfimffplwkrj45vdt4ihq72e", ""}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,7 +78,7 @@ func TestFetchURLBuilder(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 				// will only work once
-				_, _ = io.Copy(rw, tt.args.httpResp)
+				rw.Write(tt.args.httpResp)
 			}))
 
 			lfw := testLockfileWriter{}
@@ -68,6 +90,7 @@ func TestFetchURLBuilder(t *testing.T) {
 
 			builder := store.NewBuilder(lfw)
 			_, _, err = builder.BuildDerivation(context.Background(), Derivation{
+				Name:        "test",
 				Builder:     "basic_fetch_url",
 				OutputNames: []string{"out"},
 				Env:         env,
@@ -79,6 +102,7 @@ func TestFetchURLBuilder(t *testing.T) {
 					require.Contains(t, err.Error(), tt.errContains)
 				}
 			}
+			fmt.Println(lfw)
 			if tt.args.confirmHash != "" {
 				var first string
 				for _, v := range lfw {
