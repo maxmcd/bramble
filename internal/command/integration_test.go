@@ -127,7 +127,7 @@ func TestNative(t *testing.T) {
 	initIntegrationTest(t)
 
 	app := cliApp()
-	if err := app.Run([]string{"build", "github.com/maxmcd/bramble:all"}); err != nil {
+	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble:all"}); err != nil {
 		t.Fatal(err)
 	}
 }
