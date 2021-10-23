@@ -44,6 +44,17 @@ func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out
 		return
 	}
 
+	if !filepath.IsAbs(sources.ProjectLocation) {
+		return Source{}, errors.New("Project location must be absolute")
+	}
+
+	if filepath.IsAbs(sources.Location) {
+		if err := fileutil.PathWithinDir(sources.ProjectLocation, sources.Location); err != nil {
+			return Source{}, err
+		}
+		sources.Location, _ = filepath.Rel(sources.ProjectLocation, sources.Location)
+	}
+
 	absDir := filepath.Join(sources.ProjectLocation, sources.Location)
 
 	files := []string{}
