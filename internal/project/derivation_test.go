@@ -20,8 +20,7 @@ foo()
 		{script: tofn(`derivation("hi","hi", outputs=["hi", "ho"])`)},
 		{script: tofn(`derivation("hi","hi", outputs=[{}])`), errContains: "cast type"},
 		{script: tofn(`derivation("hi","hi", network=True)`), errContains: "use the network"},
-		{script: tofn(`derivation("","hi", network=True)`), errContains: "must have a name"},
-		{script: tofn(`derivation("","hi", network=True)`), errContains: "must have a name"},
+		{script: tofn(`derivation("","hi")`), errContains: "must have a name"},
 		{script: tofn(`derivation("hi","hi", outputs=[])`), errContains: "at least 1 value"},
 		{script: tofn("derivation()"), errContains: "missing"},
 		{script: `
