@@ -1,7 +1,9 @@
 package command
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
 	"testing"
@@ -90,38 +92,26 @@ func initIntegrationTest(t *testing.T) {
 // 	return lw.writer.Write(p)
 // }
 
-// func TestDep_handler(t *testing.T) {
-// 	initIntegrationTest(t)
-// 	cmd := exec.Command("bramble", "server")
-// 	buf := &bytes.Buffer{}
-// 	lw := &lockWriter{writer: io.MultiWriter(os.Stdout, buf)}
-// 	cmd.Stdout = lw
-// 	cmd.Stderr = os.Stderr
-// 	if err := cmd.Start(); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	for {
-// 		lw.lock.Lock()
-// 		if strings.Contains(buf.String(), "localhost") {
-// 			lw.writer = os.Stdout
-// 			lw.lock.Unlock()
-// 			break
-// 		}
-// 		lw.lock.Unlock()
-// 		time.Sleep(time.Millisecond * 100)
-// 	}
-
-// 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-
-// 	{
-// 		cmd := exec.Command("bramble", "publish", "github.com/maxmcd/busybox")
-// 		cmd.Stdout = os.Stdout
-// 		cmd.Stderr = os.Stderr
-// 		if err := cmd.Run(); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 	}
-// }
+func TestDep_handler(t *testing.T) {
+	initIntegrationTest(t)
+	app := cliApp()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	t.Cleanup(func() { cancel() })
+	for {
+		resp, _ := http.Get("http://localhost:2726")
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			break
+		}
+	}
+	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestNative(t *testing.T) {
 	initIntegrationTest(t)
