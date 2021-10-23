@@ -1,13 +1,11 @@
 package command
 
 import (
-	"context"
 	"log"
 	"os"
 	"runtime"
 	"testing"
 
-	"github.com/maxmcd/bramble/internal/types"
 	"github.com/opencontainers/runc/libcontainer"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 )
@@ -127,12 +125,9 @@ func initIntegrationTest(t *testing.T) {
 
 func TestNative(t *testing.T) {
 	initIntegrationTest(t)
-	b, err := newBramble("../..", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = b.fullBuild(context.Background(), nil, types.BuildOptions{})
-	if err != nil {
+
+	app := cliApp()
+	if err := app.Run([]string{"build", "github.com/maxmcd/bramble:all"}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -59,24 +59,7 @@ func init() {
 	tracer = tracing.Tracer("command")
 }
 
-// RunCLI runs the cli with os.Args
-func RunCLI() {
-	defer tracing.Stop()
-
-	// Patch cli lib to remove bool default
-	oldFlagStringer := cli.FlagStringer
-	cli.FlagStringer = func(f cli.Flag) string {
-		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
-	}
-
-	go func() {
-		s := make(chan os.Signal, 1)
-		signal.Notify(s, syscall.SIGQUIT)
-		<-s
-		panic("give me the stack")
-	}()
-	sandbox.Entrypoint()
-
+func cliApp() *cli.App {
 	app := &cli.App{
 		Name:                  "bramble",
 		Usage:                 "bramble [--version] [--help] <command> [args]",
@@ -428,7 +411,27 @@ module cache.
 			}
 		}
 	}
+	return app
+}
 
+// RunCLI runs the cli with os.Args
+func RunCLI() {
+	defer tracing.Stop()
+
+	// Patch cli lib to remove bool default
+	oldFlagStringer := cli.FlagStringer
+	cli.FlagStringer = func(f cli.Flag) string {
+		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
+	}
+
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		panic("give me the stack")
+	}()
+	sandbox.Entrypoint()
+	app := cliApp()
 	log.SetOutput(ioutil.Discard)
 
 	ctx, cancel := context.WithCancel(context.Background())
