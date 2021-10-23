@@ -12,7 +12,7 @@ ci_test:
 gotestsum:
 	go get gotest.tools/gotestsum
 
-go_ci_test: gotestsum
+go_ci_test: install gotestsum
 	bash ./tests/run.sh
 
 go_test:
