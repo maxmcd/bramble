@@ -45,6 +45,7 @@ func fixUpScript(script string) string {
 }
 
 func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
+	t.Helper()
 	var err error
 	dir := t.TempDir()
 	previous := os.Getenv("BRAMBLE_PATH")
@@ -74,6 +75,7 @@ func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
 }
 
 func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
+	t.Helper()
 	if err != nil || tt.errContains != "" {
 		if err == nil {
 			t.Error("error is nil")

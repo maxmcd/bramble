@@ -4,7 +4,7 @@ test: go_test \
 	integration_test
 
 ci_test:
-	make -j build gotestsum
+	# make -j build gotestsum
 	make -j go_ci_test integration_ci_test
 
 gotestsum:

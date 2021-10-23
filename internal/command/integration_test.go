@@ -2,19 +2,43 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/types"
+	"github.com/opencontainers/runc/libcontainer"
+	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/stretchr/testify/assert"
 )
 
+// init runs the libcontainer initialization code because of the busybox style needs
+// to work around the go runtime and the issues with forking
+func init() {
+	if len(os.Args) < 2 || os.Args[1] != "init" {
+		return
+	}
+	runtime.GOMAXPROCS(1)
+	runtime.LockOSThread()
+	factory, err := libcontainer.New("")
+	if err != nil {
+		log.Fatalf("unable to initialize for container: %s", err)
+	}
+	if err := factory.StartInitialization(); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func initIntegrationTest(t *testing.T) {
+	t.Helper()
 	if _, ok := os.LookupEnv("VSCODE_CWD"); ok {
 		// Allow tests to run within vscode
 		return
@@ -106,5 +130,16 @@ func TestDep_handler(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
 
+func TestNative(t *testing.T) {
+	initIntegrationTest(t)
+	b, err := newBramble("../..", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.fullBuild(context.Background(), nil, types.BuildOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

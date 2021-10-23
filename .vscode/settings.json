@@ -5,5 +5,8 @@
     "python.formatting.provider": "black",
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
-    "python.languageServer": "None"
+    "python.languageServer": "None",
+    "go.testFlags": [
+        "-v", "-coverpkg=github.com/maxmcd/bramble/..."
+      ]
 }
