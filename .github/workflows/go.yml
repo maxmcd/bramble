@@ -19,5 +19,3 @@ jobs:
       #   uses: mxschmitt/action-tmate@v3
       - name: Run all tests
         run:  make ci_test
-      - name: Upload coverage to Codecov
-        run: bash <(curl -s https://codecov.io/bash)
