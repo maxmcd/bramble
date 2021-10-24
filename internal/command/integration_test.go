@@ -96,16 +96,25 @@ func TestDep_handler(t *testing.T) {
 	initIntegrationTest(t)
 	app := cliApp()
 	ctx, cancel := context.WithCancel(context.Background())
+	errChan := make(chan error)
 	go func() {
 		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
-			t.Fatal(err)
+			errChan <- err
 		}
 	}()
 	t.Cleanup(func() { cancel() })
 	for {
 		resp, _ := http.Get("http://localhost:2726")
+		if resp != nil {
+			resp.Body.Close()
+		}
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			break
+		}
+		select {
+		case err := <-errChan:
+			t.Fatal(err)
+		default:
 		}
 	}
 	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
