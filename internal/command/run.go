@@ -44,11 +44,23 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 	args = args[1:]
 
 	if run != nil {
-		ro.paths = run.Paths
-		ro.readOnlyPaths = run.ReadOnlyPaths
-		ro.hiddenPaths = run.HiddenPaths
-		ro.network = run.Network
-		args = append([]string{run.Cmd}, run.Args...)
+		// Only override with default run commands if none have been set
+		// explicitly
+		if len(ro.paths) == 0 {
+			ro.paths = run.Paths
+		}
+		if len(ro.readOnlyPaths) == 0 {
+			ro.readOnlyPaths = run.Paths
+		}
+		if len(ro.hiddenPaths) == 0 {
+			ro.hiddenPaths = run.Paths
+		}
+		if !ro.network && run.Network {
+			ro.network = run.Network
+		}
+		if len(args) == 0 {
+			args = append([]string{run.Cmd}, run.Args...)
+		}
 	}
 	if len(ro.paths) == 0 {
 		ro.paths = []string{b.project.Location()}

@@ -8,12 +8,15 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/opencontainers/runc/libcontainer"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 )
 
-// init runs the libcontainer initialization code because of the busybox style needs
-// to work around the go runtime and the issues with forking
+// init runs the libcontainer initialization code that would otherwise run in
+// the sandbox library
 func init() {
 	if len(os.Args) < 2 || os.Args[1] != "init" {
 		return
@@ -40,57 +43,74 @@ func initIntegrationTest(t *testing.T) {
 	}
 }
 
-// func TestRun(t *testing.T) {
-// 	initIntegrationTest(t)
-// 	runRun := func(module string, args []string) (output string, exitCode int) {
-// 		cmd := exec.Command("bramble", append([]string{"run", module}, args...)...)
-// 		o, _ := cmd.CombinedOutput()
-// 		fmt.Println(string(o))
-// 		return string(o), cmd.ProcessState.ExitCode()
-// 	}
+func TestRun(t *testing.T) {
+	initIntegrationTest(t)
+	type check func(t *testing.T, exitCode int, err error)
+	type test struct {
+		name   string
+		args   []string
+		checks []check
+	}
+	errContains := func(v string) check {
+		return func(t *testing.T, exitCode int, err error) {
+			if err == nil {
+				t.Error("run did not error as expected")
+			}
+			assert.Contains(t, err.Error(), v)
+		}
+	}
+	exitCodeIs := func(v int) check {
+		return func(t *testing.T, exitCode int, err error) {
+			assert.Equal(t, exitCode, v)
+		}
+	}
+	noError := func() check {
+		return func(t *testing.T, exitCode int, err error) {
+			assert.Equal(t, 0, exitCode)
+			assert.NoError(t, err)
+		}
+	}
+	runRun := func(t *testing.T, tt test) (exitCode int, err error) {
+		t.Helper()
+		app := cliApp()
+		err = app.Run(append([]string{"bramble", "run"}, tt.args...))
+		if err != nil {
+			if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
+				return er.ExitCode, err
+			}
+			return 1, err
+		}
+		return 0, err
+	}
 
-// 	type test struct {
-// 		name   string
-// 		module string
-// 		args   []string
-
-// 		outputContains   string
-// 		expectedExitcode int
-// 	}
-// 	for _, tt := range []test{
-// 		// Removed until it's reproducible
-// 		// {
-// 		// 	name:           "go run",
-// 		// 	module:         "../../lib/go:bootstrap",
-// 		// 	args:           []string{"go", "run", "testdata/main.go"},
-// 		// 	outputContains: "hello world",
-// 		// },
-// 		// {
-// 		// 	name:             "go run w/ exit code",
-// 		// 	module:           "../../lib/go:bootstrap",
-// 		// 	args:             []string{"go", "run", "testdata/main.go", "-exit-code", "2"},
-// 		// 	outputContains:   "exit status 2",
-// 		// 	expectedExitcode: 1, // go run will exit w/ 1 and print the non-1 exit code
-// 		// },
-// 	} {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			output, exitCode := runRun(tt.module, tt.args)
-// 			assert.Equal(t, tt.expectedExitcode, exitCode)
-// 			assert.Contains(t, output, tt.outputContains)
-// 		})
-// 	}
-// }
-
-// type lockWriter struct {
-// 	lock   sync.Mutex
-// 	writer io.Writer
-// }
-
-// func (lw *lockWriter) Write(p []byte) (n int, err error) {
-// 	lw.lock.Lock()
-// 	defer lw.lock.Unlock()
-// 	return lw.writer.Write(p)
-// }
+	for _, tt := range []test{
+		{
+			name:   "simple",
+			args:   []string{"../../:print_simple"},
+			checks: []check{noError()},
+		},
+		{
+			name:   "simple explicit",
+			args:   []string{"../../:print_simple", "simple"},
+			checks: []check{noError()},
+		},
+		{
+			name: "simple",
+			args: []string{"../../:print_simple", "sim"},
+			checks: []check{
+				errContains("executable file not found"),
+				exitCodeIs(1),
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			exitCode, err := runRun(t, tt)
+			for _, check := range tt.checks {
+				check(t, exitCode, err)
+			}
+		})
+	}
+}
 
 func TestDep_handler(t *testing.T) {
 	initIntegrationTest(t)
