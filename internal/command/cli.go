@@ -59,24 +59,7 @@ func init() {
 	tracer = tracing.Tracer("command")
 }
 
-// RunCLI runs the cli with os.Args
-func RunCLI() {
-	defer tracing.Stop()
-
-	// Patch cli lib to remove bool default
-	oldFlagStringer := cli.FlagStringer
-	cli.FlagStringer = func(f cli.Flag) string {
-		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
-	}
-
-	go func() {
-		s := make(chan os.Signal, 1)
-		signal.Notify(s, syscall.SIGQUIT)
-		<-s
-		panic("give me the stack")
-	}()
-	sandbox.Entrypoint()
-
+func cliApp() *cli.App {
 	app := &cli.App{
 		Name:                  "bramble",
 		Usage:                 "bramble [--version] [--help] <command> [args]",
@@ -117,6 +100,17 @@ bramble build ./tests
 						Value: false,
 						Usage: "verify that builds are reproducible by running them twice and comparing their output",
 					},
+					&cli.StringFlag{
+						Name:  "target",
+						Value: "",
+						Usage: "the target that you'd like to build for",
+					},
+					&cli.BoolFlag{
+						Name:    "verbose",
+						Aliases: []string{"v"},
+						Value:   false,
+						Usage:   "print build logs",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
@@ -125,12 +119,15 @@ bramble build ./tests
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{})
+					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{
+						target: c.String("target"),
+					})
 					if err != nil {
 						return err
 					}
 					_, err = b.runBuild(ctx, output, runBuildOptions{
-						check: c.Bool("check"),
+						check:   c.Bool("check"),
+						verbose: c.Bool("verbose"),
 					})
 					return err
 				},
@@ -273,7 +270,15 @@ their public functions with documentation. If an immediate subdirectory has a
 					if err != nil {
 						return err
 					}
-					modules, err := project.ListModuleDoc()
+					wd := project.WD()
+					args := c.Args().Slice()
+					if len(args) > 1 {
+						return errors.New("bramble ls takes one or zero arguments")
+					}
+					if len(args) == 1 {
+						wd = args[0]
+					}
+					modules, err := project.ListModuleDoc(wd)
 					if err != nil {
 						return err
 					}
@@ -406,7 +411,27 @@ module cache.
 			}
 		}
 	}
+	return app
+}
 
+// RunCLI runs the cli with os.Args
+func RunCLI() {
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		panic("give me the stack")
+	}()
+	sandbox.Entrypoint()
+	defer tracing.Stop()
+
+	// Patch cli lib to remove bool default
+	oldFlagStringer := cli.FlagStringer
+	cli.FlagStringer = func(f cli.Flag) string {
+		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
+	}
+
+	app := cliApp()
 	log.SetOutput(ioutil.Discard)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -428,9 +453,10 @@ module cache.
 	}()
 	var exitCode int
 	if err := app.RunContext(ctx, os.Args); err != nil {
-		if er, ok := errors.Cause(err).(store.ExecError); ok {
-			fmt.Println(er.Logs.Len())
+		if er, ok := errors.Cause(err).(store.ExecError); ok && er.Logs != nil {
+			_, _ = er.Logs.Seek(0, 0)
 			_, _ = io.Copy(os.Stdout, er.Logs)
+			_ = er.Logs.Close()
 		}
 		if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
 			exitCode = er.ExitCode

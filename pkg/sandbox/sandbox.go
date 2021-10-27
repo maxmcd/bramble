@@ -65,7 +65,6 @@ func (ee ExitError) Error() string {
 
 // Run runs the sandbox until execution has been completed
 func (s Sandbox) Run(ctx context.Context) (err error) {
-
 	container, err := newContainer(s)
 	if err != nil {
 		return err

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/internal/logger"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 )
 

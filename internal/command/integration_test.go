@@ -1,21 +1,25 @@
 package command
 
 import (
-	"bytes"
-	"fmt"
-	"io"
+	"context"
+	"net/http"
 	"os"
-	"os/exec"
-	"strings"
-	"sync"
 	"testing"
-	"time"
 
-	"github.com/maxmcd/bramble/internal/dependency"
+	"github.com/maxmcd/bramble/pkg/sandbox"
+	_ "github.com/opencontainers/runc/libcontainer/nsenter"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
+// The tests will run this entrypoint so that the sandbox can pick up from this
+// point when it's run within a test
+func init() {
+	sandbox.Entrypoint()
+}
+
 func initIntegrationTest(t *testing.T) {
+	t.Helper()
 	if _, ok := os.LookupEnv("VSCODE_CWD"); ok {
 		// Allow tests to run within vscode
 		return
@@ -24,82 +28,125 @@ func initIntegrationTest(t *testing.T) {
 		t.Skip("skipping integration tests unless BRAMBLE_INTEGRATION_TEST is set")
 	}
 }
+
 func TestRun(t *testing.T) {
 	initIntegrationTest(t)
-	runRun := func(module string, args []string) (output string, exitCode int) {
-		cmd := exec.Command("bramble", append([]string{"run", module}, args...)...)
-		o, _ := cmd.CombinedOutput()
-		fmt.Println(string(o))
-		return string(o), cmd.ProcessState.ExitCode()
-	}
-
+	type check func(t *testing.T, exitCode int, err error)
 	type test struct {
 		name   string
-		module string
 		args   []string
-
-		outputContains   string
-		expectedExitcode int
+		checks []check
 	}
+	errContains := func(v string) check {
+		return func(t *testing.T, exitCode int, err error) {
+			if err == nil {
+				t.Error("run did not error as expected")
+			}
+			assert.Contains(t, err.Error(), v)
+		}
+	}
+	exitCodeIs := func(v int) check {
+		return func(t *testing.T, exitCode int, err error) {
+			assert.Equal(t, exitCode, v)
+		}
+	}
+	noError := func() check {
+		return func(t *testing.T, exitCode int, err error) {
+			assert.Equal(t, 0, exitCode)
+			assert.NoError(t, err)
+		}
+	}
+	runRun := func(t *testing.T, tt test) (exitCode int, err error) {
+		t.Helper()
+		app := cliApp()
+		err = app.Run(append([]string{"bramble", "run"}, tt.args...))
+		if err != nil {
+			if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
+				return er.ExitCode, err
+			}
+			return 1, err
+		}
+		return 0, err
+	}
+
 	for _, tt := range []test{
-		// Removed until it's reproducible
-		// {
-		// 	name:           "go run",
-		// 	module:         "../../lib/go:bootstrap",
-		// 	args:           []string{"go", "run", "testdata/main.go"},
-		// 	outputContains: "hello world",
-		// },
-		// {
-		// 	name:             "go run w/ exit code",
-		// 	module:           "../../lib/go:bootstrap",
-		// 	args:             []string{"go", "run", "testdata/main.go", "-exit-code", "2"},
-		// 	outputContains:   "exit status 2",
-		// 	expectedExitcode: 1, // go run will exit w/ 1 and print the non-1 exit code
-		// },
+		{
+			name:   "simple",
+			args:   []string{"../../:print_simple"},
+			checks: []check{noError()},
+		},
+		{
+			name:   "simple explicit",
+			args:   []string{"../../:print_simple", "simple"},
+			checks: []check{noError()},
+		},
+		{
+			name: "sim",
+			args: []string{"../../:print_simple", "sim"},
+			checks: []check{
+				errContains("executable file not found"),
+				exitCodeIs(1),
+			},
+		},
+		{
+			name: "exit code",
+			args: []string{"../../:bash", "bash", "-c", "exit 2"},
+			checks: []check{
+				exitCodeIs(2),
+			},
+		},
+		{
+			name: "weird exit code",
+			args: []string{"../../:bash", "bash", "-c", "exit 56"},
+			checks: []check{
+				exitCodeIs(56),
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			output, exitCode := runRun(tt.module, tt.args)
-			assert.Equal(t, tt.expectedExitcode, exitCode)
-			assert.Contains(t, output, tt.outputContains)
+			exitCode, err := runRun(t, tt)
+			for _, check := range tt.checks {
+				check(t, exitCode, err)
+			}
 		})
 	}
 }
 
-type lockWriter struct {
-	lock   sync.Mutex
-	writer io.Writer
-}
-
-func (lw *lockWriter) Write(p []byte) (n int, err error) {
-	lw.lock.Lock()
-	defer lw.lock.Unlock()
-	return lw.writer.Write(p)
-}
-
 func TestDep_handler(t *testing.T) {
 	initIntegrationTest(t)
-	cmd := exec.Command("bramble", "server")
-	buf := &bytes.Buffer{}
-	lw := &lockWriter{writer: io.MultiWriter(os.Stdout, buf)}
-	cmd.Stdout = lw
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	app := cliApp()
+	ctx, cancel := context.WithCancel(context.Background())
+	errChan := make(chan error)
+	go func() {
+		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
+			errChan <- err
+		}
+	}()
+	t.Cleanup(func() { cancel() })
 	for {
-		lw.lock.Lock()
-		if strings.Contains(buf.String(), "localhost") {
-			lw.writer = os.Stdout
-			lw.lock.Unlock()
+		resp, _ := http.Get("http://localhost:2726")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			break
 		}
-		lw.lock.Unlock()
-		time.Sleep(time.Millisecond * 100)
+		select {
+		case err := <-errChan:
+			t.Fatal(err)
+		default:
+		}
 	}
+	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
+		t.Fatal(err)
+	}
+}
 
-	t.Cleanup(func() { _ = cmd.Process.Kill() })
+func TestNative(t *testing.T) {
+	initIntegrationTest(t)
 
-	if err := dependency.PostJob("http://localhost:2726", "github.com/maxmcd/bramble", "dependencies"); err != nil {
+	app := cliApp()
+	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble:all"}); err != nil {
 		t.Fatal(err)
 	}
 }

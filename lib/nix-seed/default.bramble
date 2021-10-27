@@ -4,6 +4,10 @@ load("github.com/maxmcd/bramble/lib")
 
 
 def stdenv():
+
+    new_patchelf = std.fetch_url(
+        "https://github.com/NixOS/patchelf/releases/download/0.13/patchelf-0.13.tar.bz2"
+    )
     """
     the standard environment
     """
@@ -15,5 +19,10 @@ def stdenv():
         builder=lib.busybox().out + "/bin/sh",
         args=["./build_stdenv.sh"],
         sources=files(["./build_stdenv.sh"]),
-        env=dict(src=src, patchelf=static_patchelf.patchelf(), busybox=lib.busybox()),
+        env=dict(
+            src=src,
+            patchelf=static_patchelf.patchelf(),
+            new_patchelf=new_patchelf,
+            busybox=lib.busybox(),
+        ),
     )

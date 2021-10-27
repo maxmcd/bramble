@@ -3,6 +3,7 @@ package project
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
-	"go.starlark.net/starlark"
 )
 
 const BrambleExtension = ".bramble"
@@ -157,65 +157,22 @@ func (p *Project) filepathToModuleName(path string) (module string, err error) {
 	return p.config.Module.Name + "/" + rel, nil
 }
 
-type ModuleDoc struct {
-	Name      string
-	Docstring string
-	Functions []FunctionDoc
-}
-
-type FunctionDoc struct {
-	Docstring  string
-	Name       string
-	Definition string
-}
-
-func (p *Project) ListModuleDoc() (modules []ModuleDoc, err error) {
-	files, err := filepath.Glob("*.bramble")
+func (p *Project) FindAllModules(path string) (modules []string, err error) {
+	path, err = fileutil.Abs(p.wd, path)
 	if err != nil {
-		return nil, errors.Wrap(err, "error finding bramble files in the current directory")
+		return nil, err
 	}
-	dirs, err := filepath.Glob("*/default.bramble")
-	if err != nil {
-		return nil, errors.Wrap(err, "error finding default.bramble files in subdirectories")
+	if err := fileutil.PathWithinDir(p.location, path); err != nil {
+		return nil, err
 	}
-	for _, path := range append(files, dirs...) {
-		m, err := p.parsedModuleDocFromPath(path)
-		if err != nil {
-			return nil, err
-		}
-		modules = append(modules, m)
-	}
-	return
-}
-
-func (p *Project) parsedModuleDocFromPath(path string) (m ModuleDoc, err error) {
-	rt := newRuntime("", "", "", nil) // don't need a real one, just need the list of predeclared values
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return m, errors.Wrap(err, "list functions path is invalid")
-	}
-	file, _, err := starlark.SourceProgram(absPath, nil, rt.predeclared.Has)
-	if err != nil {
-		return m, err
-	}
-	m = p.parseStarlarkFile(file)
-	m.Name, err = p.filepathToModuleName(file.Path)
-	if err != nil {
-		return m, errors.Wrap(err, "error with module path")
-	}
-	return m, nil
-}
-
-func (p *Project) FindAllModules() (modules []string, err error) {
-	return modules, filepath.Walk(
-		p.Location(),
-		func(path string, fi os.FileInfo, err error) error {
+	return modules, filepath.WalkDir(
+		path,
+		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if filepath.Base(path) == "bramble.toml" &&
-				path != filepath.Join(p.Location(), "bramble.toml") {
-				return filepath.SkipDir
+			if path != p.location && d.IsDir() && fileutil.FileExists(filepath.Join(path, "bramble.toml")) {
+				return fs.SkipDir
 			}
 			// TODO: ignore .git, ignore .gitignore?
 			if strings.HasSuffix(path, ".bramble") {

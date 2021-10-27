@@ -19,7 +19,7 @@ import (
 // Derivation is the basic building block of a Bramble build
 type Derivation struct {
 	// fields are in alphabetical order to attempt to provide consistency to
-	// hashmap key ordering
+	// json hashmap key ordering
 
 	// Args are arguments that are passed to the builder
 	Args []string
@@ -45,12 +45,18 @@ type Derivation struct {
 	// This attribute is removed when hashing the derivation.
 	OutputNames []string
 	Outputs     []Output
+
 	// Platform is the platform we've built this derivation on
 	Platform string
 
 	Source Source
 
+	// Target is the platform we've built this derivation for. If Target is
+	// blank then the Platform value is the target.
+	Target string `json:",omitempty"`
+
 	// internal fields
+	// TODO: get rid of this
 	store *Store
 }
 

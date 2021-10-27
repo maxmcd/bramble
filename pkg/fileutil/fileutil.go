@@ -178,7 +178,7 @@ func CopyDirectory(scrDir, dest string) error {
 // another directory, maintaining structure. Importantly it doesn't copy all the
 // files in these directories, just the specific named paths.
 func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
-	files, err = ExpandPathDirectories(files)
+	files, err = expandPathDirectories(files)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 }
 
 // takes a list of paths and adds all files in all subdirectories
-func ExpandPathDirectories(files []string) (out []string, err error) {
+func expandPathDirectories(files []string) (out []string, err error) {
 	for _, file := range files {
 		if err = filepath.Walk(file,
 			func(path string, info os.FileInfo, err error) error {
@@ -361,6 +361,40 @@ func FindExecutable(file string) error {
 		return nil
 	}
 	return os.ErrPermission
+}
+
+// PathWithinDir checks if a path is within a given directory. It doesn't
+// validate if the passed directory path is actually a directory. If the
+// function returns a nil error the path is within the directory.
+//
+// Dir and path must be absolute paths
+func PathWithinDir(dir, path string) (err error) {
+	if !filepath.IsAbs(dir) {
+		return errors.Errorf("directory %q is not an absolute path", dir)
+	}
+	if !filepath.IsAbs(path) {
+		return errors.Errorf("path %q is not an absolute path", path)
+	}
+	relpath, err := filepath.Rel(dir, path)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(relpath, "..") {
+		return errors.Errorf("path %q is not within the %q directory", path, dir)
+	}
+	return nil
+}
+
+// Abs is similar to filepath.Abs but it allows you to pass a custom wd
+func Abs(wd, path string) (string, error) {
+	if !filepath.IsAbs(wd) {
+		return "", errors.Errorf("working directory %q is not absolute", wd)
+	}
+	// TODO: windows
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	return filepath.Join(wd, path), nil
 }
 
 // TestTmpDir is intended to be used in tests and will remove itself when the

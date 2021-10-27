@@ -5,7 +5,7 @@ def foo():
         builder="foo",
         args=["bar", "baz"],
         env={"eg": eg},
-        platform=sys.platform,
+        target=sys.platform,
         sources=files(["*.bramble"]),
     )
 

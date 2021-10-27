@@ -3,15 +3,12 @@
 test: go_test \
 	integration_test
 
-ci_test:
-	make -j build gotestsum
-	make -j go_ci_test integration_ci_test
+ci_test: install gotestsum
+	bash ./tests/run.sh
 
 gotestsum:
 	go get gotest.tools/gotestsum
 
-go_ci_test: gotestsum
-	gotestsum -- -race -v ./...
 
 go_test:
 	go test -race -v ./...
@@ -22,9 +19,6 @@ install:
 
 build: install
 	bramble build
-
-integration_ci_test: install gotestsum
-	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -v ./internal/command/
 
 integration_test: install
 	env BRAMBLE_INTEGRATION_TEST=truthy go test -run=$(run) -v ./internal/command/

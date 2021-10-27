@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
@@ -22,7 +21,7 @@ func newTestRuntime(t *testing.T, wd string) *runtime {
 	projectLocation, err := filepath.Abs("../../")
 	require.NoError(t, err)
 
-	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", nil)
+	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", "", nil)
 	return rt
 }
 
@@ -46,8 +45,9 @@ func fixUpScript(script string) string {
 }
 
 func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
+	t.Helper()
 	var err error
-	dir := fileutil.TestTmpDir(t)
+	dir := t.TempDir()
 	previous := os.Getenv("BRAMBLE_PATH")
 	os.Setenv("BRAMBLE_PATH", dir)
 	t.Cleanup(func() { os.RemoveAll(dir); os.Setenv("BRAMBLE_PATH", previous) })
@@ -75,6 +75,7 @@ func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
 }
 
 func processExecResp(t *testing.T, tt scriptTest, b starlark.Value, err error) {
+	t.Helper()
 	if err != nil || tt.errContains != "" {
 		if err == nil {
 			t.Error("error is nil")

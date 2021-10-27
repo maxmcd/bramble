@@ -15,3 +15,16 @@ def _bootstrap():
             go1_4=go1_4, stdenv=nix_seed.stdenv(), busybox=lib.busybox(), PATH=path
         ),
     )
+
+
+def go_1_17():
+    go_1_17 = std.fetch_url("https://golang.org/dl/go1.17.2.linux-amd64.tar.gz")
+    path = "%s/bin:%s/bin" % (nix_seed.stdenv(), lib.busybox())
+    return derivation(
+        name="go-1.4",
+        builder=lib.busybox().out + "/bin/sh",
+        args=["-c", """"""],
+        env=dict(
+            go=go_1_17, stdenv=nix_seed.stdenv(), busybox=lib.busybox(), PATH=path
+        ),
+    )

@@ -10,7 +10,6 @@ require (
 	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/containerd/console v1.0.3
 	github.com/davecgh/go-spew v1.1.1
-	github.com/djherbis/buffer v1.2.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
 	github.com/mholt/archiver/v3 v3.5.0
@@ -30,6 +29,7 @@ require (
 	go.uber.org/zap v1.19.1
 	golang.org/x/mod v0.4.2
 	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
+	gotest.tools/v3 v3.0.3 // indirect
 )
 
 replace (
