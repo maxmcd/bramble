@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -230,6 +231,9 @@ func (c *container) Run() (err error) {
 	} else {
 		state, err := c.process.Wait()
 		if err != nil {
+			if e, ok := err.(*exec.ExitError); ok {
+				return ExitError{ExitCode: e.ExitCode()}
+			}
 			return err
 		}
 		if state.ExitCode() != 0 {

@@ -2,34 +2,20 @@ package command
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/sandbox"
-	"github.com/opencontainers/runc/libcontainer"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
-// init runs the libcontainer initialization code that would otherwise run in
-// the sandbox library
+// The tests will run this entrypoint so that the sandbox can pick up from this
+// point when it's run within a test
 func init() {
-	if len(os.Args) < 2 || os.Args[1] != "init" {
-		return
-	}
-	runtime.GOMAXPROCS(1)
-	runtime.LockOSThread()
-	factory, err := libcontainer.New("")
-	if err != nil {
-		log.Fatalf("unable to initialize for container: %s", err)
-	}
-	if err := factory.StartInitialization(); err != nil {
-		log.Fatal(err)
-	}
+	sandbox.Entrypoint()
 }
 
 func initIntegrationTest(t *testing.T) {
@@ -95,11 +81,25 @@ func TestRun(t *testing.T) {
 			checks: []check{noError()},
 		},
 		{
-			name: "simple",
+			name: "sim",
 			args: []string{"../../:print_simple", "sim"},
 			checks: []check{
 				errContains("executable file not found"),
 				exitCodeIs(1),
+			},
+		},
+		{
+			name: "exit code",
+			args: []string{"../../:bash", "bash", "-c", "exit 2"},
+			checks: []check{
+				exitCodeIs(2),
+			},
+		},
+		{
+			name: "weird exit code",
+			args: []string{"../../:bash", "bash", "-c", "exit 56"},
+			checks: []check{
+				exitCodeIs(56),
 			},
 		},
 	} {

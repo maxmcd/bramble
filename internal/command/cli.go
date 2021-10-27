@@ -416,6 +416,13 @@ module cache.
 
 // RunCLI runs the cli with os.Args
 func RunCLI() {
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		panic("give me the stack")
+	}()
+	sandbox.Entrypoint()
 	defer tracing.Stop()
 
 	// Patch cli lib to remove bool default
@@ -424,13 +431,6 @@ func RunCLI() {
 		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
 	}
 
-	go func() {
-		s := make(chan os.Signal, 1)
-		signal.Notify(s, syscall.SIGQUIT)
-		<-s
-		panic("give me the stack")
-	}()
-	sandbox.Entrypoint()
 	app := cliApp()
 	log.SetOutput(ioutil.Discard)
 
