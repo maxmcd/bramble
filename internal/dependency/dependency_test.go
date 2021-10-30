@@ -285,11 +285,11 @@ func (tb testBuilder) NewBuilder(location string) (types.Builder, error) {
 	return tb, nil
 }
 
-func (tb testBuilder) Module() (string, string) {
-	return tb.cfg.Module.Name, tb.cfg.Module.Version
+func (tb testBuilder) Modules() map[string]types.Module {
+	return nil
 }
 
-func (tb testBuilder) Build(ctx context.Context, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+func (tb testBuilder) Build(ctx context.Context, location string, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
 	return
 }
 

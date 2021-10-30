@@ -3,6 +3,7 @@ package project
 import (
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,6 +66,29 @@ func TestProject_FindAllModules(t *testing.T) {
 			for _, m := range tt.modulesDoesNotContain {
 				require.NotContains(t, gotModules, m)
 			}
+		})
+	}
+}
+
+func TestProject_scanForLoadNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewProject("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			names, err := p.scanForLoadNames()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Project.scanForLoadNames() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			fmtutil.Printqln(names)
+			// TODO: Assert something
 		})
 	}
 }

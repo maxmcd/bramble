@@ -16,9 +16,14 @@ type BuildResponse struct {
 	FinalHashMapping map[string]string
 }
 
+type Module struct {
+	Name    string
+	Version string
+}
+
 type Builder interface {
-	Build(ctx context.Context, args []string, opts BuildOptions) (BuildResponse, error)
-	Module() (string, string)
+	Build(ctx context.Context, location string, args []string, opts BuildOptions) (BuildResponse, error)
+	Modules() map[string]Module
 }
 
 type NewBuilder func(location string) (Builder, error)

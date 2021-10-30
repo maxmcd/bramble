@@ -356,38 +356,8 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			var err error
-			defer func() {
-				jq.End(job.ID, err)
-			}()
+			jq.End(job.ID, buildJob(job, dependencyDir, newBuilder, downloadGithubRepo))
 
-			loc, err := downloadGithubRepo(job.Module, job.Reference)
-			if err != nil {
-				err = errors.Wrap(err, "error downloading git repo")
-				return
-			}
-			builder, err := newBuilder(loc)
-			if err != nil {
-				return
-			}
-			name, version := builder.Module()
-			if name != job.Module {
-				err = errors.Errorf("Project module name %q does not match the location the project was fetched from: %q",
-					name,
-					job.Module)
-			}
-			resp, err := builder.Build(context.Background(), nil, types.BuildOptions{Check: true})
-			if err != nil {
-				return
-			}
-			if err := addDependencyMetadata(
-				dependencyDir,
-				name,
-				version,
-				loc,
-				resp.Modules); err != nil {
-				return
-			}
 		}()
 
 		return nil
@@ -443,6 +413,52 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	})
 
 	return router
+}
+
+func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (err error) {
+	loc, err := downloadGithubRepo(job.Module, job.Reference)
+	if err != nil {
+		return errors.Wrap(err, "error downloading git repo")
+	}
+	builder, err := newBuilder(loc)
+	if err != nil {
+		return
+	}
+	modules := builder.Modules()
+	for path, module := range modules {
+		rel, err := filepath.Rel(loc, path)
+		if err != nil {
+			panic(loc + " - " + path)
+		}
+		expectedModuleName := strings.TrimSuffix(job.Module+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
+		if expectedModuleName != module.Name {
+			return errors.Errorf("Project module name %q does not match the location the project was fetched from: %q",
+				module.Name,
+				expectedModuleName)
+		}
+	}
+	toRun := []func() error{}
+	for path, module := range modules {
+		resp, err := builder.Build(context.Background(), path, nil, types.BuildOptions{Check: true})
+		if err != nil {
+			return err
+		}
+		// Only add if we return without erroring
+		toRun = append(toRun, func() error {
+			return addDependencyMetadata(
+				dependencyDir,
+				module.Name,
+				module.Version,
+				loc,
+				resp.Modules)
+		})
+	}
+	for _, tr := range toRun {
+		if err = tr(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ServerHandler(dependencyDir string, newBuilder types.NewBuilder) http.Handler {

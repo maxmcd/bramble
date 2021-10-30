@@ -234,7 +234,7 @@ good way to debug a derivation that you're building.`,
 				Usage:     "Initialize a new directory as a bramble project",
 				UsageText: `bramble init`,
 				Action: func(c *cli.Context) error {
-					return nil
+					panic("unimplemented")
 				},
 			},
 			{
