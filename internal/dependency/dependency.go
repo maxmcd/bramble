@@ -164,7 +164,7 @@ func PostJob(url, module, reference string) (err error) {
 			return err
 		}
 		if job.Error != "" {
-			return errors.Wrap(errors.New(job.Error), "got error posting job")
+			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
 			break
@@ -302,6 +302,7 @@ func addDependencyMetadata(dependencyDir, module, version, src string, mapping m
 	// If the metadata is here we already have a record of the output mapping.
 	// If we checked the src directory it might just be there as a dependency of
 	// another nomad project
+	fmt.Println(metadataDest)
 	if fileutil.PathExists(metadataDest) {
 		return errors.Errorf("version %s of module %q is already present on this server", version, module)
 	}
@@ -357,7 +358,6 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 		// Run job
 		go func() {
 			jq.End(job.ID, buildJob(job, dependencyDir, newBuilder, downloadGithubRepo))
-
 		}()
 
 		return nil
@@ -397,6 +397,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	})
 	router.GET("/module/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
+		fmt.Println("MNAME_SERVION", name)
 		path := filepath.Join(dependencyDir, "src", name, "bramble.toml")
 		if !fileutil.FileExists(path) {
 			return httpx.ErrNotFound(errors.New("can't find module"))
@@ -443,13 +444,15 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 		if err != nil {
 			return err
 		}
+		m := module // assign to variable to ensure same value is used
+		src := path
 		// Only add if we return without erroring
 		toRun = append(toRun, func() error {
 			return addDependencyMetadata(
 				dependencyDir,
-				module.Name,
-				module.Version,
-				loc,
+				m.Name,
+				m.Version,
+				src,
 				resp.Modules)
 		})
 	}

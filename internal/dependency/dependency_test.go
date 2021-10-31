@@ -16,6 +16,7 @@ import (
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fmtutil"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/semver"
 )
@@ -272,44 +273,67 @@ func Test_versionFromMVSVersion(t *testing.T) {
 }
 
 type testBuilder struct {
-	cfg config.Config
-	t   *testing.T
+	modules  map[string]types.Module
+	t        *testing.T
+	location string
 }
 
 var (
-	_ types.NewBuilder = testBuilder{}.NewBuilder
-	_ types.Builder    = testBuilder{}
+	_ types.NewBuilder = new(testBuilder).NewBuilder
+	_ types.Builder    = new(testBuilder)
 )
 
-func (tb testBuilder) NewBuilder(location string) (types.Builder, error) {
+func (tb *testBuilder) NewBuilder(location string) (types.Builder, error) {
+	tb.location = location
 	return tb, nil
 }
 
-func (tb testBuilder) Modules() map[string]types.Module {
-	return nil
+func (tb *testBuilder) Modules() map[string]types.Module {
+	out := map[string]types.Module{}
+	// Make paths absolute
+	for loc, m := range tb.modules {
+		out[filepath.Join(tb.location, loc)] = m
+	}
+	return out
 }
 
-func (tb testBuilder) Build(ctx context.Context, location string, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+func (tb *testBuilder) Build(ctx context.Context, location string, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
 	return
 }
 
 func (tb testBuilder) testGithubDownloader(url, reference string) (location string, err error) {
 	location = tb.t.TempDir()
-	f, err := os.Create(location + "/bramble.toml")
-	if err != nil {
-		return "", err
+	for loc, m := range tb.modules {
+		_ = os.MkdirAll(filepath.Join(location, loc), 0755)
+		f, err := os.Create(filepath.Join(location, loc, "/bramble.toml"))
+		if err != nil {
+			return "", err
+		}
+		cfg := config.Config{
+			Module: config.ConfigModule{
+				Name:    m.Name,
+				Version: m.Version,
+			},
+		}
+		cfg.Render(f)
+		if err := f.Close(); err != nil {
+			return "", err
+		}
 	}
-	tb.cfg.Render(f)
-	return location, f.Close()
+	return location, nil
 }
 
 func TestPushJob(t *testing.T) {
 	tb := testBuilder{
 		t: t,
-		cfg: config.Config{
-			Module: config.ConfigModule{
+		modules: map[string]types.Module{
+			"": {
 				Name:    "x.y/z",
 				Version: "2.0.0",
+			},
+			"./a": {
+				Name:    "x.y/z/a",
+				Version: "1.2.0",
 			},
 		},
 	}
@@ -325,20 +349,21 @@ func TestPushJob(t *testing.T) {
 		host:   server.URL,
 		client: &http.Client{},
 	}
-	{
-		cfg, err := dc.getModuleConfig(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
-		if err != nil {
-			t.Fatal(err)
+	for _, m := range tb.modules {
+		{
+			cfg, err := dc.getModuleConfig(context.Background(), Version{Module: m.Name, Version: m.Version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.Equal(t, cfg.Module.Name, m.Name)
+			assert.Equal(t, cfg.Module.Version, m.Version)
 		}
-		cfg.Dependencies = nil
-		tb.cfg.Dependencies = nil
-		require.Equal(t, cfg, tb.cfg)
-	}
-	{
-		body, err := dc.getModuleSource(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
-		if err != nil {
-			t.Fatal(err)
+		{
+			body, err := dc.getModuleSource(context.Background(), Version{Module: m.Name, Version: m.Version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = body
 		}
-		_ = body
 	}
 }
