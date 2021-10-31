@@ -239,7 +239,7 @@ func FindAllProjects(loc string) (paths []string, err error) {
 			return err
 		}
 		if d.Name() == "bramble.toml" {
-			paths = append(paths, path)
+			paths = append(paths, filepath.Dir(path))
 		}
 		return nil
 	})

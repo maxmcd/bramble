@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -272,7 +273,7 @@ func newBuilder(store *store.Store) func(location string) (types.Builder, error)
 			return nil, errors.Wrap(err, "error searching for projects")
 		}
 		for _, path := range paths {
-			cfg, err := config.ReadConfig(path)
+			cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))
 			if err != nil {
 				return nil, errors.Wrapf(
 					err, "error parsing config at path %q",

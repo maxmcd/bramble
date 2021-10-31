@@ -117,6 +117,7 @@ func TestDep_handler(t *testing.T) {
 	app := cliApp()
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error)
+	os.Setenv("BRAMBLE_PATH", t.TempDir())
 	go func() {
 		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
 			errChan <- err

@@ -433,7 +433,7 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 		}
 		expectedModuleName := strings.TrimSuffix(job.Module+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
 		if expectedModuleName != module.Name {
-			return errors.Errorf("Project module name %q does not match the location the project was fetched from: %q",
+			return errors.Errorf("project module name %q does not match the location the project was fetched from: %q",
 				module.Name,
 				expectedModuleName)
 		}
