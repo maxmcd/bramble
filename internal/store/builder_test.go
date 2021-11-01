@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +73,7 @@ func TestFetchURLBuilder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, err := NewStore(fileutil.TestTmpDir(t))
+			store, err := NewStore(test.TmpDir(t))
 			if err != nil {
 				t.Fatal(err)
 			}

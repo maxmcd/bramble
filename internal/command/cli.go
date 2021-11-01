@@ -59,7 +59,7 @@ func init() {
 	tracer = tracing.Tracer("command")
 }
 
-func cliApp() *cli.App {
+func cliApp(wd string) *cli.App {
 	app := &cli.App{
 		Name:                  "bramble",
 		Usage:                 "bramble [--version] [--help] <command> [args]",
@@ -115,7 +115,7 @@ bramble build ./tests
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
 					defer span.End()
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -155,7 +155,7 @@ bramble build ./tests
 					},
 				},
 				Action: func(c *cli.Context) error {
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -196,11 +196,22 @@ bramble build ./tests
 				Name:      "test",
 				UsageText: "bramble test",
 				Action: func(c *cli.Context) error {
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
 					return b.test(c.Context)
+				},
+			},
+			{
+				Name:      "magic",
+				UsageText: "bramble magic",
+				Action: func(c *cli.Context) error {
+					b, err := newBramble(wd, "")
+					if err != nil {
+						return err
+					}
+					return b.project.CalculateDependencies()
 				},
 			},
 			{
@@ -215,7 +226,7 @@ good way to debug a derivation that you're building.`,
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble shell")
 					defer span.End()
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -248,7 +259,7 @@ has limited use because you can't build anything that you create, but it's a
 good place to get familiar with how the built-in modules and functions work.
 				`,
 				Action: func(c *cli.Context) error {
-					project, err := project.NewProject(".")
+					project, err := project.NewProject(wd)
 					if err != nil {
 						return err
 					}
@@ -266,7 +277,7 @@ their public functions with documentation. If an immediate subdirectory has a
 "default.bramble" documentation will be printed for those functions as well.
 				`,
 				Action: func(c *cli.Context) error {
-					project, err := project.NewProject(".")
+					project, err := project.NewProject(wd)
 					if err != nil {
 						return err
 					}
@@ -365,6 +376,7 @@ module cache.
 						Handler: dependency.ServerHandler(
 							filepath.Join(store.BramblePath, "var/dependencies"),
 							newBuilder(store),
+							dependency.DownloadGithubRepo,
 						),
 					}
 					errChan := make(chan error)
@@ -431,7 +443,7 @@ func RunCLI() {
 		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
 	}
 
-	app := cliApp()
+	app := cliApp(".")
 	log.SetOutput(ioutil.Discard)
 
 	ctx, cancel := context.WithCancel(context.Background())

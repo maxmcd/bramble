@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/test"
 )
 
 func TestStore_StoreLocalSources(t *testing.T) {
@@ -34,7 +34,7 @@ func TestStore_StoreLocalSources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.sources.ProjectLocation, _ = filepath.Abs(tt.sources.ProjectLocation)
 			tt.sources.Location, _ = filepath.Abs(tt.sources.Location)
-			store, err := NewStore(fileutil.TestTmpDir(t))
+			store, err := NewStore(test.TmpDir(t))
 			if err != nil {
 				t.Fatal(err)
 			}

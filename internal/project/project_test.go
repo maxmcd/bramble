@@ -3,7 +3,7 @@ package project
 import (
 	"testing"
 
-	"github.com/maxmcd/bramble/pkg/fmtutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -87,7 +87,7 @@ func TestProject_scanForLoadNames(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Project.scanForLoadNames() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			fmtutil.Printqln(names)
+			fxt.Printqln(names)
 			// TODO: Assert something
 		})
 	}

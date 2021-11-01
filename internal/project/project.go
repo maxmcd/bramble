@@ -223,15 +223,31 @@ func (p *Project) scanForLoadNames() (moduleNames []string, err error) {
 	return moduleNames, nil
 }
 
-// func (p *Project) calculateDependencies() (err error) {
-// 	names, err := p.scanForLoadNames()
-// 	if err != nil {
-// 		return errors.Wrap(err, "error scanning for load statements")
-// 	}
+func (p *Project) CalculateDependencies() (err error) {
+	names, err := p.scanForLoadNames()
+	if err != nil {
+		return errors.Wrap(err, "error scanning for load statements")
+	}
 
-// 	p.config.Dependencies
-// 	return nil
-// }
+	if len(names) == 0 {
+		return nil
+	}
+	external := []string{}
+	for _, name := range names {
+		if v := p.config.LoadValueToDependency(name); v == "" {
+			external = append(external, name)
+		}
+	}
+	if len(external) == 0 {
+		return nil
+	}
+
+	// for _, name := range external {
+	// 	p.dm
+	// }
+
+	return nil
+}
 
 func FindAllProjects(loc string) (paths []string, err error) {
 	return paths, filepath.WalkDir(loc, func(path string, d fs.DirEntry, err error) error {

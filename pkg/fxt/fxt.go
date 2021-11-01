@@ -1,4 +1,4 @@
-package fmtutil
+package fxt
 
 import (
 	"fmt"

@@ -14,7 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/github.com/go4org/go4/lock"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
@@ -27,8 +27,8 @@ type Config struct {
 
 func (cfg Config) Render(w io.Writer) {
 	fmt.Fprintln(w, "[module]")
-	fmtutil.Fprintfln(w, "name = %q", cfg.Module.Name)
-	fmtutil.Fprintfln(w, "version = %q", cfg.Module.Version)
+	fxt.Fprintfln(w, "name = %q", cfg.Module.Name)
+	fxt.Fprintfln(w, "version = %q", cfg.Module.Version)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "[dependencies]")
 	var keys []string
@@ -39,11 +39,27 @@ func (cfg Config) Render(w io.Writer) {
 	for _, key := range keys {
 		dep := cfg.Dependencies[key]
 		if dep.Path == "" {
-			fmtutil.Fprintfln(w, "%q = %q", key, dep.Version)
+			fxt.Fprintfln(w, "%q = %q", key, dep.Version)
 		} else {
-			fmtutil.Fprintfln(w, "%q = {version=%q, path=%q}", key, dep.Version, dep.Path)
+			fxt.Fprintfln(w, "%q = {version=%q, path=%q}", key, dep.Version, dep.Path)
 		}
 	}
+}
+
+// LoadValueToDependency takes the string from a `load()` statement and returns
+// the matching dependency in this config, if there is one
+func (cfg Config) LoadValueToDependency(val string) string {
+	longest := ""
+	if strings.HasPrefix(val, cfg.Module.Name) {
+		// TODO: need to support subprojects that could be within the projects import path
+		return ""
+	}
+	for dep := range cfg.Dependencies {
+		if strings.HasPrefix(val, dep) {
+			longest = dep
+		}
+	}
+	return longest
 }
 
 type ConfigDependency struct {

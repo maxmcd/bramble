@@ -14,7 +14,7 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -168,7 +168,7 @@ func TestDMReqsRemote(t *testing.T) {
 			// partially present subset
 			localDM.deleteHalfDeps(t)
 
-			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
 
 			localDM.dependencyClient = &dependencyClient{
 				client: &http.Client{},
@@ -196,7 +196,7 @@ func TestDMPathOrDownload(t *testing.T) {
 	remoteDM := blogScenario(t)
 	localDM := testDepMgr(t) // no deps
 
-	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
 
 	localDM.dependencyClient = &dependencyClient{
 		client: &http.Client{},
@@ -205,7 +205,7 @@ func TestDMPathOrDownload(t *testing.T) {
 
 	path, err := localDM.ModulePathOrDownload(context.Background(), Version{"A", "1.1.0"})
 	if err != nil {
-		fmtutil.Printpvln(err)
+		fxt.Printpvln(err)
 		t.Fatal(err)
 	}
 	cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))

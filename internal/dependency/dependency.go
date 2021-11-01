@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -23,6 +24,7 @@ import (
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
+	"golang.org/x/sync/errgroup"
 )
 
 type Manager struct {
@@ -157,7 +159,13 @@ func PostJob(url, module, reference string) (err error) {
 	if err != nil {
 		return err
 	}
+	dur := (time.Millisecond * 100)
+	count := 0
 	for {
+		if count > 5 {
+			// Most jobs finish quickly
+			dur = time.Second
+		}
 		job, err := dc.getJob(context.Background(), id)
 		spew.Dump(job)
 		if err != nil {
@@ -169,7 +177,8 @@ func PostJob(url, module, reference string) (err error) {
 		if !job.End.IsZero() {
 			break
 		}
-		time.Sleep(time.Second)
+		count++
+		time.Sleep(dur)
 	}
 	return nil
 }
@@ -268,6 +277,25 @@ func (dc *dependencyClient) getModuleVersions(ctx context.Context, name string) 
 		"",
 		nil,
 		&vs)
+}
+
+func (dc *dependencyClient) getAllModuleVersions(ctx context.Context, name string) (vs []string, err error) {
+	parts := strings.Split(name, "/")
+	group, ctx := errgroup.WithContext(ctx)
+	var lock sync.Mutex
+	for len(parts) > 1 {
+		group.Go(func() error {
+			subversions, err := dc.getAllModuleVersions(ctx, strings.Join(parts, "/"))
+			if err != nil {
+				return err
+			}
+			lock.Lock()
+			vs = append(vs, subversions...)
+			lock.Unlock()
+			return nil
+		})
+	}
+	return vs, group.Wait()
 }
 
 func (dc *dependencyClient) getModuleSource(ctx context.Context, m Version) (body io.ReadCloser, err error) {
@@ -464,11 +492,11 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 	return nil
 }
 
-func ServerHandler(dependencyDir string, newBuilder types.NewBuilder) http.Handler {
-	return serverHandler(dependencyDir, newBuilder, downloadGithubRepo)
+func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) http.Handler {
+	return serverHandler(dependencyDir, newBuilder, dgr)
 }
 
-func downloadGithubRepo(url string, reference string) (location string, err error) {
+func DownloadGithubRepo(url string, reference string) (location string, err error) {
 	url = "https://" + url + ".git"
 	location, err = os.MkdirTemp("", "")
 	if err != nil {

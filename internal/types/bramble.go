@@ -27,3 +27,5 @@ type Builder interface {
 }
 
 type NewBuilder func(location string) (Builder, error)
+
+type DownloadGithubRepo func(url string, reference string) (location string, err error)
