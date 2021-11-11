@@ -28,15 +28,14 @@ import (
 )
 
 type Manager struct {
-	dir              dir
-	cfg              config.Config
+	dir dir
+
 	dependencyClient *dependencyClient
 }
 
-func NewManager(dependencyDir string, cfg config.Config, packageHost string) *Manager {
+func NewManager(dependencyDir string, packageHost string) *Manager {
 	return &Manager{
 		dir:              dir(dependencyDir),
-		cfg:              cfg,
 		dependencyClient: &dependencyClient{host: packageHost, client: &http.Client{}},
 	}
 }
@@ -144,6 +143,27 @@ func (dm *Manager) localModuleDependencies(m Version) (vs []Version, err error) 
 	return configVersions(cfg), nil
 }
 
+func (dm *Manager) CalculateConfigBuildlist(cfg config.Config) (config.Config, error) {
+	versions, err := mvs.BuildList(
+		Version{Module: cfg.Module.Name, Version: cfg.Module.Version}.mvsVersion(),
+		dm.reqs(cfg),
+	)
+	if err != nil {
+		return config.Config{}, err
+	}
+
+	cfg.Dependencies = make(map[string]config.Dependency)
+	for _, version := range versions {
+		v := versionFromMVSVersion(version)
+		if v.Module == cfg.Module.Name {
+			continue
+		}
+		// Support path overrides
+		cfg.Dependencies[v.Module] = config.Dependency{Version: v.Version}
+	}
+	return cfg, nil
+}
+
 func (dm *Manager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
 	cfg, err := dm.dependencyClient.getModuleConfig(ctx, m)
 	if err != nil {
@@ -163,7 +183,8 @@ func PostJob(url, module, reference string) (err error) {
 	count := 0
 	for {
 		if count > 5 {
-			// Most jobs finish quickly
+			// Many jobs finish quickly, but if they don't, we can check less
+			// often
 			dur = time.Second
 		}
 		job, err := dc.getJob(context.Background(), id)
@@ -183,12 +204,13 @@ func PostJob(url, module, reference string) (err error) {
 	return nil
 }
 
-func (dm *Manager) reqs() mvs.Reqs {
-	return dependencyManagerReqs{deps: dm}
+func (dm *Manager) reqs(cfg config.Config) mvs.Reqs {
+	return dependencyManagerReqs{deps: dm, cfg: cfg}
 }
 
 type dependencyManagerReqs struct {
 	deps *Manager
+	cfg  config.Config
 }
 
 var _ mvs.Reqs = dependencyManagerReqs{}
@@ -198,8 +220,8 @@ func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, 
 	var vs []Version
 
 	switch {
-	case r.deps.cfg.Module.Name == v.Module && r.deps.cfg.Module.Version == v.Version:
-		for module, cd := range r.deps.cfg.Dependencies {
+	case r.cfg.Module.Name == v.Module && r.cfg.Module.Version == v.Version:
+		for module, cd := range r.cfg.Dependencies {
 			vs = append(vs, Version{Module: module, Version: cd.Version})
 			sortVersions(vs)
 		}
@@ -211,7 +233,7 @@ func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, 
 		vs, err = r.deps.remoteModuleDependencies(context.Background(), v)
 	}
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error fetching module")
 	}
 	for _, v := range vs {
 		versions = append(versions, v.mvsVersion())
@@ -299,11 +321,17 @@ func (dc *dependencyClient) getAllModuleVersions(ctx context.Context, name strin
 }
 
 func (dc *dependencyClient) getModuleSource(ctx context.Context, m Version) (body io.ReadCloser, err error) {
-	return body, dc.request(ctx,
+	if err := dc.request(ctx,
 		http.MethodGet,
 		"/module/source/"+m.String(),
 		"",
-		nil, &body)
+		nil, &body); err != nil {
+		if err == os.ErrNotExist {
+			err = errors.Errorf("request to server could not find module %s", m)
+		}
+		return nil, err
+	}
+	return body, nil
 }
 
 func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg config.Config, err error) {
@@ -314,6 +342,9 @@ func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg
 		"/module/config/"+m.String(),
 		"",
 		nil, w); err != nil {
+		if err == os.ErrNotExist {
+			err = errors.Errorf("request to server could not find module %s", m)
+		}
 		return cfg, err
 	}
 	return config.ParseConfig(&buf)

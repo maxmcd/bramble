@@ -249,6 +249,34 @@ func (p *Project) CalculateDependencies() (err error) {
 	return nil
 }
 
+func (p *Project) AddDependency(v types.Module) (err error) {
+	existing, found := p.config.Dependencies[v.Name]
+	if found {
+		existing.Version = v.Version
+		p.config.Dependencies[v.Name] = existing
+	} else {
+		p.config.Dependencies[v.Name] = config.Dependency{
+			Version: v.Version,
+		}
+	}
+	cfg, err := p.dm.CalculateConfigBuildlist(p.config)
+	if err != nil {
+		return err
+	}
+	cfg.Render(os.Stdout)
+	return p.writeConfig(cfg)
+}
+
+func (p *Project) writeConfig(cfg config.Config) (err error) {
+	f, err := os.Create(filepath.Join(p.location, "bramble.toml"))
+	if err != nil {
+		return err
+	}
+	cfg.Render(os.Stdout)
+	cfg.Render(f)
+	return f.Close()
+}
+
 func FindAllProjects(loc string) (paths []string, err error) {
 	return paths, filepath.WalkDir(loc, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

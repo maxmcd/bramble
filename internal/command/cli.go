@@ -19,6 +19,7 @@ import (
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
+	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
@@ -340,6 +341,25 @@ their public functions with documentation. If an immediate subdirectory has a
 						url = u
 					}
 					return dependency.PostJob(url, module, reference)
+				},
+			},
+			{
+				Name:      "add",
+				UsageText: `bramble add module@version`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "url",
+						Value: "",
+						Usage: "The url (schema+host) of the module cache server. Eg: \"https://cache.bramble.bramble\"",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					b, err := newBramble(wd, "")
+					if err != nil {
+						return err
+					}
+					parts := strings.Split(c.Args().First(), "@")
+					return b.project.AddDependency(types.Module{Version: parts[1], Name: parts[0]})
 				},
 			},
 			{

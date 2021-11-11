@@ -22,7 +22,7 @@ import (
 
 type Config struct {
 	Module       ConfigModule `toml:"module"`
-	Dependencies map[string]ConfigDependency
+	Dependencies map[string]Dependency
 }
 
 func (cfg Config) Render(w io.Writer) {
@@ -62,12 +62,12 @@ func (cfg Config) LoadValueToDependency(val string) string {
 	return longest
 }
 
-type ConfigDependency struct {
+type Dependency struct {
 	Version string
 	Path    string
 }
 
-func (c *ConfigDependency) UnmarshalTOML(data interface{}) error {
+func (c *Dependency) UnmarshalTOML(data interface{}) error {
 	switch v := data.(type) {
 	case string:
 		c.Version = v
@@ -154,6 +154,9 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		}
 		defer f.Close()
 		_, err = toml.DecodeReader(f, &lockFile)
+		if cfg.Dependencies == nil {
+			cfg.Dependencies = map[string]Dependency{}
+		}
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }

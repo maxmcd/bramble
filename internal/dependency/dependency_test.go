@@ -25,8 +25,9 @@ func module(m string, deps ...string) func() (string, []string) {
 	return func() (string, []string) { return m, deps }
 }
 
-func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
+func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config, *Manager) {
 	dm := &Manager{dir: dir(t.TempDir())}
+	var returnedConfig config.Config
 	for i, dep := range deps {
 		module, deps := dep()
 		if err := os.MkdirAll(dm.dir.join("src", module), 0755); err != nil {
@@ -54,14 +55,13 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
 			t.Fatal(err)
 		}
 		if i == 0 {
-			dm.cfg = cfg
+			returnedConfig = cfg
 		}
 	}
-
-	return dm
+	return returnedConfig, dm
 }
 
-func blogScenario(t *testing.T) *Manager {
+func blogScenario(t *testing.T) (config.Config, *Manager) {
 	return testDepMgr(t,
 		module("A@1.1.0", "B@1.2.0", "C@1.2.0"),
 		module("B@1.1.0", "D@1.1.0"),
@@ -82,8 +82,8 @@ func blogScenario(t *testing.T) *Manager {
 }
 
 func TestDMReqsRequired(t *testing.T) {
-	dm := blogScenario(t)
-	reqs := dm.reqs()
+	cfg, dm := blogScenario(t)
+	reqs := dm.reqs(cfg)
 	deps, err := reqs.Required(mvs.Version{
 		Name:    "A@1",
 		Version: "1.0",
@@ -98,8 +98,8 @@ func TestDMReqsRequired(t *testing.T) {
 }
 
 func TestDMReqs(t *testing.T) {
-	dm := blogScenario(t)
-	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs())
+	cfg, dm := blogScenario(t)
+	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs(cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,13 +118,14 @@ func TestSV(t *testing.T) {
 }
 
 func TestDMReqsUpgrade(t *testing.T) {
-	dm := blogScenario(t)
+	cfg, dm := blogScenario(t)
 
 	// Patch local A@1.1.0 to have new version of C before we upgrade
-	dm.cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
+	cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
+
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},
-		dm.reqs(),
+		dm.reqs(cfg),
 		mvs.Version{Name: "C@1", Version: "3.0"},
 	)
 	if err != nil {
@@ -161,8 +162,8 @@ func TestDMReqsRemote(t *testing.T) {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			rand.Seed(int64(i))
 
-			remoteDM := blogScenario(t)
-			localDM := blogScenario(t)
+			_, remoteDM := blogScenario(t)
+			cfg, localDM := blogScenario(t)
 
 			// Delete half of the dependencies in the local DM to simulate a
 			// partially present subset
@@ -175,7 +176,7 @@ func TestDMReqsRemote(t *testing.T) {
 				host:   server.URL,
 			}
 
-			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs())
+			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs(cfg))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -193,8 +194,8 @@ func TestDMReqsRemote(t *testing.T) {
 }
 
 func TestDMPathOrDownload(t *testing.T) {
-	remoteDM := blogScenario(t)
-	localDM := testDepMgr(t) // no deps
+	remoteCFG, remoteDM := blogScenario(t)
+	_, localDM := testDepMgr(t) // no deps
 
 	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
 
@@ -215,7 +216,7 @@ func TestDMPathOrDownload(t *testing.T) {
 	// This is strange, since we just happen to know that "A@1.1.0" is going to
 	// be the default config for remoteDM. We might want to fetch the "A@1.1.0"
 	// config more directly in the future
-	require.Equal(t, cfg, remoteDM.cfg)
+	require.Equal(t, cfg, remoteCFG)
 }
 
 func TestVersion_mvsVersion(t *testing.T) {
