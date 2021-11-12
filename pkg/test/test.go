@@ -56,6 +56,10 @@ func ErrContains(t *testing.T, err error, errContains string) {
 	if errContains == "" && err == nil {
 		return
 	}
+	if errContains == "" && err != nil {
+		t.Error(err)
+		return
+	}
 	if errContains != "" && err == nil {
 		t.Error(fmt.Sprintf("error should have contained %q, but it was nil", errContains))
 	}

@@ -201,6 +201,16 @@ func TestDep(t *testing.T) {
 			"./third/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "third", Version: "0.0.1"}},
 			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
 		}, "", []string{"first@0.0.1"}},
+		{"fourth nested", "fourth", map[string]interface{}{
+			"./fourth/bramble.toml":           config.Config{Module: config.ConfigModule{Name: "fourth", Version: "0.0.1"}},
+			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",
+			"./fourth/nested/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "fourth/nested", Version: "0.0.1"}},
+			"./fourth/nested/default.bramble": "def nested():\n  print('hello nested')",
+		}, "", []string{"third@0.0.1"}},
+		{"fifth with nested load", "fifth", map[string]interface{}{
+			"./fifth/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "fifth", Version: "0.0.1"}},
+			"./fifth/default.bramble": "load('fourth/nested')\ndef fifth():\n  nested.nested()",
+		}, "", []string{"fourth/nested@0.0.1"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for path, file := range tt.files {
@@ -223,12 +233,12 @@ func TestDep(t *testing.T) {
 							return err
 						}
 					}
-				}
-				{
-					app := cliApp(".")
 					if err := app.Run([]string{"bramble", "build", "--parse-only"}); err != nil {
 						return err
 					}
+				}
+				{
+					app := cliApp(".")
 					if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
 						return err
 					}
