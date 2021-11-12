@@ -176,7 +176,7 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	defer done.Close()
 
 	f, err := os.OpenFile(filepath.Join(dir, "bramble.lock"),
-		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o644)
+		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

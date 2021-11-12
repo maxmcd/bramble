@@ -45,7 +45,7 @@ func TestFetchURLBuilder(t *testing.T) {
 			Name:     "foo.txt",
 			Typeflag: tar.TypeReg,
 			Size:     7,
-			Mode:     int64(0o755),
+			Mode:     int64(0755),
 		})
 		_, _ = tw.Write([]byte("bramble"))
 		_ = tw.Close()

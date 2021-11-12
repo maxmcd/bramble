@@ -78,7 +78,7 @@ func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path st
 		return "", err
 	}
 	defer body.Close()
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	if err := os.MkdirAll(path, 0755); err != nil {
 		return "", err
 	}
 	// Copy body to file, we can stream the unarchive if we figure out how to
@@ -370,10 +370,10 @@ func addDependencyMetadata(dependencyDir, module, version, src string, mapping m
 		return errors.Errorf("version %s of module %q is already present on this server", version, module)
 	}
 
-	if err := os.MkdirAll(fileDest, 0o755); err != nil {
+	if err := os.MkdirAll(fileDest, 0755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(metadataDest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(metadataDest), 0755); err != nil {
 		return err
 	}
 	if err := fileutil.CopyDirectory(src, fileDest); err != nil {

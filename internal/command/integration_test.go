@@ -215,7 +215,7 @@ func TestDep(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for path, file := range tt.files {
 				path = filepath.Join(projectDir, path)
-				_ = os.MkdirAll(filepath.Dir(path), 0o755)
+				_ = os.MkdirAll(filepath.Dir(path), 0755)
 				switch v := file.(type) {
 				case string:
 					test.WriteFile(t, path, v)

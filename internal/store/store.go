@@ -152,7 +152,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	if !fileutil.PathExists(s.BramblePath) {
 		// TODO: use logger
 		fmt.Println("bramble path directory doesn't exist, creating")
-		if err = os.Mkdir(s.BramblePath, 0o755); err != nil {
+		if err = os.Mkdir(s.BramblePath, 0755); err != nil {
 			return err
 		}
 	}
@@ -187,7 +187,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 	// Add store folder with the correct padding and add a convenience symlink
 	// in the bramble folder.
 	if _, ok := fileMap["store"]; !ok {
-		if err = os.MkdirAll(s.StorePath, 0o755); err != nil {
+		if err = os.MkdirAll(s.StorePath, 0755); err != nil {
 			return err
 		}
 		if err = os.Symlink("."+storeDirectoryName, s.joinBramblePath("store")); err != nil {
@@ -208,7 +208,7 @@ func ensureBramblePath(s *Store, bramblePath string) (err error) {
 
 	for _, folder := range folders {
 		if _, ok := fileMap[folder]; !ok {
-			if err = os.Mkdir(s.joinBramblePath(folder), 0o755); err != nil {
+			if err = os.Mkdir(s.joinBramblePath(folder), 0755); err != nil {
 				return errors.Wrap(err, fmt.Sprintf("error creating bramble folder %q", folder))
 			}
 		}
@@ -253,7 +253,7 @@ func (s *Store) WriteConfigLink(location string) (err error) {
 	reg := s.joinBramblePath("var/config-registry")
 	hash := hshr.String()
 	configFileLocation := filepath.Join(reg, hash)
-	return ioutil.WriteFile(configFileLocation, []byte(location), 0o644)
+	return ioutil.WriteFile(configFileLocation, []byte(location), 0644)
 }
 
 func (s *Store) WriteBlob(src io.Reader) (hash string, err error) {
@@ -301,7 +301,7 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	drv = formatDerivation(drv)
 	filename = drv.Filename()
 	fileLocation := s.joinStorePath(filename)
-	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0o644)
+	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
 }
 
 func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc *cacheClient) (err error) {

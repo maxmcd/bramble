@@ -66,12 +66,12 @@ func initRootfs(path string) (err error) {
 	}
 	files["etc/resolv.conf"] = &fstest.MapFile{
 		Data: resolvConfBytes,
-		Mode: 0o644,
+		Mode: 0644,
 	}
-	_ = os.MkdirAll(filepath.Join(path, "tmp"), 0o755)
+	_ = os.MkdirAll(filepath.Join(path, "tmp"), 0755)
 	for loc, file := range files {
 		loc = filepath.Join(path, loc)
-		if err := os.MkdirAll(filepath.Dir(loc), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(loc), 0755); err != nil {
 			return err
 		}
 		f, err := os.OpenFile(loc, os.O_CREATE|os.O_RDWR|os.O_TRUNC, file.Mode)
@@ -129,7 +129,7 @@ func newContainer(s Sandbox) (c container, err error) {
 	stateDir := filepath.Join(c.tmpdir, "/state")
 	rootFSDir := filepath.Join(c.tmpdir, "/rootfs")
 	for _, dir := range []string{stateDir, rootFSDir} {
-		if err = os.Mkdir(dir, 0o744); err != nil {
+		if err = os.Mkdir(dir, 0744); err != nil {
 			return
 		}
 	}
@@ -291,7 +291,7 @@ www-data:x:33:33:www-data:/var/www:/bin/false
 operator:x:37:37:Operator:/var:/bin/false
 nobody:x:65534:65534:nobody:/home:/bin/false
 `),
-			Mode: 0o644,
+			Mode: 0644,
 		},
 		"etc/group": &fstest.MapFile{
 			Data: []byte(`root:x:0:
@@ -321,7 +321,7 @@ netdev:x:82:
 users:x:100:
 nobody:x:65534:
 `),
-			Mode: 0o644,
+			Mode: 0644,
 		},
 	}
 }

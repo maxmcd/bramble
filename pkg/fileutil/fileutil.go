@@ -87,7 +87,7 @@ func CP(wd string, paths ...string) (err error) {
 		}
 		if fi.IsDir() {
 			destFolder := filepath.Join(dest, fi.Name())
-			if err = CreateDirIfNotExists(destFolder, 0o755); err != nil {
+			if err = CreateDirIfNotExists(destFolder, 0755); err != nil {
 				return err
 			}
 			err = CopyDirectory(path, filepath.Join(dest, fi.Name()))
@@ -145,7 +145,7 @@ func CopyDirectory(scrDir, dest string) error {
 				return errors.WithStack(err)
 			}
 		case os.ModeDir:
-			if err := CreateDirIfNotExists(destPath, 0o755); err != nil {
+			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
 			if err := CopyDirectory(sourcePath, destPath); err != nil {
@@ -197,7 +197,7 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
-			if err := CreateDirIfNotExists(destPath, 0o755); err != nil {
+			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
 				return errors.WithStack(err)
 			}
 		case os.ModeSymlink:
@@ -357,7 +357,7 @@ func FindExecutable(file string) error {
 	if err != nil {
 		return err
 	}
-	if m := d.Mode(); !m.IsDir() && m&0o111 != 0 {
+	if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
 		return nil
 	}
 	return os.ErrPermission
