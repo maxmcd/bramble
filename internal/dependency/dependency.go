@@ -78,7 +78,7 @@ func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path st
 		return "", err
 	}
 	defer body.Close()
-	if err := os.MkdirAll(path, 0755); err != nil {
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		return "", err
 	}
 	// Copy body to file, we can stream the unarchive if we figure out how to
@@ -109,6 +109,7 @@ type Version struct {
 func (m Version) String() string {
 	return m.Module + "@" + m.Version
 }
+
 func (m Version) mvsVersion() mvs.Version {
 	parts := strings.SplitN(m.Version, ".", 2)
 	return mvs.Version{Name: m.Module + "@" + parts[0], Version: parts[1]}
@@ -240,6 +241,7 @@ func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, 
 	}
 	return
 }
+
 func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
 	switch semver.Compare("v0."+v1, "v0."+v2) {
 	case -1:
@@ -248,10 +250,12 @@ func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
 		return v1
 	}
 }
+
 func (r dependencyManagerReqs) Upgrade(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
 }
+
 func (r dependencyManagerReqs) Previous(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
@@ -366,10 +370,10 @@ func addDependencyMetadata(dependencyDir, module, version, src string, mapping m
 		return errors.Errorf("version %s of module %q is already present on this server", version, module)
 	}
 
-	if err := os.MkdirAll(fileDest, 0755); err != nil {
+	if err := os.MkdirAll(fileDest, 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(metadataDest), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(metadataDest), 0o755); err != nil {
 		return err
 	}
 	if err := fileutil.CopyDirectory(src, fileDest); err != nil {

@@ -136,7 +136,7 @@ func emptyFile(name string) func(dir string) error {
 
 func dir(name string) func(dir string) error {
 	return func(dir string) error {
-		return os.Mkdir(j(dir, name), 0755)
+		return os.Mkdir(j(dir, name), 0o755)
 	}
 }
 
@@ -154,6 +154,6 @@ func symlink(name, link string) func(dir string) error {
 
 func fifo(name string) func(dir string) error {
 	return func(dir string) error {
-		return syscall.Mkfifo(j(dir, name), 0755)
+		return syscall.Mkfifo(j(dir, name), 0o755)
 	}
 }

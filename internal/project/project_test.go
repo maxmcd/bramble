@@ -36,11 +36,17 @@ func TestProject_FindAllModules(t *testing.T) {
 		modulesDoesNotContain []string
 		wantErr               bool
 	}{
-		{"../../", "./tests",
+		{
+			"../../", "./tests",
 			[]string{"github.com/maxmcd/bramble/tests/basic"},
-			[]string{"github.com/maxmcd/bramble"}, false},
-		{"../../", ".",
-			[]string{"github.com/maxmcd/bramble/lib"}, nil, false},
+			[]string{"github.com/maxmcd/bramble"},
+			false,
+		},
+		{
+			"../../", ".",
+			[]string{"github.com/maxmcd/bramble/lib"},
+			nil, false,
+		},
 		{"../../../", ".", nil, nil, true},
 		{"./testdata/project", ".", []string{"testproject/a"}, nil, false},
 		{"./testdata/", ".", nil, []string{

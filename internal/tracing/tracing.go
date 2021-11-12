@@ -50,9 +50,7 @@ func tracerProvider(hostAndPort string) (*tracesdk.TracerProvider, error) {
 	), nil
 }
 
-var (
-	tp *tracesdk.TracerProvider
-)
+var tp *tracesdk.TracerProvider
 
 func init() {
 	hostAndPort, found := os.LookupEnv("JAEGER_TRACE")

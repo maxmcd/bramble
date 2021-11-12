@@ -68,6 +68,7 @@ func (fb filesBuiltin) starlarkGlobListFiles(includeDirectories bool, fileDirect
 	}
 	return out, nil
 }
+
 func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (out starlark.Value, err error) {
 	var (
 		include            *starlark.List

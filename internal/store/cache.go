@@ -45,6 +45,7 @@ func (cc *cacheClient) postDerivation(ctx context.Context, drv Derivation) (file
 		bytes.NewBuffer(drv.json()),
 		&filename)
 }
+
 func (cc *cacheClient) postOutout(ctx context.Context, req outputRequestBody) (err error) {
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -57,6 +58,7 @@ func (cc *cacheClient) postOutout(ctx context.Context, req outputRequestBody) (e
 		bytes.NewBuffer(b),
 		nil)
 }
+
 func (cc *cacheClient) postChunk(ctx context.Context, chunk io.Reader) (hash string, err error) {
 	return hash, cc.request(ctx,
 		http.MethodPost,

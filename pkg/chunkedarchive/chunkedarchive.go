@@ -247,7 +247,7 @@ func Unarchive(toc []TOCEntry, fetcher HashFetcher, location string) (err error)
 		mode := fi.Mode()
 		switch mode & os.ModeType {
 		case os.ModeDir:
-			if err := os.MkdirAll(abs, 0755); err != nil {
+			if err := os.MkdirAll(abs, 0o755); err != nil {
 				return err
 			}
 			madeDir[abs] = true
@@ -262,7 +262,7 @@ func Unarchive(toc []TOCEntry, fetcher HashFetcher, location string) (err error)
 		default:
 			dir := filepath.Dir(abs)
 			if !madeDir[dir] {
-				if err := os.MkdirAll(dir, 0755); err != nil {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
 					return err
 				}
 				madeDir[dir] = true

@@ -32,7 +32,7 @@ func lockPlan9(name string) (io.Closer, error) {
 		return nil, fmt.Errorf("can't Lock file %q: has non-zero size", name)
 	}
 
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, os.ModeExclusive|0644)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, os.ModeExclusive|0o644)
 	if err != nil {
 		return nil, fmt.Errorf("Lock Create of %s failed: %v", name, err)
 	}

@@ -80,7 +80,7 @@ func lockPortable(name string) (io.Closer, error) {
 			return nil, fmt.Errorf("can't Lock file %q: has invalid contents", name)
 		}
 	}
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_EXCL, 0666)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_EXCL, 0o666)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lock file %s %v", name, err)
 	}

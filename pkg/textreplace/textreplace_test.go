@@ -62,6 +62,7 @@ func GenerateRandomCorpus(values []string) io.Reader {
 	}
 	return bytes.NewReader(buf.Bytes())
 }
+
 func TestFrameReader(t *testing.T) {
 	lorem := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam pharetra velit sit amet nibh vulputate imperdiet. Pellentesque hendrerit consequat metus.")
 	expectedAnswer := bytes.ReplaceAll(lorem, []byte("dolor"), []byte("fishy"))
@@ -140,6 +141,7 @@ func (h *Hasher) Write(b []byte) (n int, err error) {
 func (h *Hasher) String() string {
 	return bytesToBase32Hash(h.hash.Sum(nil))
 }
+
 func (h *Hasher) Sha256Hex() string {
 	return fmt.Sprintf("%x", h.hash.Sum(nil))
 }
@@ -153,6 +155,7 @@ func bytesToBase32Hash(b []byte) string {
 	_, _ = base32.NewEncoder(base32.StdEncoding, &buf).Write(b[:20])
 	return strings.ToLower(buf.String())
 }
+
 func TestNoop(t *testing.T) {
 	var buf bytes.Buffer
 	b := make([]byte, 100)

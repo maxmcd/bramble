@@ -206,6 +206,7 @@ func (drv Derivation) copy() Derivation {
 	}
 	return out
 }
+
 func (drv Derivation) Filename() (filename string) {
 	return fmt.Sprintf("%s-%s.drv", drv.Hash(), drv.Name)
 }
@@ -439,6 +440,7 @@ func (dm *derivationsMap) Has(filename string) bool {
 	_, found := dm.Load(filename)
 	return found
 }
+
 func (dm *derivationsMap) Store(drv Derivation) {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()

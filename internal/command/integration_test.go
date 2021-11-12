@@ -186,21 +186,26 @@ func TestDep(t *testing.T) {
 		pkg         string
 		files       map[string]interface{}
 		errContains string
+		install     []string
 	}
 	for _, tt := range []testRun{
 		{"first", "first", map[string]interface{}{
 			"./first/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "first", Version: "0.0.1"}},
-			"./first/default.bramble": "def first():\n  print('first')",
-		}, ""},
+			"./first/default.bramble": "def first():\n  print('print from first')",
+		}, "", nil},
 		{"second syntax err", "second", map[string]interface{}{
 			"./second/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "second", Version: "0.0.1"}},
-			"./second/default.bramble": "def first):\n  print('first')",
-		}, "second/default.bramble:1:10"},
+			"./second/default.bramble": "def first)",
+		}, "second/default.bramble:1:10", nil},
+		{"third with load", "third", map[string]interface{}{
+			"./third/bramble.toml":    config.Config{Module: config.ConfigModule{Name: "third", Version: "0.0.1"}},
+			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
+		}, "", []string{"first@0.0.1"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for path, file := range tt.files {
 				path = filepath.Join(projectDir, path)
-				_ = os.MkdirAll(filepath.Dir(path), 0755)
+				_ = os.MkdirAll(filepath.Dir(path), 0o755)
 				switch v := file.(type) {
 				case string:
 					test.WriteFile(t, path, v)
@@ -210,14 +215,26 @@ func TestDep(t *testing.T) {
 					test.WriteFile(t, path, sb.String())
 				}
 			}
-			app := cliApp(".")
-			if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
-				test.ErrContains(t, err, tt.errContains)
-			}
-			app = cliApp(filepath.Join(projectDir, tt.pkg))
-			err := app.Run([]string{"bramble", "magic"})
-			test.ErrContains(t, err, tt.errContains)
-
+			test.ErrContains(t, func() error {
+				{
+					app := cliApp(filepath.Join(projectDir, tt.pkg))
+					for _, toInstall := range tt.install {
+						if err := app.Run([]string{"bramble", "add", toInstall}); err != nil {
+							return err
+						}
+					}
+				}
+				{
+					app := cliApp(".")
+					if err := app.Run([]string{"bramble", "build", "--parse-only"}); err != nil {
+						return err
+					}
+					if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(), tt.errContains)
 		})
 	}
 }

@@ -77,7 +77,7 @@ func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out
 	// sometimes the location the derivation runs from is not present
 	// in the structure of the copied source files. ensure that we add it
 	runLocation := filepath.Join(tmpDir, relBramblefileLocation)
-	if err = os.MkdirAll(runLocation, 0755); err != nil {
+	if err = os.MkdirAll(runLocation, 0o755); err != nil {
 		return
 	}
 	hshr := hasher.New()

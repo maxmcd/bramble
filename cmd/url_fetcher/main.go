@@ -41,6 +41,7 @@ func main() {
 		panic("")
 	}
 }
+
 func run() error {
 	url := os.Getenv("url")
 	client := http.Client{Transport: transport}

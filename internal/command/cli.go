@@ -107,6 +107,11 @@ bramble build ./tests
 						Usage: "the target that you'd like to build for",
 					},
 					&cli.BoolFlag{
+						Name:  "parse-only",
+						Value: false,
+						Usage: "only parse and run bramble files, don't build",
+					},
+					&cli.BoolFlag{
 						Name:    "verbose",
 						Aliases: []string{"v"},
 						Value:   false,
@@ -125,6 +130,9 @@ bramble build ./tests
 					})
 					if err != nil {
 						return err
+					}
+					if c.Bool("parse-only") {
+						return nil
 					}
 					_, err = b.runBuild(ctx, output, runBuildOptions{
 						check:   c.Bool("check"),

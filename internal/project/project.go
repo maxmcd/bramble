@@ -13,6 +13,7 @@ import (
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -106,6 +107,7 @@ func (p *Project) ReadOnlyPaths() (out []string) {
 	}
 	return
 }
+
 func (p *Project) HiddenPaths() (out []string) {
 	for _, path := range p.config.Module.HiddenPaths {
 		out = append(out, filepath.Join(p.location, path))
@@ -172,6 +174,7 @@ func (p *Project) FindAllModules(path string) (modules []string, err error) {
 	}
 	return modules, nil
 }
+
 func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 	path, err = fileutil.Abs(p.wd, path)
 	if err != nil {
@@ -241,6 +244,8 @@ func (p *Project) CalculateDependencies() (err error) {
 	if len(external) == 0 {
 		return nil
 	}
+
+	fxt.Printqln(external)
 
 	// for _, name := range external {
 	// 	p.dm

@@ -39,12 +39,12 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 				Name:    parts[0],
 				Version: parts[1],
 			},
-			Dependencies: map[string]config.ConfigDependency{},
+			Dependencies: map[string]config.Dependency{},
 		}
 		for _, d := range deps {
 			parts := strings.Split(d, "@")
 			name, version := parts[0], parts[1]
-			cfg.Dependencies[name] = config.ConfigDependency{Version: version}
+			cfg.Dependencies[name] = config.Dependency{Version: version}
 		}
 		f, err := os.Create(dm.dir.join("src", module, "bramble.toml"))
 		if err != nil {
@@ -121,7 +121,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 	cfg, dm := blogScenario(t)
 
 	// Patch local A@1.1.0 to have new version of C before we upgrade
-	cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
+	cfg.Dependencies["C"] = config.Dependency{Version: "1.3.0"}
 
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},

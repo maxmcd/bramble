@@ -12,6 +12,7 @@ const letterBytes = "0123456789"
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
+
 func randStringBytes(n int) string {
 	b := make([]byte, n)
 	for i := range b {
@@ -26,7 +27,7 @@ func (s *Store) storeLengthTempFile() (f *os.File, err error) {
 	try := 0
 	for {
 		name := filepath.Join(dir, prefix+randStringBytes(32-len(prefix)))
-		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
 		if os.IsExist(err) {
 			if try++; try < 10000 {
 				continue
@@ -46,7 +47,7 @@ func (s *Store) storeLengthTempDir() (string, error) {
 	try := 0
 	for {
 		name := filepath.Join(dir, prefix+randStringBytes(32-len(prefix)))
-		err := os.Mkdir(name, 0755)
+		err := os.Mkdir(name, 0o755)
 		if err == nil {
 			return name, nil
 		}
