@@ -26,7 +26,7 @@ func newTestRuntime(t *testing.T, wd string) *runtime {
 }
 
 type scriptTest struct {
-	name, script      string
+	script            string
 	errContains       string
 	respContains      string
 	respDoesntContain string
@@ -60,9 +60,6 @@ func runDerivationTest(t *testing.T, tests []scriptTest, wd string) {
 
 	for _, tt := range tests {
 		name := tt.script
-		if tt.name != "" {
-			name = tt.name
-		}
 		t.Run(name, func(t *testing.T) {
 			thread := &starlark.Thread{Name: "main"}
 			globals, err := starlark.ExecFile(

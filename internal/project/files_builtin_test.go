@@ -45,12 +45,10 @@ func TestBramble_filesBuiltin(t *testing.T) {
 		},
 		{script: `files([], allow_empty=True)`},
 		{
-			name:        "ensure no directories",
 			script:      `b = files(["../*"])`,
 			errContains: "zero files",
 		},
 		{
-			name:         "unless we include directories",
 			script:       `b = files(["../*"], include_directories=True)`,
 			respContains: "bramble",
 		},
