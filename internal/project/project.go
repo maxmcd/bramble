@@ -13,7 +13,9 @@ import (
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/pkg/errors"
+	"go.starlark.net/starlark"
 )
 
 const BrambleExtension = ".bramble"
@@ -23,7 +25,7 @@ var (
 	tracer          = tracing.Tracer("project")
 )
 
-type ModuleFetcher func(context.Context, dependency.Version) (path string, err error)
+type ModuleFetcher func(context.Context, types.Package) (path string, err error)
 
 type Project struct {
 	config   config.Config
@@ -33,7 +35,7 @@ type Project struct {
 
 	lockFile *config.LockFile
 
-	moduleFetcher ModuleFetcher
+	dm *dependency.Manager
 }
 
 // NewProject checks for an existing bramble project in the provided working
@@ -74,8 +76,8 @@ func (p *Project) LockfileWriter() types.LockfileWriter {
 	return p.lockFile
 }
 
-func (p *Project) AddModuleFetcher(mf ModuleFetcher) {
-	p.moduleFetcher = mf
+func (p *Project) AddModuleFetcher(dm *dependency.Manager) {
+	p.dm = dm
 }
 
 func (p *Project) Location() string {
@@ -83,11 +85,11 @@ func (p *Project) Location() string {
 }
 
 func (p *Project) Module() string {
-	return p.config.Module.Name
+	return p.config.Package.Name
 }
 
 func (p *Project) Version() string {
-	return p.config.Module.Version
+	return p.config.Package.Version
 }
 
 func (p *Project) Config() config.Config {
@@ -100,13 +102,14 @@ func (p *Project) WD() string {
 }
 
 func (p *Project) ReadOnlyPaths() (out []string) {
-	for _, path := range p.config.Module.ReadOnlyPaths {
+	for _, path := range p.config.Package.ReadOnlyPaths {
 		out = append(out, filepath.Join(p.location, path))
 	}
 	return
 }
+
 func (p *Project) HiddenPaths() (out []string) {
-	for _, path := range p.config.Module.HiddenPaths {
+	for _, path := range p.config.Package.HiddenPaths {
 		out = append(out, filepath.Join(p.location, path))
 	}
 	return
@@ -122,7 +125,7 @@ func (p *Project) WriteLockfile() error {
 
 // TODO: function that takes load() argument values and references the config and pulls down the needed version
 func (p *Project) fetchExternalModule(ctx context.Context, module string) (path string, err error) {
-	if strings.HasPrefix(module, p.config.Module.Name) {
+	if strings.HasPrefix(module, p.config.Package.Name) {
 		return "", errors.Errorf("%q is not an external module", module)
 	}
 	cd, found := p.config.Dependencies[module]
@@ -134,7 +137,7 @@ func (p *Project) fetchExternalModule(ctx context.Context, module string) (path 
 		// TODO: cd.Path must be relative?
 		return filepath.Join(p.location, cd.Path), nil
 	}
-	return p.moduleFetcher(ctx, dependency.Version{Module: module, Version: cd.Version})
+	return p.dm.PackagePathOrDownload(ctx, types.Package{Name: module, Version: cd.Version})
 }
 
 func (p *Project) filepathToModuleName(path string) (module string, err error) {
@@ -154,10 +157,25 @@ func (p *Project) filepathToModuleName(path string) (module string, err error) {
 		rel = strings.TrimSuffix(rel, BrambleExtension)
 	}
 	rel = strings.TrimSuffix(rel, "/")
-	return p.config.Module.Name + "/" + rel, nil
+	return p.config.Package.Name + "/" + rel, nil
 }
 
 func (p *Project) FindAllModules(path string) (modules []string, err error) {
+	files, err := p.findAllBramblefiles(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		module, err := p.filepathToModuleName(file)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, module)
+	}
+	return modules, nil
+}
+
+func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 	path, err = fileutil.Abs(p.wd, path)
 	if err != nil {
 		return nil, err
@@ -165,7 +183,7 @@ func (p *Project) FindAllModules(path string) (modules []string, err error) {
 	if err := fileutil.PathWithinDir(p.location, path); err != nil {
 		return nil, err
 	}
-	return modules, filepath.WalkDir(
+	return files, filepath.WalkDir(
 		path,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -176,13 +194,102 @@ func (p *Project) FindAllModules(path string) (modules []string, err error) {
 			}
 			// TODO: ignore .git, ignore .gitignore?
 			if strings.HasSuffix(path, ".bramble") {
-				module, err := p.filepathToModuleName(path)
-				if err != nil {
-					return err
-				}
-				modules = append(modules, module)
+				files = append(files, path)
 			}
 			return nil
 		},
 	)
+}
+
+func (p *Project) scanForLoadNames() (moduleNames []string, err error) {
+	modules, err := p.findAllBramblefiles(p.location)
+	if err != nil {
+		return nil, err
+	}
+
+	names := map[string]struct{}{}
+	// Just need to know what builtins exist
+	rt := newRuntime("", "", "", "", nil)
+	for _, module := range modules {
+		_, program, err := starlark.SourceProgram(module, nil, rt.predeclared.Has)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < program.NumLoads(); i++ {
+			name, _ := program.Load(i)
+			names[name] = struct{}{}
+		}
+	}
+	for n := range names {
+		moduleNames = append(moduleNames, n)
+	}
+	return moduleNames, nil
+}
+
+func (p *Project) CalculateDependencies() (err error) {
+	names, err := p.scanForLoadNames()
+	if err != nil {
+		return errors.Wrap(err, "error scanning for load statements")
+	}
+
+	if len(names) == 0 {
+		return nil
+	}
+	external := []string{}
+	for _, name := range names {
+		if v := p.config.LoadValueToDependency(name); v == "" {
+			external = append(external, name)
+		}
+	}
+	if len(external) == 0 {
+		return nil
+	}
+
+	fxt.Printqln(external)
+
+	// for _, name := range external {
+	// 	p.dm
+	// }
+
+	return nil
+}
+
+func (p *Project) AddDependency(v types.Package) (err error) {
+	existing, found := p.config.Dependencies[v.Name]
+	if found {
+		existing.Version = v.Version
+		p.config.Dependencies[v.Name] = existing
+	} else {
+		p.config.Dependencies[v.Name] = config.Dependency{
+			Version: v.Version,
+		}
+	}
+	cfg, err := p.dm.CalculateConfigBuildlist(p.config)
+	if err != nil {
+		return err
+	}
+	cfg.Render(os.Stdout)
+	return p.writeConfig(cfg)
+}
+
+func (p *Project) writeConfig(cfg config.Config) (err error) {
+	f, err := os.Create(filepath.Join(p.location, "bramble.toml"))
+	if err != nil {
+		return err
+	}
+	cfg.Render(os.Stdout)
+	cfg.Render(f)
+	return f.Close()
+}
+
+func FindAllProjects(loc string) (paths []string, err error) {
+	return paths, filepath.WalkDir(loc, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Name() == "bramble.toml" {
+			paths = append(paths, filepath.Dir(path))
+		}
+		return nil
+	})
 }

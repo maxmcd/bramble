@@ -14,21 +14,21 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/github.com/go4org/go4/lock"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
 )
 
 type Config struct {
-	Module       ConfigModule `toml:"module"`
-	Dependencies map[string]ConfigDependency
+	Package      Package `toml:"package"`
+	Dependencies map[string]Dependency
 }
 
 func (cfg Config) Render(w io.Writer) {
-	fmt.Fprintln(w, "[module]")
-	fmtutil.Fprintfln(w, "name = %q", cfg.Module.Name)
-	fmtutil.Fprintfln(w, "version = %q", cfg.Module.Version)
+	fmt.Fprintln(w, "[package]")
+	fxt.Fprintfln(w, "name = %q", cfg.Package.Name)
+	fxt.Fprintfln(w, "version = %q", cfg.Package.Version)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "[dependencies]")
 	var keys []string
@@ -39,19 +39,35 @@ func (cfg Config) Render(w io.Writer) {
 	for _, key := range keys {
 		dep := cfg.Dependencies[key]
 		if dep.Path == "" {
-			fmtutil.Fprintfln(w, "%q = %q", key, dep.Version)
+			fxt.Fprintfln(w, "%q = %q", key, dep.Version)
 		} else {
-			fmtutil.Fprintfln(w, "%q = {version=%q, path=%q}", key, dep.Version, dep.Path)
+			fxt.Fprintfln(w, "%q = {version=%q, path=%q}", key, dep.Version, dep.Path)
 		}
 	}
 }
 
-type ConfigDependency struct {
+// LoadValueToDependency takes the string from a `load()` statement and returns
+// the matching dependency in this config, if there is one
+func (cfg Config) LoadValueToDependency(val string) string {
+	longest := ""
+	if strings.HasPrefix(val, cfg.Package.Name) {
+		// TODO: need to support subprojects that could be within the projects import path
+		return ""
+	}
+	for dep := range cfg.Dependencies {
+		if strings.HasPrefix(val, dep) {
+			longest = dep
+		}
+	}
+	return longest
+}
+
+type Dependency struct {
 	Version string
 	Path    string
 }
 
-func (c *ConfigDependency) UnmarshalTOML(data interface{}) error {
+func (c *Dependency) UnmarshalTOML(data interface{}) error {
 	switch v := data.(type) {
 	case string:
 		c.Version = v
@@ -68,7 +84,7 @@ func (c *ConfigDependency) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
-type ConfigModule struct {
+type Package struct {
 	Name          string   `toml:"name"`
 	Version       string   `toml:"version"`
 	ReadOnlyPaths []string `toml:"read_only_paths"`
@@ -106,14 +122,14 @@ func ParseConfig(r io.Reader) (cfg Config, err error) {
 	if _, err = toml.DecodeReader(r, &cfg); err != nil {
 		return cfg, err
 	}
-	if cfg.Module.Name == "" {
-		return cfg, errors.New("Module name can't be blank")
+	if cfg.Package.Name == "" {
+		return cfg, errors.New("Package name can't be blank")
 	}
-	if cfg.Module.Version == "" {
+	if cfg.Package.Version == "" {
 		return cfg, errors.New("Version can't be blank")
 	}
-	if !semver.IsValid("v" + cfg.Module.Version) {
-		return cfg, errors.Errorf("Module version %q is not a valid sematic version number", cfg.Module.Version)
+	if !semver.IsValid("v" + cfg.Package.Version) {
+		return cfg, errors.Errorf("Package version %q is not a valid sematic version number", cfg.Package.Version)
 	}
 	return cfg, nil
 }
@@ -138,6 +154,9 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		}
 		defer f.Close()
 		_, err = toml.DecodeReader(f, &lockFile)
+		if cfg.Dependencies == nil {
+			cfg.Dependencies = map[string]Dependency{}
+		}
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }

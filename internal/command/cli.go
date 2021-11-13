@@ -19,6 +19,7 @@ import (
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
+	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
@@ -59,7 +60,7 @@ func init() {
 	tracer = tracing.Tracer("command")
 }
 
-func cliApp() *cli.App {
+func cliApp(wd string) *cli.App {
 	app := &cli.App{
 		Name:                  "bramble",
 		Usage:                 "bramble [--version] [--help] <command> [args]",
@@ -106,6 +107,11 @@ bramble build ./tests
 						Usage: "the target that you'd like to build for",
 					},
 					&cli.BoolFlag{
+						Name:  "parse-only",
+						Value: false,
+						Usage: "only parse and run bramble files, don't build",
+					},
+					&cli.BoolFlag{
 						Name:    "verbose",
 						Aliases: []string{"v"},
 						Value:   false,
@@ -115,7 +121,7 @@ bramble build ./tests
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
 					defer span.End()
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -124,6 +130,9 @@ bramble build ./tests
 					})
 					if err != nil {
 						return err
+					}
+					if c.Bool("parse-only") {
+						return nil
 					}
 					_, err = b.runBuild(ctx, output, runBuildOptions{
 						check:   c.Bool("check"),
@@ -155,7 +164,7 @@ bramble build ./tests
 					},
 				},
 				Action: func(c *cli.Context) error {
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -196,11 +205,22 @@ bramble build ./tests
 				Name:      "test",
 				UsageText: "bramble test",
 				Action: func(c *cli.Context) error {
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
 					return b.test(c.Context)
+				},
+			},
+			{
+				Name:      "magic",
+				UsageText: "bramble magic",
+				Action: func(c *cli.Context) error {
+					b, err := newBramble(wd, "")
+					if err != nil {
+						return err
+					}
+					return b.project.CalculateDependencies()
 				},
 			},
 			{
@@ -215,7 +235,7 @@ good way to debug a derivation that you're building.`,
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble shell")
 					defer span.End()
-					b, err := newBramble(".", "")
+					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
@@ -234,7 +254,7 @@ good way to debug a derivation that you're building.`,
 				Usage:     "Initialize a new directory as a bramble project",
 				UsageText: `bramble init`,
 				Action: func(c *cli.Context) error {
-					return nil
+					panic("unimplemented")
 				},
 			},
 			{
@@ -248,7 +268,7 @@ has limited use because you can't build anything that you create, but it's a
 good place to get familiar with how the built-in modules and functions work.
 				`,
 				Action: func(c *cli.Context) error {
-					project, err := project.NewProject(".")
+					project, err := project.NewProject(wd)
 					if err != nil {
 						return err
 					}
@@ -266,7 +286,7 @@ their public functions with documentation. If an immediate subdirectory has a
 "default.bramble" documentation will be printed for those functions as well.
 				`,
 				Action: func(c *cli.Context) error {
-					project, err := project.NewProject(".")
+					project, err := project.NewProject(wd)
 					if err != nil {
 						return err
 					}
@@ -332,6 +352,25 @@ their public functions with documentation. If an immediate subdirectory has a
 				},
 			},
 			{
+				Name:      "add",
+				UsageText: `bramble add module@version`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "url",
+						Value: "",
+						Usage: "The url (schema+host) of the module cache server. Eg: \"https://cache.bramble.bramble\"",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					b, err := newBramble(wd, "")
+					if err != nil {
+						return err
+					}
+					parts := strings.Split(c.Args().First(), "@")
+					return b.project.AddDependency(types.Package{Version: parts[1], Name: parts[0]})
+				},
+			},
+			{
 				Name: "server",
 				UsageText: `bramble server
 
@@ -365,6 +404,7 @@ module cache.
 						Handler: dependency.ServerHandler(
 							filepath.Join(store.BramblePath, "var/dependencies"),
 							newBuilder(store),
+							dependency.DownloadGithubRepo,
 						),
 					}
 					errChan := make(chan error)
@@ -431,7 +471,7 @@ func RunCLI() {
 		return strings.TrimSuffix(oldFlagStringer(f), " (default: false)")
 	}
 
-	app := cliApp()
+	app := cliApp(".")
 	log.SetOutput(ioutil.Discard)
 
 	ctx, cancel := context.WithCancel(context.Background())

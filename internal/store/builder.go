@@ -410,6 +410,7 @@ func (s *Store) hashAndMoveBuildOutputs(ctx context.Context, drv Derivation, out
 	}
 	return
 }
+
 func (s *Store) unarchiveAndReplaceOutputFolderName(ctx context.Context, archive, dst, outputFolder, hashedFolderName string) (err error) {
 	var span trace.Span
 	_, span = tracer.Start(ctx, "store.store.unarchiveAndReplaceOutputFolderName")

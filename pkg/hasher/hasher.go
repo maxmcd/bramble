@@ -33,6 +33,7 @@ func (h *Hasher) Write(b []byte) (n int, err error) {
 func (h *Hasher) String() string {
 	return BytesToBase32Hash(h.hash.Sum(nil))
 }
+
 func (h *Hasher) Sha256Hex() string {
 	return fmt.Sprintf("%x", h.hash.Sum(nil))
 }

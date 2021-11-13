@@ -89,8 +89,10 @@ func (emo ExecModuleOutput) newWalker() (*Walker, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Walker{graph: graph,
-		drvMap: newDrvReplaceableMap()}
+	w := &Walker{
+		graph:  graph,
+		drvMap: newDrvReplaceableMap(),
+	}
 	for _, drv := range emo.AllDerivations {
 		w.drvMap.add(drv)
 	}

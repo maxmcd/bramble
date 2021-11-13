@@ -95,7 +95,7 @@ func starlarkSys(target string) *starlarkstruct.Module {
 }
 
 func (p *Project) REPL() {
-	rt := newRuntime(p.wd, p.location, p.config.Module.Name, "", p.fetchExternalModule)
+	rt := newRuntime(p.wd, p.location, p.config.Package.Name, "", p.fetchExternalModule)
 	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
 }
 

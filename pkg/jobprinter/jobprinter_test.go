@@ -5,5 +5,4 @@ import (
 )
 
 func TestJobPrinter(t *testing.T) {
-
 }

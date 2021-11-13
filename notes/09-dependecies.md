@@ -111,3 +111,32 @@ We need the load() statements to be loaded in parallel so that we can download n
 Oh, or maybe not? We could also ignore inputs, and pass through lazy-load modules. Annoyingly this kills parallelism Yah I think we have to download the dependencies, but then the build-response optimizations still apply after the sources are downloaded.
 
 Ok, so parallel loading, fetch what we need.
+
+-----------------
+
+What happens if a package moves locations within a module? How do we resolve module references between versions?
+
+If foo.com/a is a package
+And it has a directory foo.com/a/b
+And then it releases a version 2.0 where foo.com/a/b is a separate package.
+If my code asks for `load(foo.com/a/b)` what do I return? The reverse example is even nastier.
+
+Do I have to exhaustively search? Find the package with that path that has the latest code? In the example above, I query for the module `load(foo.com/a/b)`, but then also compare it's publish date(??????) to `load(foo.com/a)`. No, no publish date. I just find the latest module at that path. If a package wants to unpublish that path... they have to change the path!?!?. So then when we search within packages, if a path doesn't exist we have to see if there's a module for that path. Yikes.
+
+If I have a path `github.com/a/b/c/d` how do I search for it? I'd have to find every available module and version in that search path, so:
+
+```
+"github.com/a/b/c/d" => [
+   "github.com/a/b/c/d@1.0",
+   "github.com/a/b/c@3.0",
+   "github.com/a/b/c@2.1",
+   "github.com/a/b@3.0",
+   "github.com/a/b/c@2.1"
+]
+```
+
+Then what's the subset of these paths that have "github.com/a/b/c/d" as a valid importable path? Sounds expensive. Could keep an index of those, but would need to maintain it, and would require cache invalidations. Or not, could just host all file paths for each version. That way we can do the same search on disk and remotely, just by crawling filelists.
+
+-------
+
+We must use the `...` path expansion because otherwise we have no other way do indicate the difference between "all things at this path" and "just the module at this path" since both of those things could have the same import path. ie: `foo.com/a/b` and `foo.com/a/b` could refer either to "all modules in the b folder" or the specific file "foo/com/a/b/default.bramble". We could call the first one `foo.com/a/b/...`

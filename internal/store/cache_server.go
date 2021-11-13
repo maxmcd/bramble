@@ -23,7 +23,7 @@ func (hf *storeHashFetcher) Lookup(hash string) (file io.ReadCloser, err error) 
 	return os.Open(hf.store.joinStorePath(hash))
 }
 
-type outputRequestBody struct {
+type OutputRequestBody struct {
 	Output Output
 	TOC    []chunkedarchive.TOCEntry
 }
@@ -82,7 +82,7 @@ func (s *Store) CacheServer() http.Handler {
 		return nil
 	})
 	router.POST("/output", func(c httpx.Context) (err error) {
-		var req outputRequestBody
+		var req OutputRequestBody
 		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 			return httpx.ErrUnprocessableEntity(err)
 		}

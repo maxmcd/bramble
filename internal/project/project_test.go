@@ -3,6 +3,7 @@ package project
 import (
 	"testing"
 
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -11,12 +12,12 @@ func TestNewProject(t *testing.T) {
 	{
 		p, err := NewProject(".")
 		require.NoError(t, err)
-		assert.Equal(t, p.config.Module.Name, "github.com/maxmcd/bramble")
+		assert.Equal(t, p.config.Package.Name, "github.com/maxmcd/bramble")
 	}
 	{
 		p, err := NewProject("./testdata/project")
 		require.NoError(t, err)
-		assert.Equal(t, p.config.Module.Name, "testproject")
+		assert.Equal(t, p.config.Package.Name, "testproject")
 		writer := p.LockfileWriter()
 		if err := writer.AddEntry("foo", "bar"); err != nil {
 			t.Fatal(err)
@@ -35,11 +36,17 @@ func TestProject_FindAllModules(t *testing.T) {
 		modulesDoesNotContain []string
 		wantErr               bool
 	}{
-		{"../../", "./tests",
+		{
+			"../../", "./tests",
 			[]string{"github.com/maxmcd/bramble/tests/basic"},
-			[]string{"github.com/maxmcd/bramble"}, false},
-		{"../../", ".",
-			[]string{"github.com/maxmcd/bramble/lib"}, nil, false},
+			[]string{"github.com/maxmcd/bramble"},
+			false,
+		},
+		{
+			"../../", ".",
+			[]string{"github.com/maxmcd/bramble/lib"},
+			nil, false,
+		},
 		{"../../../", ".", nil, nil, true},
 		{"./testdata/project", ".", []string{"testproject/a"}, nil, false},
 		{"./testdata/", ".", nil, []string{
@@ -65,6 +72,29 @@ func TestProject_FindAllModules(t *testing.T) {
 			for _, m := range tt.modulesDoesNotContain {
 				require.NotContains(t, gotModules, m)
 			}
+		})
+	}
+}
+
+func TestProject_scanForLoadNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewProject("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			names, err := p.scanForLoadNames()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Project.scanForLoadNames() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			fxt.Printqln(names)
+			// TODO: Assert something
 		})
 	}
 }

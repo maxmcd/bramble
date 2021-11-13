@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -23,18 +24,18 @@ import (
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
+	"golang.org/x/sync/errgroup"
 )
 
 type Manager struct {
-	dir              dir
-	cfg              config.Config
+	dir dir
+
 	dependencyClient *dependencyClient
 }
 
-func NewManager(dependencyDir string, cfg config.Config, packageHost string) *Manager {
+func NewManager(dependencyDir string, packageHost string) *Manager {
 	return &Manager{
 		dir:              dir(dependencyDir),
-		cfg:              cfg,
 		dependencyClient: &dependencyClient{host: packageHost, client: &http.Client{}},
 	}
 }
@@ -45,8 +46,8 @@ func (dd dir) join(v ...string) string {
 	return filepath.Join(append([]string{string(dd)}, v...)...)
 }
 
-func (dd dir) localModuleVersions(module string) ([]string, error) {
-	path := dd.join("src", module)
+func (dd dir) localPackageVersions(pkg string) ([]string, error) {
+	path := dd.join("src", pkg)
 	searchGlob := fmt.Sprintf("%s*", path)
 	matches, err := filepath.Glob(searchGlob)
 	if err != nil {
@@ -58,21 +59,21 @@ func (dd dir) localModuleVersions(module string) ([]string, error) {
 	return matches, nil
 }
 
-func (dd dir) localModuleLocation(m Version) (path string) {
-	return dd.join("src", m.String())
+func (dd dir) localPackageLocation(pkg types.Package) (path string) {
+	return dd.join("src", pkg.String())
 }
 
-func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path string, err error) {
-	path = dm.dir.localModuleLocation(m)
+func (dm *Manager) PackagePathOrDownload(ctx context.Context, pkg types.Package) (path string, err error) {
+	path = dm.dir.localPackageLocation(pkg)
 	// If we have it, return it
 	if fileutil.DirExists(path) {
 		return path, nil
 	}
 	// If we don't have it, download it
-	body, err := dm.dependencyClient.getModuleSource(ctx, m)
+	body, err := dm.dependencyClient.getPackageSource(ctx, pkg)
 	if err != nil {
 		if err == os.ErrNotExist {
-			return "", errors.Errorf("Module %q doesn't exist in the remote cache, do you need to publish it?", m)
+			return "", errors.Errorf("Package %q doesn't exist in the remote cache, do you need to publish it?", pkg)
 		}
 		return "", err
 	}
@@ -100,115 +101,138 @@ func (dm *Manager) ModulePathOrDownload(ctx context.Context, m Version) (path st
 	return path, os.RemoveAll(name)
 }
 
-type Version struct {
-	Module  string
-	Version string
+func mvsVersionFromPackage(p types.Package) mvs.Version {
+	parts := strings.SplitN(p.Version, ".", 2)
+	return mvs.Version{Name: p.Name + "@" + parts[0], Version: parts[1]}
 }
 
-func (m Version) String() string {
-	return m.Module + "@" + m.Version
-}
-func (m Version) mvsVersion() mvs.Version {
-	parts := strings.SplitN(m.Version, ".", 2)
-	return mvs.Version{Name: m.Module + "@" + parts[0], Version: parts[1]}
-}
-
-func versionFromMVSVersion(m mvs.Version) Version {
+func packageFromMVSVersion(m mvs.Version) types.Package {
 	loc := strings.LastIndex(m.Name, "@")
-	return Version{Version: m.Name[loc+1:] + "." + m.Version, Module: m.Name[:loc]}
+	return types.Package{Name: m.Name[:loc], Version: m.Name[loc+1:] + "." + m.Version}
 }
 
-func sortVersions(vs []Version) {
-	sort.Slice(vs, func(i, j int) bool { return vs[i].Module < vs[j].Module })
+func sortVersions(pkgs []types.Package) {
+	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Name < pkgs[j].Name })
 }
 
-func configVersions(cfg config.Config) (vs []Version) {
-	for module, dep := range cfg.Dependencies {
-		vs = append(vs, Version{Module: module, Version: dep.Version})
+func configVersions(cfg config.Config) (pkgs []types.Package) {
+	for pkg, dep := range cfg.Dependencies {
+		pkgs = append(pkgs, types.Package{Name: pkg, Version: dep.Version})
 	}
-	sortVersions(vs)
-	return vs
+	sortVersions(pkgs)
+	return pkgs
 }
 
-func (dm *Manager) existsLocally(m Version) bool {
-	return fileutil.PathExists(dm.dir.localModuleLocation(m))
+func (dm *Manager) existsLocally(pkg types.Package) bool {
+	return fileutil.PathExists(dm.dir.localPackageLocation(pkg))
 }
 
-func (dm *Manager) localModuleDependencies(m Version) (vs []Version, err error) {
-	cfg, err := config.ReadConfig(filepath.Join(dm.dir.localModuleLocation(m), "bramble.toml"))
+func (dm *Manager) localPackageDependencies(pkg types.Package) (vs []types.Package, err error) {
+	cfg, err := config.ReadConfig(filepath.Join(dm.dir.localPackageLocation(pkg), "bramble.toml"))
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
 }
 
-func (dm *Manager) remoteModuleDependencies(ctx context.Context, m Version) (vs []Version, err error) {
-	cfg, err := dm.dependencyClient.getModuleConfig(ctx, m)
+func (dm *Manager) CalculateConfigBuildlist(cfg config.Config) (config.Config, error) {
+	versions, err := mvs.BuildList(
+		mvsVersionFromPackage(types.Package{Name: cfg.Package.Name, Version: cfg.Package.Version}),
+		dm.reqs(cfg),
+	)
+	if err != nil {
+		return config.Config{}, err
+	}
+
+	cfg.Dependencies = make(map[string]config.Dependency)
+	for _, version := range versions {
+		v := packageFromMVSVersion(version)
+		if v.Name == cfg.Package.Name {
+			continue
+		}
+		// Support path overrides
+		cfg.Dependencies[v.Name] = config.Dependency{Version: v.Version}
+	}
+	return cfg, nil
+}
+
+func (dm *Manager) remotePackageDependencies(ctx context.Context, m types.Package) (vs []types.Package, err error) {
+	cfg, err := dm.dependencyClient.getPackageConfig(ctx, m)
 	if err != nil {
 		return nil, err
 	}
 	return configVersions(cfg), nil
 }
 
-func PostJob(url, module, reference string) (err error) {
-	jr := JobRequest{Module: module, Reference: reference}
+func PostJob(url, pkg, reference string) (err error) {
+	jr := JobRequest{Package: pkg, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
 	id, err := dc.postJob(context.Background(), jr)
 	if err != nil {
 		return err
 	}
+	dur := (time.Millisecond * 100)
+	count := 0
 	for {
+		if count > 5 {
+			// Many jobs finish quickly, but if they don't, we can check less
+			// often
+			dur = time.Second
+		}
 		job, err := dc.getJob(context.Background(), id)
 		spew.Dump(job)
 		if err != nil {
 			return err
 		}
 		if job.Error != "" {
-			return errors.Wrap(errors.New(job.Error), "got error posting job")
+			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
 			break
 		}
-		time.Sleep(time.Second)
+		count++
+		time.Sleep(dur)
 	}
 	return nil
 }
 
-func (dm *Manager) reqs() mvs.Reqs {
-	return dependencyManagerReqs{deps: dm}
+func (dm *Manager) reqs(cfg config.Config) mvs.Reqs {
+	return dependencyManagerReqs{deps: dm, cfg: cfg}
 }
 
 type dependencyManagerReqs struct {
 	deps *Manager
+	cfg  config.Config
 }
 
 var _ mvs.Reqs = dependencyManagerReqs{}
 
 func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, err error) {
-	v := versionFromMVSVersion(m)
-	var vs []Version
+	p := packageFromMVSVersion(m)
+	var pkgs []types.Package
 
 	switch {
-	case r.deps.cfg.Module.Name == v.Module && r.deps.cfg.Module.Version == v.Version:
-		for module, cd := range r.deps.cfg.Dependencies {
-			vs = append(vs, Version{Module: module, Version: cd.Version})
-			sortVersions(vs)
+	case r.cfg.Package.Name == p.Name && r.cfg.Package.Version == p.Version:
+		for pkg, cd := range r.cfg.Dependencies {
+			pkgs = append(pkgs, types.Package{Name: pkg, Version: cd.Version})
+			sortVersions(pkgs)
 		}
-	case r.deps.existsLocally(v):
-		vs, err = r.deps.localModuleDependencies(v)
+	case r.deps.existsLocally(p):
+		pkgs, err = r.deps.localPackageDependencies(p)
 	default:
 		// TODO: tracing
 		// TODO: cache this result locally?
-		vs, err = r.deps.remoteModuleDependencies(context.Background(), v)
+		pkgs, err = r.deps.remotePackageDependencies(context.Background(), p)
 	}
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error fetching package")
 	}
-	for _, v := range vs {
-		versions = append(versions, v.mvsVersion())
+	for _, p := range pkgs {
+		versions = append(versions, mvsVersionFromPackage(p))
 	}
 	return
 }
+
 func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
 	switch semver.Compare("v0."+v1, "v0."+v2) {
 	case -1:
@@ -217,10 +241,12 @@ func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
 		return v1
 	}
 }
+
 func (r dependencyManagerReqs) Upgrade(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
 }
+
 func (r dependencyManagerReqs) Previous(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
@@ -261,49 +287,78 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 		&job)
 }
 
-func (dc *dependencyClient) getModuleVersions(ctx context.Context, name string) (vs []string, err error) {
+func (dc *dependencyClient) getPackageVersions(ctx context.Context, name string) (vs []string, err error) {
 	return vs, dc.request(ctx,
 		http.MethodGet,
-		"/module/"+name,
+		"/package/"+name,
 		"",
 		nil,
 		&vs)
 }
 
-func (dc *dependencyClient) getModuleSource(ctx context.Context, m Version) (body io.ReadCloser, err error) {
-	return body, dc.request(ctx,
-		http.MethodGet,
-		"/module/source/"+m.String(),
-		"",
-		nil, &body)
+func (dc *dependencyClient) getAllPackageVersions(ctx context.Context, name string) (vs []string, err error) {
+	parts := strings.Split(name, "/")
+	group, ctx := errgroup.WithContext(ctx)
+	var lock sync.Mutex
+	for len(parts) > 1 {
+		group.Go(func() error {
+			subversions, err := dc.getAllPackageVersions(ctx, strings.Join(parts, "/"))
+			if err != nil {
+				return err
+			}
+			lock.Lock()
+			vs = append(vs, subversions...)
+			lock.Unlock()
+			return nil
+		})
+	}
+	return vs, group.Wait()
 }
 
-func (dc *dependencyClient) getModuleConfig(ctx context.Context, m Version) (cfg config.Config, err error) {
+func (dc *dependencyClient) getPackageSource(ctx context.Context, pkg types.Package) (body io.ReadCloser, err error) {
+	if err := dc.request(ctx,
+		http.MethodGet,
+		"/package/source/"+pkg.String(),
+		"",
+		nil, &body); err != nil {
+		if err == os.ErrNotExist {
+			err = errors.Errorf("request to server could not find package %s", pkg)
+		}
+		return nil, err
+	}
+	return body, nil
+}
+
+func (dc *dependencyClient) getPackageConfig(ctx context.Context, pkg types.Package) (cfg config.Config, err error) {
 	var buf bytes.Buffer
 	var w io.Writer = &buf
 	if err := dc.request(ctx,
 		http.MethodGet,
-		"/module/config/"+m.String(),
+		"/package/config/"+pkg.String(),
 		"",
 		nil, w); err != nil {
+		if err == os.ErrNotExist {
+			err = errors.Errorf("request to server could not find package %s", pkg)
+		}
 		return cfg, err
 	}
 	return config.ParseConfig(&buf)
 }
 
-func addDependencyMetadata(dependencyDir, module, version, src string, mapping map[string]map[string][]string) (err error) {
+func addDependencyMetadata(dependencyDir, pkg, version, src string, mapping map[string]map[string][]string) (err error) {
 	srcs := filepath.Join(dependencyDir, "src")
-	fileDest := filepath.Join(srcs, module+"@"+version)
+	fileDest := filepath.Join(srcs, pkg+"@"+version)
 
 	// TODO, should be platform specific
 	drvs := filepath.Join(dependencyDir, ""+types.Platform())
-	metadataDest := filepath.Join(drvs, module+"@"+version)
+	metadataDest := filepath.Join(drvs, pkg+"@"+version)
 
 	// If the metadata is here we already have a record of the output mapping.
 	// If we checked the src directory it might just be there as a dependency of
 	// another nomad project
+	fmt.Println(metadataDest)
 	if fileutil.PathExists(metadataDest) {
-		return errors.Errorf("version %s of module %q is already present on this server", version, module)
+		return errors.Errorf("version %s of package %q is already present on this server", version, pkg)
 	}
 
 	if err := os.MkdirAll(fileDest, 0755); err != nil {
@@ -348,7 +403,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 			return httpx.ErrUnprocessableEntity(err)
 		}
 		job := &Job{
-			Module:    jobRequest.Module,
+			Package:   jobRequest.Package,
 			Reference: jobRequest.Reference,
 		}
 		jq.AddJob(job)
@@ -356,43 +411,12 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			var err error
-			defer func() {
-				jq.End(job.ID, err)
-			}()
-
-			loc, err := downloadGithubRepo(job.Module, job.Reference)
-			if err != nil {
-				err = errors.Wrap(err, "error downloading git repo")
-				return
-			}
-			builder, err := newBuilder(loc)
-			if err != nil {
-				return
-			}
-			name, version := builder.Module()
-			if name != job.Module {
-				err = errors.Errorf("Project module name %q does not match the location the project was fetched from: %q",
-					name,
-					job.Module)
-			}
-			resp, err := builder.Build(context.Background(), nil, types.BuildOptions{Check: true})
-			if err != nil {
-				return
-			}
-			if err := addDependencyMetadata(
-				dependencyDir,
-				name,
-				version,
-				loc,
-				resp.Modules); err != nil {
-				return
-			}
+			jq.End(job.ID, buildJob(job, dependencyDir, newBuilder, downloadGithubRepo))
 		}()
 
 		return nil
 	})
-	// router.GET("/module/outputs/:platform/:name/:version", func(c httpx.Context) error {
+	// router.GET("/package/outputs/:platform/:name/:version", func(c httpx.Context) error {
 	// 	name := c.Params.ByName("name")
 	// 	path := filepath.Join(bramblePath, "var", platform, name)
 	// 	searchGlob := fmt.Sprintf("%s*", path)
@@ -406,30 +430,31 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	// 	return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	// })
 	// This is hard because :name can have slashes...
-	// router.GET("/module/platform/:platform/:name_version/", func(c httpx.Context) error { return nil })
-	router.GET("/module/versions/*name", func(c httpx.Context) error {
+	// router.GET("/package/platform/:platform/:name_version/", func(c httpx.Context) error { return nil })
+	router.GET("/package/versions/*name", func(c httpx.Context) error {
 		// TODO: Return all matches for cached derivation outputs that we have
 		// as well?
 		name := c.Params.ByName("name")
-		matches, err := dependencyDirectory.localModuleVersions(name)
+		matches, err := dependencyDirectory.localPackageVersions(name)
 		if err != nil {
 			return err
 		}
 		return json.NewEncoder(c.ResponseWriter).Encode(matches)
 	})
-	router.GET("/module/source/*name_version", func(c httpx.Context) error {
+	router.GET("/package/source/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
 		path := filepath.Join(dependencyDir, "src", name)
 		if !fileutil.DirExists(path) {
-			return httpx.ErrNotFound(errors.New("can't find module"))
+			return httpx.ErrNotFound(errors.New("can't find package"))
 		}
 		return chunkedarchive.StreamArchive(c.ResponseWriter, path)
 	})
-	router.GET("/module/config/*name_version", func(c httpx.Context) error {
+	router.GET("/package/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
+		fmt.Println("MNAME_SERVION", name)
 		path := filepath.Join(dependencyDir, "src", name, "bramble.toml")
 		if !fileutil.FileExists(path) {
-			return httpx.ErrNotFound(errors.New("can't find module"))
+			return httpx.ErrNotFound(errors.New("can't find package"))
 		}
 		f, err := os.Open(path)
 		if err != nil {
@@ -445,11 +470,59 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	return router
 }
 
-func ServerHandler(dependencyDir string, newBuilder types.NewBuilder) http.Handler {
-	return serverHandler(dependencyDir, newBuilder, downloadGithubRepo)
+func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (err error) {
+	loc, err := downloadGithubRepo(job.Package, job.Reference)
+	if err != nil {
+		return errors.Wrap(err, "error downloading git repo")
+	}
+	builder, err := newBuilder(loc)
+	if err != nil {
+		return
+	}
+	packages := builder.Packages()
+	for path, pkg := range packages {
+		rel, err := filepath.Rel(loc, path)
+		if err != nil {
+			panic(loc + " - " + path)
+		}
+		expectedPackageName := strings.TrimSuffix(job.Package+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
+		if expectedPackageName != pkg.Name {
+			return errors.Errorf("package name %q does not match the location the project was fetched from: %q",
+				pkg.Name,
+				expectedPackageName)
+		}
+	}
+	toRun := []func() error{}
+	for path, pkg := range packages {
+		resp, err := builder.Build(context.Background(), path, nil, types.BuildOptions{Check: true})
+		if err != nil {
+			return err
+		}
+		p := pkg // assign to variable to ensure same value is used
+		src := path
+		// Only add if we return without erroring
+		toRun = append(toRun, func() error {
+			return addDependencyMetadata(
+				dependencyDir,
+				p.Name,
+				p.Version,
+				src,
+				resp.Packages)
+		})
+	}
+	for _, tr := range toRun {
+		if err = tr(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func downloadGithubRepo(url string, reference string) (location string, err error) {
+func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) http.Handler {
+	return serverHandler(dependencyDir, newBuilder, dgr)
+}
+
+func DownloadGithubRepo(url string, reference string) (location string, err error) {
 	url = "https://" + url + ".git"
 	location, err = os.MkdirTemp("", "")
 	if err != nil {

@@ -46,7 +46,7 @@ func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output
 		return
 	}
 
-	rt := newRuntime(p.wd, p.location, p.config.Module.Name, input.Target, p.fetchExternalModule)
+	rt := newRuntime(p.wd, p.location, p.config.Package.Name, input.Target, p.fetchExternalModule)
 
 	module, fn, err := rt.parseModuleFuncArgument(args)
 	if err != nil {

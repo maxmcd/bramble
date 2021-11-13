@@ -14,37 +14,39 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/fmtutil"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/semver"
 )
 
-func module(m string, deps ...string) func() (string, []string) {
+func pkg(m string, deps ...string) func() (string, []string) {
 	return func() (string, []string) { return m, deps }
 }
 
-func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
+func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config, *Manager) {
 	dm := &Manager{dir: dir(t.TempDir())}
+	var returnedConfig config.Config
 	for i, dep := range deps {
-		module, deps := dep()
-		if err := os.MkdirAll(dm.dir.join("src", module), 0755); err != nil {
+		pkg, deps := dep()
+		if err := os.MkdirAll(dm.dir.join("src", pkg), 0755); err != nil {
 			t.Fatal(err)
 		}
-		parts := strings.Split(module, "@")
+		parts := strings.Split(pkg, "@")
 		cfg := config.Config{
-			Module: config.ConfigModule{
+			Package: config.Package{
 				Name:    parts[0],
 				Version: parts[1],
 			},
-			Dependencies: map[string]config.ConfigDependency{},
+			Dependencies: map[string]config.Dependency{},
 		}
 		for _, d := range deps {
 			parts := strings.Split(d, "@")
 			name, version := parts[0], parts[1]
-			cfg.Dependencies[name] = config.ConfigDependency{Version: version}
+			cfg.Dependencies[name] = config.Dependency{Version: version}
 		}
-		f, err := os.Create(dm.dir.join("src", module, "bramble.toml"))
+		f, err := os.Create(dm.dir.join("src", pkg, "bramble.toml"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,36 +55,35 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) *Manager {
 			t.Fatal(err)
 		}
 		if i == 0 {
-			dm.cfg = cfg
+			returnedConfig = cfg
 		}
 	}
-
-	return dm
+	return returnedConfig, dm
 }
 
-func blogScenario(t *testing.T) *Manager {
+func blogScenario(t *testing.T) (config.Config, *Manager) {
 	return testDepMgr(t,
-		module("A@1.1.0", "B@1.2.0", "C@1.2.0"),
-		module("B@1.1.0", "D@1.1.0"),
-		module("B@1.2.0", "D@1.3.0"),
-		module("C@1.1.0"),
-		module("C@1.2.0", "D@1.4.0"),
-		module("C@1.3.0", "F@1.1.0"),
-		module("D@1.1.0", "E@1.1.0"),
-		module("D@1.2.0", "E@1.1.0"),
-		module("D@1.3.0", "E@1.2.0"),
-		module("D@1.4.0", "E@1.2.0"),
-		module("E@1.1.0"),
-		module("E@1.2.0"),
-		module("E@1.3.0"),
-		module("F@1.1.0", "G@1.1.0"),
-		module("G@1.1.0", "F@1.1.0"),
+		pkg("A@1.1.0", "B@1.2.0", "C@1.2.0"),
+		pkg("B@1.1.0", "D@1.1.0"),
+		pkg("B@1.2.0", "D@1.3.0"),
+		pkg("C@1.1.0"),
+		pkg("C@1.2.0", "D@1.4.0"),
+		pkg("C@1.3.0", "F@1.1.0"),
+		pkg("D@1.1.0", "E@1.1.0"),
+		pkg("D@1.2.0", "E@1.1.0"),
+		pkg("D@1.3.0", "E@1.2.0"),
+		pkg("D@1.4.0", "E@1.2.0"),
+		pkg("E@1.1.0"),
+		pkg("E@1.2.0"),
+		pkg("E@1.3.0"),
+		pkg("F@1.1.0", "G@1.1.0"),
+		pkg("G@1.1.0", "F@1.1.0"),
 	)
 }
 
 func TestDMReqsRequired(t *testing.T) {
-	dm := blogScenario(t)
-	reqs := dm.reqs()
+	cfg, dm := blogScenario(t)
+	reqs := dm.reqs(cfg)
 	deps, err := reqs.Required(mvs.Version{
 		Name:    "A@1",
 		Version: "1.0",
@@ -97,8 +98,8 @@ func TestDMReqsRequired(t *testing.T) {
 }
 
 func TestDMReqs(t *testing.T) {
-	dm := blogScenario(t)
-	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs())
+	cfg, dm := blogScenario(t)
+	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs(cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,13 +118,14 @@ func TestSV(t *testing.T) {
 }
 
 func TestDMReqsUpgrade(t *testing.T) {
-	dm := blogScenario(t)
+	cfg, dm := blogScenario(t)
 
 	// Patch local A@1.1.0 to have new version of C before we upgrade
-	dm.cfg.Dependencies["C"] = config.ConfigDependency{Version: "1.3.0"}
+	cfg.Dependencies["C"] = config.Dependency{Version: "1.3.0"}
+
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},
-		dm.reqs(),
+		dm.reqs(cfg),
 		mvs.Version{Name: "C@1", Version: "3.0"},
 	)
 	if err != nil {
@@ -160,21 +162,21 @@ func TestDMReqsRemote(t *testing.T) {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			rand.Seed(int64(i))
 
-			remoteDM := blogScenario(t)
-			localDM := blogScenario(t)
+			_, remoteDM := blogScenario(t)
+			cfg, localDM := blogScenario(t)
 
 			// Delete half of the dependencies in the local DM to simulate a
 			// partially present subset
 			localDM.deleteHalfDeps(t)
 
-			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
 
 			localDM.dependencyClient = &dependencyClient{
 				client: &http.Client{},
 				host:   server.URL,
 			}
 
-			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs())
+			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs(cfg))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,19 +194,19 @@ func TestDMReqsRemote(t *testing.T) {
 }
 
 func TestDMPathOrDownload(t *testing.T) {
-	remoteDM := blogScenario(t)
-	localDM := testDepMgr(t) // no deps
+	remoteCFG, remoteDM := blogScenario(t)
+	_, localDM := testDepMgr(t) // no deps
 
-	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil))
+	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
 
 	localDM.dependencyClient = &dependencyClient{
 		client: &http.Client{},
 		host:   server.URL,
 	}
 
-	path, err := localDM.ModulePathOrDownload(context.Background(), Version{"A", "1.1.0"})
+	path, err := localDM.PackagePathOrDownload(context.Background(), types.Package{"A", "1.1.0"})
 	if err != nil {
-		fmtutil.Printpvln(err)
+		fxt.Printpvln(err)
 		t.Fatal(err)
 	}
 	cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))
@@ -214,19 +216,19 @@ func TestDMPathOrDownload(t *testing.T) {
 	// This is strange, since we just happen to know that "A@1.1.0" is going to
 	// be the default config for remoteDM. We might want to fetch the "A@1.1.0"
 	// config more directly in the future
-	require.Equal(t, cfg, remoteDM.cfg)
+	require.Equal(t, cfg, remoteCFG)
 }
 
-func TestVersion_mvsVersion(t *testing.T) {
+func TestVersion_mvsVersionFromPackage(t *testing.T) {
 	tests := []struct {
 		name string
-		have Version
+		have types.Package
 		want mvs.Version
 	}{
 		{
 			name: "simple",
-			have: Version{
-				Module:  "github.com/maxmcd/bramble",
+			have: types.Package{
+				Name:    "github.com/maxmcd/bramble",
 				Version: "0.1.0",
 			},
 			want: mvs.Version{
@@ -237,18 +239,18 @@ func TestVersion_mvsVersion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.have.mvsVersion(); !reflect.DeepEqual(got, tt.want) {
+			if got := mvsVersionFromPackage(tt.have); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Version.mvsVersion() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_versionFromMVSVersion(t *testing.T) {
+func Test_packageFromMVSVersion(t *testing.T) {
 	tests := []struct {
 		name string
 		have mvs.Version
-		want Version
+		want types.Package
 	}{
 		{
 			name: "simple",
@@ -256,60 +258,83 @@ func Test_versionFromMVSVersion(t *testing.T) {
 				Name:    "github.com/maxmcd/bramble@0",
 				Version: "1.0",
 			},
-			want: Version{
-				Module:  "github.com/maxmcd/bramble",
+			want: types.Package{
+				Name:    "github.com/maxmcd/bramble",
 				Version: "0.1.0",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := versionFromMVSVersion(tt.have); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("versionFromMVSVersion() = %v, want %v", got, tt.want)
+			if got := packageFromMVSVersion(tt.have); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("packageFromMVSVersion() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 type testBuilder struct {
-	cfg config.Config
-	t   *testing.T
+	packages map[string]types.Package
+	t        *testing.T
+	location string
 }
 
 var (
-	_ types.NewBuilder = testBuilder{}.NewBuilder
-	_ types.Builder    = testBuilder{}
+	_ types.NewBuilder = new(testBuilder).NewBuilder
+	_ types.Builder    = new(testBuilder)
 )
 
-func (tb testBuilder) NewBuilder(location string) (types.Builder, error) {
+func (tb *testBuilder) NewBuilder(location string) (types.Builder, error) {
+	tb.location = location
 	return tb, nil
 }
 
-func (tb testBuilder) Module() (string, string) {
-	return tb.cfg.Module.Name, tb.cfg.Module.Version
+func (tb *testBuilder) Packages() map[string]types.Package {
+	out := map[string]types.Package{}
+	// Make paths absolute
+	for loc, m := range tb.packages {
+		out[filepath.Join(tb.location, loc)] = m
+	}
+	return out
 }
 
-func (tb testBuilder) Build(ctx context.Context, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+func (tb *testBuilder) Build(ctx context.Context, location string, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
 	return
 }
 
 func (tb testBuilder) testGithubDownloader(url, reference string) (location string, err error) {
 	location = tb.t.TempDir()
-	f, err := os.Create(location + "/bramble.toml")
-	if err != nil {
-		return "", err
+	for loc, m := range tb.packages {
+		_ = os.MkdirAll(filepath.Join(location, loc), 0755)
+		f, err := os.Create(filepath.Join(location, loc, "/bramble.toml"))
+		if err != nil {
+			return "", err
+		}
+		cfg := config.Config{
+			Package: config.Package{
+				Name:    m.Name,
+				Version: m.Version,
+			},
+		}
+		cfg.Render(f)
+		if err := f.Close(); err != nil {
+			return "", err
+		}
 	}
-	tb.cfg.Render(f)
-	return location, f.Close()
+	return location, nil
 }
 
 func TestPushJob(t *testing.T) {
 	tb := testBuilder{
 		t: t,
-		cfg: config.Config{
-			Module: config.ConfigModule{
+		packages: map[string]types.Package{
+			"": {
 				Name:    "x.y/z",
 				Version: "2.0.0",
+			},
+			"./a": {
+				Name:    "x.y/z/a",
+				Version: "1.2.0",
 			},
 		},
 	}
@@ -325,20 +350,21 @@ func TestPushJob(t *testing.T) {
 		host:   server.URL,
 		client: &http.Client{},
 	}
-	{
-		cfg, err := dc.getModuleConfig(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
-		if err != nil {
-			t.Fatal(err)
+	for _, m := range tb.packages {
+		{
+			cfg, err := dc.getPackageConfig(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.Equal(t, cfg.Package.Name, m.Name)
+			assert.Equal(t, cfg.Package.Version, m.Version)
 		}
-		cfg.Dependencies = nil
-		tb.cfg.Dependencies = nil
-		require.Equal(t, cfg, tb.cfg)
-	}
-	{
-		body, err := dc.getModuleSource(context.Background(), Version{Module: "x.y/z", Version: "2.0.0"})
-		if err != nil {
-			t.Fatal(err)
+		{
+			body, err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = body
 		}
-		_ = body
 	}
 }

@@ -3,9 +3,12 @@ package command
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/types"
@@ -264,26 +267,41 @@ func (br buildResponse) moduleFunctionMapping() (mapping map[string]map[string][
 
 func newBuilder(store *store.Store) func(location string) (types.Builder, error) {
 	return func(location string) (types.Builder, error) {
-		b, err := newBramble(location, store.BramblePath)
+		modules := make(map[string]config.Config)
+		paths, err := project.FindAllProjects(location)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "error searching for projects")
 		}
-		return builder{bramble: b}, nil
+		for _, path := range paths {
+			cfg, err := config.ReadConfig(filepath.Join(path, "bramble.toml"))
+			if err != nil {
+				return nil, errors.Wrapf(
+					err, "error parsing config at path %q",
+					strings.TrimPrefix(location, path))
+			}
+			modules[path] = cfg
+		}
+		return builder{modules: modules, store: store}, nil
 	}
 }
 
 type builder struct {
-	bramble bramble
+	modules map[string]config.Config
+	store   *store.Store
 }
 
 var _ types.Builder = builder{}
 
-func (b builder) Build(ctx context.Context, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
-	br, err := b.bramble.fullBuild(ctx, args, opts)
+func (b builder) Build(ctx context.Context, location string, args []string, opts types.BuildOptions) (resp types.BuildResponse, err error) {
+	bramble, err := newBramble(location, b.store.BramblePath)
 	if err != nil {
-		return resp, err
+		return types.BuildResponse{}, err
 	}
-	resp.Modules = br.moduleFunctionMapping()
+	br, err := bramble.fullBuild(ctx, args, opts)
+	if err != nil {
+		return types.BuildResponse{}, err
+	}
+	resp.Packages = br.moduleFunctionMapping()
 	resp.FinalHashMapping = map[string]string{}
 	for hash, drv := range br.FinalHashMapping {
 		resp.FinalHashMapping[hash] = drv.Filename()
@@ -291,6 +309,13 @@ func (b builder) Build(ctx context.Context, args []string, opts types.BuildOptio
 	return resp, err
 }
 
-func (b builder) Module() (string, string) {
-	return b.bramble.project.Module(), b.bramble.project.Version()
+func (b builder) Packages() map[string]types.Package {
+	out := map[string]types.Package{}
+	for p, cfg := range b.modules {
+		out[p] = types.Package{
+			Name:    cfg.Package.Name,
+			Version: cfg.Package.Version,
+		}
+	}
+	return out
 }

@@ -12,6 +12,7 @@ const letterBytes = "0123456789"
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
+
 func randStringBytes(n int) string {
 	b := make([]byte, n)
 	for i := range b {

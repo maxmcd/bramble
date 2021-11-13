@@ -8,17 +8,18 @@ import (
 )
 
 type Job struct {
-	ID        string
-	Start     time.Time
-	End       time.Time
-	Error     string
-	Module    string
-	Reference string
+	ID           string
+	Start        time.Time
+	End          time.Time
+	Error        string
+	ErrWithStack string
+	Package      string
+	Reference    string
 }
 
 type JobRequest struct {
 	// The location of the version control repository.
-	Module string
+	Package string
 	// Reference is a version control reference. With Git this could be a
 	// branch, tag, or commit. This value is optional.
 	Reference string
@@ -54,6 +55,7 @@ func (jq *jobQueue) End(id string, err error) {
 	job := jq.jobs[id]
 	if err != nil {
 		job.Error = err.Error()
+		job.ErrWithStack = fmt.Sprintf("%+v", err)
 	}
 	job.End = time.Now()
 }

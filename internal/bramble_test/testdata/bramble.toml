@@ -1,3 +1,3 @@
-[module]
+[package]
 name = "github.com/maxmcd/bramble"
 version = "0.1.0"

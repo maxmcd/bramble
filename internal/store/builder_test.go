@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,6 +23,7 @@ func (lfw testLockfileWriter) AddEntry(k string, v string) error {
 	lfw[k] = v
 	return nil
 }
+
 func (lfw testLockfileWriter) LookupEntry(k string) (v string, found bool) {
 	v, found = lfw[k]
 	return v, found
@@ -56,24 +57,45 @@ func TestFetchURLBuilder(t *testing.T) {
 		args        args
 		errContains string
 	}{
-		{"hi",
-			args{[]byte("hi"), "hi.txt", "", ""}, ""},
-		{"hi confirm",
-			args{[]byte("hi"), "hi.txt", "", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r"}, ""},
-		{"hi confirm drv",
-			args{[]byte("hi"), "hi.txt", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r", ""}, ""},
-		{"hi wrong hash",
-			args{[]byte("hi"), "hi.txt", "wronghash", ""}, "doesn't match"},
-		{"hi bad url",
-			args{nil, "", "", ""}, "requires the environment variable"},
-		{"tar.gz",
-			args{gziptar.Bytes(), "hi.tar.gz", "", "vl3rnztinfimffplwkrj45vdt4ihq72e"}, ""},
-		{"tar.gz",
-			args{gziptar.Bytes(), "hi.tar.gz", "vl3rnztinfimffplwkrj45vdt4ihq72e", ""}, ""},
+		{
+			"hi",
+			args{[]byte("hi"), "hi.txt", "", ""},
+			"",
+		},
+		{
+			"hi confirm",
+			args{[]byte("hi"), "hi.txt", "", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r"},
+			"",
+		},
+		{
+			"hi confirm drv",
+			args{[]byte("hi"), "hi.txt", "5fpq3tqlfd3r5ncyxwapgu5m7ahehe6r", ""},
+			"",
+		},
+		{
+			"hi wrong hash",
+			args{[]byte("hi"), "hi.txt", "wronghash", ""},
+			"doesn't match",
+		},
+		{
+			"hi bad url",
+			args{nil, "", "", ""},
+			"requires the environment variable",
+		},
+		{
+			"tar.gz",
+			args{gziptar.Bytes(), "hi.tar.gz", "", "vl3rnztinfimffplwkrj45vdt4ihq72e"},
+			"",
+		},
+		{
+			"tar.gz",
+			args{gziptar.Bytes(), "hi.tar.gz", "vl3rnztinfimffplwkrj45vdt4ihq72e", ""},
+			"",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, err := NewStore(fileutil.TestTmpDir(t))
+			store, err := NewStore(test.TmpDir(t))
 			if err != nil {
 				t.Fatal(err)
 			}

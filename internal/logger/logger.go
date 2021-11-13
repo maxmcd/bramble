@@ -48,7 +48,8 @@ func newModuleEncoder(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 			zapcore.WarnLevel,
 			zapcore.ErrorLevel,
 			zapcore.PanicLevel,
-			zapcore.FatalLevel} {
+			zapcore.FatalLevel,
+		} {
 			if str == lvl.String() {
 				return lvl, true
 			}
@@ -109,6 +110,7 @@ func (me moduleEncoder) EncodeEntry(entry zapcore.Entry, fields []zapcore.Field)
 func Print(a ...interface{}) {
 	fmt.Fprintln(os.Stderr, a...)
 }
+
 func Printfln(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, format+"\n", a...)
 }

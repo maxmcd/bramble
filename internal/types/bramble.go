@@ -12,13 +12,24 @@ type BuildOptions struct {
 }
 
 type BuildResponse struct {
-	Modules          map[string]map[string][]string
+	Packages         map[string]map[string][]string
 	FinalHashMapping map[string]string
 }
 
+type Package struct {
+	Name    string
+	Version string
+}
+
+func (p Package) String() string {
+	return p.Name + "@" + p.Version
+}
+
 type Builder interface {
-	Build(ctx context.Context, args []string, opts BuildOptions) (BuildResponse, error)
-	Module() (string, string)
+	Build(ctx context.Context, location string, args []string, opts BuildOptions) (BuildResponse, error)
+	Packages() map[string]Package
 }
 
 type NewBuilder func(location string) (Builder, error)
+
+type DownloadGithubRepo func(url string, reference string) (location string, err error)

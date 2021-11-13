@@ -2,14 +2,26 @@ package command
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/maxmcd/bramble/internal/cacheclient"
+	"github.com/maxmcd/bramble/internal/config"
+	"github.com/maxmcd/bramble/internal/dependency"
+	"github.com/maxmcd/bramble/internal/store"
+	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/pkg/sandbox"
+	"github.com/maxmcd/bramble/pkg/test"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The tests will run this entrypoint so that the sandbox can pick up from this
@@ -58,7 +70,7 @@ func TestRun(t *testing.T) {
 	}
 	runRun := func(t *testing.T, tt test) (exitCode int, err error) {
 		t.Helper()
-		app := cliApp()
+		app := cliApp(".")
 		err = app.Run(append([]string{"bramble", "run"}, tt.args...))
 		if err != nil {
 			if er, ok := errors.Cause(err).(sandbox.ExitError); ok {
@@ -114,9 +126,10 @@ func TestRun(t *testing.T) {
 
 func TestDep_handler(t *testing.T) {
 	initIntegrationTest(t)
-	app := cliApp()
+	app := cliApp(".")
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error)
+	test.SetEnv(t, "BRAMBLE_PATH", t.TempDir())
 	go func() {
 		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
 			errChan <- err
@@ -137,16 +150,150 @@ func TestDep_handler(t *testing.T) {
 		default:
 		}
 	}
+	// TODO: this actually pulls from github, no network access in tests
 	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNative(t *testing.T) {
+func TestBuildAllFunction(t *testing.T) {
 	initIntegrationTest(t)
 
-	app := cliApp()
+	app := cliApp(".")
 	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble:all"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDep(t *testing.T) {
+	initIntegrationTest(t)
+
+	bramblePath := t.TempDir()
+	test.SetEnv(t, "BRAMBLE_PATH", bramblePath)
+	projectDir := t.TempDir()
+
+	// Create bramble projects with files
+	// for each one, resolve dependencies and then push to build server.
+	store, err := store.NewStore(bramblePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(dependency.ServerHandler(
+		filepath.Join(store.BramblePath, "var/dependencies"),
+		newBuilder(store),
+		func(url, reference string) (location string, err error) {
+			return filepath.Join(projectDir, url), nil
+		},
+	))
+
+	type testRun struct {
+		name        string
+		pkg         string
+		files       map[string]interface{}
+		errContains string
+		install     []string
+	}
+	for _, tt := range []testRun{
+		{"first", "first", map[string]interface{}{
+			"./first/bramble.toml":    config.Config{Package: config.Package{Name: "first", Version: "0.0.1"}},
+			"./first/default.bramble": "def first():\n  print('print from first')",
+		}, "", nil},
+		{"second syntax err", "second", map[string]interface{}{
+			"./second/bramble.toml":    config.Config{Package: config.Package{Name: "second", Version: "0.0.1"}},
+			"./second/default.bramble": "def first)",
+		}, "second/default.bramble:1:10", nil},
+		{"third with load", "third", map[string]interface{}{
+			"./third/bramble.toml":    config.Config{Package: config.Package{Name: "third", Version: "0.0.1"}},
+			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
+		}, "", []string{"first@0.0.1"}},
+		{"fourth nested", "fourth", map[string]interface{}{
+			"./fourth/bramble.toml":           config.Config{Package: config.Package{Name: "fourth", Version: "0.0.1"}},
+			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",
+			"./fourth/nested/bramble.toml":    config.Config{Package: config.Package{Name: "fourth/nested", Version: "0.0.1"}},
+			"./fourth/nested/default.bramble": "def nested():\n  print('hello nested')",
+		}, "", []string{"third@0.0.1"}},
+		{"fifth with nested load", "fifth", map[string]interface{}{
+			"./fifth/bramble.toml":    config.Config{Package: config.Package{Name: "fifth", Version: "0.0.1"}},
+			"./fifth/default.bramble": "load('fourth/nested')\ndef fifth():\n  nested.nested()",
+		}, "", []string{"fourth/nested@0.0.1"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for path, file := range tt.files {
+				path = filepath.Join(projectDir, path)
+				_ = os.MkdirAll(filepath.Dir(path), 0755)
+				switch v := file.(type) {
+				case string:
+					test.WriteFile(t, path, v)
+				case config.Config:
+					var sb strings.Builder
+					v.Render(&sb)
+					test.WriteFile(t, path, sb.String())
+				}
+			}
+			test.ErrContains(t, func() error {
+				{
+					app := cliApp(filepath.Join(projectDir, tt.pkg))
+					for _, toInstall := range tt.install {
+						if err := app.Run([]string{"bramble", "add", toInstall}); err != nil {
+							return err
+						}
+					}
+					if err := app.Run([]string{"bramble", "build", "--parse-only"}); err != nil {
+						return err
+					}
+				}
+				{
+					app := cliApp(".")
+					if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(), tt.errContains)
+		})
+	}
+}
+
+func TestStore_CacheServer(t *testing.T) {
+	ctx := context.Background()
+
+	clientBramblePath := t.TempDir()
+	clientStore, err := store.NewStore(clientBramblePath)
+	require.NoError(t, err)
+	defer tracing.Stop()
+	{
+		test.SetEnv(t, "BRAMBLE_PATH", clientBramblePath)
+		app := cliApp(".")
+		if err := app.Run([]string{"bramble", "build", "../../lib:busybox"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	{
+		serverBramblePath := t.TempDir()
+		s, err := store.NewStore(serverBramblePath)
+		require.NoError(t, err)
+		server := httptest.NewServer(s.CacheServer())
+		_ = server
+		files, _ := filepath.Glob(clientBramblePath + "/store/*.drv")
+		var drvs []store.Derivation
+		for _, path := range files {
+			f, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var drv store.Derivation
+			if err := json.NewDecoder(f).Decode(&drv); err != nil {
+				t.Fatal(err)
+			}
+			drvs = append(drvs, drv)
+		}
+		cc := cacheclient.New(server.URL)
+		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
+			t.Fatal(err)
+		}
+
+		fmt.Println(serverBramblePath)
 	}
 }
