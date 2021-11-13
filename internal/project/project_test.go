@@ -12,12 +12,12 @@ func TestNewProject(t *testing.T) {
 	{
 		p, err := NewProject(".")
 		require.NoError(t, err)
-		assert.Equal(t, p.config.Module.Name, "github.com/maxmcd/bramble")
+		assert.Equal(t, p.config.Package.Name, "github.com/maxmcd/bramble")
 	}
 	{
 		p, err := NewProject("./testdata/project")
 		require.NoError(t, err)
-		assert.Equal(t, p.config.Module.Name, "testproject")
+		assert.Equal(t, p.config.Package.Name, "testproject")
 		writer := p.LockfileWriter()
 		if err := writer.AddEntry("foo", "bar"); err != nil {
 			t.Fatal(err)

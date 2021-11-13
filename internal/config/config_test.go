@@ -41,7 +41,7 @@ func TestConfig_LoadValueToDependency(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := Config{
-				Module:       ConfigModule{Name: "something"},
+				Package:      Package{Name: "something"},
 				Dependencies: tt.deps,
 			}
 			if got := cfg.LoadValueToDependency(tt.val); got != tt.want {

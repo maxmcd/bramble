@@ -21,7 +21,7 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-func module(m string, deps ...string) func() (string, []string) {
+func pkg(m string, deps ...string) func() (string, []string) {
 	return func() (string, []string) { return m, deps }
 }
 
@@ -29,13 +29,13 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 	dm := &Manager{dir: dir(t.TempDir())}
 	var returnedConfig config.Config
 	for i, dep := range deps {
-		module, deps := dep()
-		if err := os.MkdirAll(dm.dir.join("src", module), 0755); err != nil {
+		pkg, deps := dep()
+		if err := os.MkdirAll(dm.dir.join("src", pkg), 0755); err != nil {
 			t.Fatal(err)
 		}
-		parts := strings.Split(module, "@")
+		parts := strings.Split(pkg, "@")
 		cfg := config.Config{
-			Module: config.ConfigModule{
+			Package: config.Package{
 				Name:    parts[0],
 				Version: parts[1],
 			},
@@ -46,7 +46,7 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 			name, version := parts[0], parts[1]
 			cfg.Dependencies[name] = config.Dependency{Version: version}
 		}
-		f, err := os.Create(dm.dir.join("src", module, "bramble.toml"))
+		f, err := os.Create(dm.dir.join("src", pkg, "bramble.toml"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,21 +63,21 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 
 func blogScenario(t *testing.T) (config.Config, *Manager) {
 	return testDepMgr(t,
-		module("A@1.1.0", "B@1.2.0", "C@1.2.0"),
-		module("B@1.1.0", "D@1.1.0"),
-		module("B@1.2.0", "D@1.3.0"),
-		module("C@1.1.0"),
-		module("C@1.2.0", "D@1.4.0"),
-		module("C@1.3.0", "F@1.1.0"),
-		module("D@1.1.0", "E@1.1.0"),
-		module("D@1.2.0", "E@1.1.0"),
-		module("D@1.3.0", "E@1.2.0"),
-		module("D@1.4.0", "E@1.2.0"),
-		module("E@1.1.0"),
-		module("E@1.2.0"),
-		module("E@1.3.0"),
-		module("F@1.1.0", "G@1.1.0"),
-		module("G@1.1.0", "F@1.1.0"),
+		pkg("A@1.1.0", "B@1.2.0", "C@1.2.0"),
+		pkg("B@1.1.0", "D@1.1.0"),
+		pkg("B@1.2.0", "D@1.3.0"),
+		pkg("C@1.1.0"),
+		pkg("C@1.2.0", "D@1.4.0"),
+		pkg("C@1.3.0", "F@1.1.0"),
+		pkg("D@1.1.0", "E@1.1.0"),
+		pkg("D@1.2.0", "E@1.1.0"),
+		pkg("D@1.3.0", "E@1.2.0"),
+		pkg("D@1.4.0", "E@1.2.0"),
+		pkg("E@1.1.0"),
+		pkg("E@1.2.0"),
+		pkg("E@1.3.0"),
+		pkg("F@1.1.0", "G@1.1.0"),
+		pkg("G@1.1.0", "F@1.1.0"),
 	)
 }
 
@@ -204,7 +204,7 @@ func TestDMPathOrDownload(t *testing.T) {
 		host:   server.URL,
 	}
 
-	path, err := localDM.ModulePathOrDownload(context.Background(), Version{"A", "1.1.0"})
+	path, err := localDM.PackagePathOrDownload(context.Background(), types.Package{"A", "1.1.0"})
 	if err != nil {
 		fxt.Printpvln(err)
 		t.Fatal(err)
@@ -219,16 +219,16 @@ func TestDMPathOrDownload(t *testing.T) {
 	require.Equal(t, cfg, remoteCFG)
 }
 
-func TestVersion_mvsVersion(t *testing.T) {
+func TestVersion_mvsVersionFromPackage(t *testing.T) {
 	tests := []struct {
 		name string
-		have Version
+		have types.Package
 		want mvs.Version
 	}{
 		{
 			name: "simple",
-			have: Version{
-				Module:  "github.com/maxmcd/bramble",
+			have: types.Package{
+				Name:    "github.com/maxmcd/bramble",
 				Version: "0.1.0",
 			},
 			want: mvs.Version{
@@ -239,18 +239,18 @@ func TestVersion_mvsVersion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.have.mvsVersion(); !reflect.DeepEqual(got, tt.want) {
+			if got := mvsVersionFromPackage(tt.have); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Version.mvsVersion() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_versionFromMVSVersion(t *testing.T) {
+func Test_packageFromMVSVersion(t *testing.T) {
 	tests := []struct {
 		name string
 		have mvs.Version
-		want Version
+		want types.Package
 	}{
 		{
 			name: "simple",
@@ -258,23 +258,23 @@ func Test_versionFromMVSVersion(t *testing.T) {
 				Name:    "github.com/maxmcd/bramble@0",
 				Version: "1.0",
 			},
-			want: Version{
-				Module:  "github.com/maxmcd/bramble",
+			want: types.Package{
+				Name:    "github.com/maxmcd/bramble",
 				Version: "0.1.0",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := versionFromMVSVersion(tt.have); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("versionFromMVSVersion() = %v, want %v", got, tt.want)
+			if got := packageFromMVSVersion(tt.have); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("packageFromMVSVersion() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 type testBuilder struct {
-	modules  map[string]types.Module
+	packages map[string]types.Package
 	t        *testing.T
 	location string
 }
@@ -289,10 +289,10 @@ func (tb *testBuilder) NewBuilder(location string) (types.Builder, error) {
 	return tb, nil
 }
 
-func (tb *testBuilder) Modules() map[string]types.Module {
-	out := map[string]types.Module{}
+func (tb *testBuilder) Packages() map[string]types.Package {
+	out := map[string]types.Package{}
 	// Make paths absolute
-	for loc, m := range tb.modules {
+	for loc, m := range tb.packages {
 		out[filepath.Join(tb.location, loc)] = m
 	}
 	return out
@@ -304,14 +304,14 @@ func (tb *testBuilder) Build(ctx context.Context, location string, args []string
 
 func (tb testBuilder) testGithubDownloader(url, reference string) (location string, err error) {
 	location = tb.t.TempDir()
-	for loc, m := range tb.modules {
+	for loc, m := range tb.packages {
 		_ = os.MkdirAll(filepath.Join(location, loc), 0755)
 		f, err := os.Create(filepath.Join(location, loc, "/bramble.toml"))
 		if err != nil {
 			return "", err
 		}
 		cfg := config.Config{
-			Module: config.ConfigModule{
+			Package: config.Package{
 				Name:    m.Name,
 				Version: m.Version,
 			},
@@ -327,7 +327,7 @@ func (tb testBuilder) testGithubDownloader(url, reference string) (location stri
 func TestPushJob(t *testing.T) {
 	tb := testBuilder{
 		t: t,
-		modules: map[string]types.Module{
+		packages: map[string]types.Package{
 			"": {
 				Name:    "x.y/z",
 				Version: "2.0.0",
@@ -350,17 +350,17 @@ func TestPushJob(t *testing.T) {
 		host:   server.URL,
 		client: &http.Client{},
 	}
-	for _, m := range tb.modules {
+	for _, m := range tb.packages {
 		{
-			cfg, err := dc.getModuleConfig(context.Background(), Version{Module: m.Name, Version: m.Version})
+			cfg, err := dc.getPackageConfig(context.Background(), types.Package{Name: m.Name, Version: m.Version})
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, cfg.Module.Name, m.Name)
-			assert.Equal(t, cfg.Module.Version, m.Version)
+			assert.Equal(t, cfg.Package.Name, m.Name)
+			assert.Equal(t, cfg.Package.Version, m.Version)
 		}
 		{
-			body, err := dc.getModuleSource(context.Background(), Version{Module: m.Name, Version: m.Version})
+			body, err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version})
 			if err != nil {
 				t.Fatal(err)
 			}

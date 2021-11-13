@@ -10,7 +10,7 @@
 - [Spec](#spec)
   - [Introduction](#introduction)
   - [Project configuration](#project-configuration)
-    - [Module metadata](#module-metadata)
+    - [Package metadata](#package-metadata)
     - [bramble.lock](#bramblelock)
   - [Command Line](#command-line)
     - [`bramble build`](#bramble-build)
@@ -95,7 +95,7 @@ Here's an example project that downloads busybox and uses it to create a script 
 
 **./bramble.toml**
 ```toml
-[module]
+[package]
 name = "github.com/maxmcd/hello-example"
 version = "0.0.1"
 ```
@@ -220,10 +220,10 @@ Here are three example use-cases that Bramble hopes to support and support well.
 
 Every Project has a `bramble.toml` file that includes configuration information and a `bramble.lock` file that includes hashes and other metadata that are used to ensure that the project can be built reproducibly.
 
-#### Module metadata
+#### Package metadata
 
 ```toml
-[module]
+[package]
 name = "github.com/maxmcd/bramble"
 ```
 

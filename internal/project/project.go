@@ -25,7 +25,7 @@ var (
 	tracer          = tracing.Tracer("project")
 )
 
-type ModuleFetcher func(context.Context, dependency.Version) (path string, err error)
+type ModuleFetcher func(context.Context, types.Package) (path string, err error)
 
 type Project struct {
 	config   config.Config
@@ -85,11 +85,11 @@ func (p *Project) Location() string {
 }
 
 func (p *Project) Module() string {
-	return p.config.Module.Name
+	return p.config.Package.Name
 }
 
 func (p *Project) Version() string {
-	return p.config.Module.Version
+	return p.config.Package.Version
 }
 
 func (p *Project) Config() config.Config {
@@ -102,14 +102,14 @@ func (p *Project) WD() string {
 }
 
 func (p *Project) ReadOnlyPaths() (out []string) {
-	for _, path := range p.config.Module.ReadOnlyPaths {
+	for _, path := range p.config.Package.ReadOnlyPaths {
 		out = append(out, filepath.Join(p.location, path))
 	}
 	return
 }
 
 func (p *Project) HiddenPaths() (out []string) {
-	for _, path := range p.config.Module.HiddenPaths {
+	for _, path := range p.config.Package.HiddenPaths {
 		out = append(out, filepath.Join(p.location, path))
 	}
 	return
@@ -125,7 +125,7 @@ func (p *Project) WriteLockfile() error {
 
 // TODO: function that takes load() argument values and references the config and pulls down the needed version
 func (p *Project) fetchExternalModule(ctx context.Context, module string) (path string, err error) {
-	if strings.HasPrefix(module, p.config.Module.Name) {
+	if strings.HasPrefix(module, p.config.Package.Name) {
 		return "", errors.Errorf("%q is not an external module", module)
 	}
 	cd, found := p.config.Dependencies[module]
@@ -137,7 +137,7 @@ func (p *Project) fetchExternalModule(ctx context.Context, module string) (path 
 		// TODO: cd.Path must be relative?
 		return filepath.Join(p.location, cd.Path), nil
 	}
-	return p.dm.ModulePathOrDownload(ctx, dependency.Version{Module: module, Version: cd.Version})
+	return p.dm.PackagePathOrDownload(ctx, types.Package{Name: module, Version: cd.Version})
 }
 
 func (p *Project) filepathToModuleName(path string) (module string, err error) {
@@ -157,7 +157,7 @@ func (p *Project) filepathToModuleName(path string) (module string, err error) {
 		rel = strings.TrimSuffix(rel, BrambleExtension)
 	}
 	rel = strings.TrimSuffix(rel, "/")
-	return p.config.Module.Name + "/" + rel, nil
+	return p.config.Package.Name + "/" + rel, nil
 }
 
 func (p *Project) FindAllModules(path string) (modules []string, err error) {
@@ -254,7 +254,7 @@ func (p *Project) CalculateDependencies() (err error) {
 	return nil
 }
 
-func (p *Project) AddDependency(v types.Module) (err error) {
+func (p *Project) AddDependency(v types.Package) (err error) {
 	existing, found := p.config.Dependencies[v.Name]
 	if found {
 		existing.Version = v.Version

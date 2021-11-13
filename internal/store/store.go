@@ -301,10 +301,16 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	drv = formatDerivation(drv)
 	filename = drv.Filename()
 	fileLocation := s.joinStorePath(filename)
-	return filename, ioutil.WriteFile(fileLocation, drv.json(), 0644)
+	return filename, ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
 
-func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc *cacheClient) (err error) {
+type CacheClient interface {
+	PostChunk(context.Context, io.Reader) (string, error)
+	PostDerivation(context.Context, Derivation) (string, error)
+	PostOutput(context.Context, OutputRequestBody) error
+}
+
+func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc CacheClient) (err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.UploadDerivationsToCache")
 	defer span.End()
@@ -319,7 +325,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 			for {
 				// TODO: hash the body before uploading to confirm it doesn't already exist
 				limited := io.LimitReader(buf, 4e6)
-				hash, err := cc.postChunk(ctx, limited)
+				hash, err := cc.PostChunk(ctx, limited)
 				if err != nil {
 					return nil, err
 				}
@@ -347,7 +353,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 			return err
 		}
 		// Upload, could confirm hash
-		if _, err := cc.postDerivation(ctx, normalized); err != nil {
+		if _, err := cc.PostDerivation(ctx, normalized); err != nil {
 			return err
 		}
 		// Loop through outputs and post them
@@ -367,7 +373,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 					errChan <- err
 				}
 
-				if err := cc.postOutout(ctx, outputRequestBody{
+				if err := cc.PostOutput(ctx, OutputRequestBody{
 					TOC:    toc,
 					Output: output,
 				}); err != nil {

@@ -21,14 +21,14 @@ import (
 )
 
 type Config struct {
-	Module       ConfigModule `toml:"module"`
+	Package      Package `toml:"package"`
 	Dependencies map[string]Dependency
 }
 
 func (cfg Config) Render(w io.Writer) {
-	fmt.Fprintln(w, "[module]")
-	fxt.Fprintfln(w, "name = %q", cfg.Module.Name)
-	fxt.Fprintfln(w, "version = %q", cfg.Module.Version)
+	fmt.Fprintln(w, "[package]")
+	fxt.Fprintfln(w, "name = %q", cfg.Package.Name)
+	fxt.Fprintfln(w, "version = %q", cfg.Package.Version)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "[dependencies]")
 	var keys []string
@@ -50,7 +50,7 @@ func (cfg Config) Render(w io.Writer) {
 // the matching dependency in this config, if there is one
 func (cfg Config) LoadValueToDependency(val string) string {
 	longest := ""
-	if strings.HasPrefix(val, cfg.Module.Name) {
+	if strings.HasPrefix(val, cfg.Package.Name) {
 		// TODO: need to support subprojects that could be within the projects import path
 		return ""
 	}
@@ -84,7 +84,7 @@ func (c *Dependency) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
-type ConfigModule struct {
+type Package struct {
 	Name          string   `toml:"name"`
 	Version       string   `toml:"version"`
 	ReadOnlyPaths []string `toml:"read_only_paths"`
@@ -122,14 +122,14 @@ func ParseConfig(r io.Reader) (cfg Config, err error) {
 	if _, err = toml.DecodeReader(r, &cfg); err != nil {
 		return cfg, err
 	}
-	if cfg.Module.Name == "" {
-		return cfg, errors.New("Module name can't be blank")
+	if cfg.Package.Name == "" {
+		return cfg, errors.New("Package name can't be blank")
 	}
-	if cfg.Module.Version == "" {
+	if cfg.Package.Version == "" {
 		return cfg, errors.New("Version can't be blank")
 	}
-	if !semver.IsValid("v" + cfg.Module.Version) {
-		return cfg, errors.Errorf("Module version %q is not a valid sematic version number", cfg.Module.Version)
+	if !semver.IsValid("v" + cfg.Package.Version) {
+		return cfg, errors.Errorf("Package version %q is not a valid sematic version number", cfg.Package.Version)
 	}
 	return cfg, nil
 }

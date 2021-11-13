@@ -12,18 +12,22 @@ type BuildOptions struct {
 }
 
 type BuildResponse struct {
-	Modules          map[string]map[string][]string
+	Packages         map[string]map[string][]string
 	FinalHashMapping map[string]string
 }
 
-type Module struct {
+type Package struct {
 	Name    string
 	Version string
 }
 
+func (p Package) String() string {
+	return p.Name + "@" + p.Version
+}
+
 type Builder interface {
 	Build(ctx context.Context, location string, args []string, opts BuildOptions) (BuildResponse, error)
-	Modules() map[string]Module
+	Packages() map[string]Package
 }
 
 type NewBuilder func(location string) (Builder, error)

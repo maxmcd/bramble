@@ -301,7 +301,7 @@ func (b builder) Build(ctx context.Context, location string, args []string, opts
 	if err != nil {
 		return types.BuildResponse{}, err
 	}
-	resp.Modules = br.moduleFunctionMapping()
+	resp.Packages = br.moduleFunctionMapping()
 	resp.FinalHashMapping = map[string]string{}
 	for hash, drv := range br.FinalHashMapping {
 		resp.FinalHashMapping[hash] = drv.Filename()
@@ -309,12 +309,12 @@ func (b builder) Build(ctx context.Context, location string, args []string, opts
 	return resp, err
 }
 
-func (b builder) Modules() map[string]types.Module {
-	out := map[string]types.Module{}
+func (b builder) Packages() map[string]types.Package {
+	out := map[string]types.Package{}
 	for p, cfg := range b.modules {
-		out[p] = types.Module{
-			Name:    cfg.Module.Name,
-			Version: cfg.Module.Version,
+		out[p] = types.Package{
+			Name:    cfg.Package.Name,
+			Version: cfg.Package.Version,
 		}
 	}
 	return out

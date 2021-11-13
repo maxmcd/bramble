@@ -367,7 +367,7 @@ their public functions with documentation. If an immediate subdirectory has a
 						return err
 					}
 					parts := strings.Split(c.Args().First(), "@")
-					return b.project.AddDependency(types.Module{Version: parts[1], Name: parts[0]})
+					return b.project.AddDependency(types.Package{Version: parts[1], Name: parts[0]})
 				},
 			},
 			{

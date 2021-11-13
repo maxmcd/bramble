@@ -28,3 +28,8 @@ rootless_within_docker:
 
 upload_url_fetcher:
 	cd cmd/url_fetcher && make upload
+
+cover:
+	env BRAMBLE_INTEGRATION_TEST=truthy go test -coverpkg=./... -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	rm coverage.out

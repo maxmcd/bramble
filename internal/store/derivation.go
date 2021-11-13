@@ -190,7 +190,7 @@ func formatDerivation(drv Derivation) Derivation {
 	return drv
 }
 
-func (drv Derivation) json() []byte {
+func (drv Derivation) JSON() []byte {
 	drv.makeConsistentNullJSONValues()
 	b, err := json.Marshal(drv)
 	if err != nil {
@@ -201,7 +201,7 @@ func (drv Derivation) json() []byte {
 
 func (drv Derivation) copy() Derivation {
 	out := Derivation{}
-	if err := json.Unmarshal(drv.json(), &out); err != nil {
+	if err := json.Unmarshal(drv.JSON(), &out); err != nil {
 		panic(err)
 	}
 	return out
@@ -221,7 +221,7 @@ func (drv Derivation) Hash() string {
 			copy.Dependencies[i].Filename = ""
 		}
 	}
-	jsonBytesForHashing := copy.json()
+	jsonBytesForHashing := copy.JSON()
 	return hasher.HashString(string(jsonBytesForHashing))
 }
 
@@ -359,7 +359,7 @@ func (drv Derivation) runtimeFiles(outputName string) []string {
 }
 
 func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error) {
-	s := string(drv.json())
+	s := string(drv.JSON())
 
 	// Looking for things like: /home/bramble/bramble/bramble_store_padding/bramb/rb2rveatcti4szdt3s6xc37cpvqxrdmr
 	r := regexp.MustCompile(strings.ReplaceAll(BramblePrefixOfRecord, "/", "\\/") + "/([0-9a-z]{32})")
@@ -376,7 +376,7 @@ func (drv Derivation) copyWithOutputValuesReplaced() (copy Derivation, err error
 // normalizeDerivation replaces references to the local store path with
 // references to the store path prefix of record
 func (s *Store) normalizeDerivation(drv Derivation) (normalized Derivation, err error) {
-	stringDrv := string(drv.json())
+	stringDrv := string(drv.JSON())
 	replacements := []string{}
 	for _, dep := range drv.Dependencies {
 		replacements = append(replacements,
