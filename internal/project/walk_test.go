@@ -21,16 +21,16 @@ func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
 	project, err := NewProject("./testdata/project")
 	require.NoError(t, err)
 	firstGraph, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":first_graph"},
+		Module: ":first_graph",
 	})
 
 	require.NoError(t, err)
 	replaceCWith, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":replace_c_with"},
+		Module: ":replace_c_with",
 	})
 	require.NoError(t, err)
 	expectedResult, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":expected_result"},
+		Module: ":expected_result",
 	})
 
 	require.NoError(t, err)
@@ -58,8 +58,7 @@ func TestExecModuleAndWalk(t *testing.T) {
 	require.NoError(t, err)
 
 	gotOutput, err := project.ExecModule(context.Background(), ExecModuleInput{
-		Command:   "build",
-		Arguments: []string{"github.com/maxmcd/bramble:all"},
+		Module: "github.com/maxmcd/bramble:all",
 	})
 	require.NoError(t, err)
 

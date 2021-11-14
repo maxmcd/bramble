@@ -293,3 +293,13 @@ func FindAllProjects(loc string) (paths []string, err error) {
 		return nil
 	})
 }
+
+func (p *Project) BuildArgumentsToModules(args []string) (modules []string, err error) {
+	for _, arg := range args {
+		_ = arg
+		// if idx := strings.Index(arg, "/..."); idx != -1 {
+		// 	arg[:idx]
+		// }
+	}
+	return nil, nil
+}

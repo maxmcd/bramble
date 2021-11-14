@@ -99,8 +99,8 @@ func (p *Project) REPL() {
 	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
 }
 
-func (rt *runtime) relativePathFromConfig() string {
-	relativePath, _ := filepath.Rel(rt.projectLocation, rt.workingDirectory)
+func (p *Project) relativePathFromConfig() string {
+	relativePath, _ := filepath.Rel(p.location, p.wd)
 	if relativePath == "." {
 		// don't add a dot to the path
 		return ""

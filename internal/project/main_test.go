@@ -15,14 +15,26 @@ func newTestRuntime(t *testing.T, wd string) *runtime {
 	if wd == "" {
 		var err error
 		wd, err = os.Getwd()
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	projectLocation, err := filepath.Abs("../../")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", "", nil)
 	return rt
+}
+
+func newTestProject(t *testing.T, wd string) *Project {
+	p, err := NewProject(wd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 type scriptTest struct {

@@ -21,14 +21,14 @@ type execModuleOptions struct {
 	target       string
 }
 
-func (b bramble) execModule(ctx context.Context, command string, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
+func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "command.execModule "+command+" "+fmt.Sprintf("%q", args))
+	ctx, span = tracer.Start(ctx, "command.execModule "+fmt.Sprintf("%q", args))
 	defer span.End()
+
 	if len(args) > 0 {
 		// Building something specific
-		return b.project.ExecModule(ctx, project.ExecModuleInput{
-			Command:      command,
+		b.project.ExecModule(ctx, project.ExecModuleInput{
 			Arguments:    args,
 			IncludeTests: opt.includeTests,
 			Target:       opt.target,
@@ -45,8 +45,9 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 	output.Modules = make(map[string]map[string][]string)
 	for _, module := range modules {
 		o, err := b.project.ExecModule(ctx, project.ExecModuleInput{
-			Command:   command,
-			Arguments: []string{module},
+			Arguments:    []string{module},
+			IncludeTests: opt.includeTests,
+			Target:       opt.target,
 		})
 		if err != nil {
 			return output, err
@@ -231,7 +232,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 
 func (b bramble) fullBuild(ctx context.Context, args []string, opts types.BuildOptions) (br buildResponse, err error) {
 	br.FinalHashMapping = make(map[string]store.Derivation)
-	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
+	br.Output, err = b.execModule(ctx, args, execModuleOptions{})
 	if err != nil {
 		return
 	}

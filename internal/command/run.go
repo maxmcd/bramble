@@ -17,7 +17,7 @@ type runOptions struct {
 }
 
 func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err error) {
-	output, err := b.execModule(ctx, "run", args, execModuleOptions{})
+	output, err := b.execModule(ctx, args, execModuleOptions{})
 	if err != nil {
 		return
 	}

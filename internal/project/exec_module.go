@@ -2,7 +2,6 @@ package project
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"sync"
 
@@ -10,14 +9,12 @@ import (
 	ds "github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/dag"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.starlark.net/starlark"
 )
 
 type ExecModuleInput struct {
-	Command      string
-	Arguments    []string
+	Module       string
 	IncludeTests bool
 	Target       string
 }
@@ -35,20 +32,13 @@ type ExecModuleOutput struct {
 func (p *Project) ExecModule(ctx context.Context, input ExecModuleInput) (output ExecModuleOutput, err error) {
 	var span trace.Span
 
-	cmd, args := input.Command, input.Arguments
-	ctx, span = tracer.Start(ctx, "project.ExecModule "+cmd+" "+fmt.Sprintf("%q", args))
+	ctx, span = tracer.Start(ctx, "project.ExecModule "+input.Module)
 	defer span.End()
-	span.SetAttributes(attribute.String("cmd", cmd))
-	span.SetAttributes(attribute.StringSlice("args", args))
-	if len(args) == 0 {
-		logger.Printfln(`"bramble %s" requires 1 argument`, cmd)
-		err = flag.ErrHelp
-		return
-	}
 
 	rt := newRuntime(p.wd, p.location, p.config.Package.Name, input.Target, p.fetchExternalModule)
 
-	module, fn, err := rt.parseModuleFuncArgument(args)
+	// TODO
+	module, fn, err := p.parseModuleFuncArgument(input.Module)
 	if err != nil {
 		return output, err
 	}

@@ -1,9 +1,11 @@
 package project
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/maxmcd/bramble/pkg/fxt"
+	"github.com/maxmcd/bramble/pkg/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,6 +97,124 @@ func TestProject_scanForLoadNames(t *testing.T) {
 			}
 			fxt.Printqln(names)
 			// TODO: Assert something
+		})
+	}
+}
+
+func TestBramble_moduleNameFromFileName(t *testing.T) {
+	p := newTestProject(t, "./testdata")
+	tests := []struct {
+		filename       string
+		module         string
+		wantModuleName string
+		wantErr        string
+	}{
+		{
+			filename:       "bar.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/internal/project/testdata/bar",
+		}, {
+			filename: "noexist.bramble",
+			wantErr:  "doesn't exist",
+		}, {
+			filename:       "default.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/internal/project/testdata",
+		}, {
+			filename:       "../../../tests/basic.bramble",
+			wantModuleName: "github.com/maxmcd/bramble/tests/basic",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.filename, func(t *testing.T) {
+			moduleName, err := p.moduleNameFromFileName(tt.filename)
+			if (err != nil) && tt.wantErr != "" {
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Bramble.resolveModule() error doesn't match\nwanted:     %q\nto contain: %q", err, tt.wantErr)
+				}
+				return
+			} else if err != nil {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantModuleName, moduleName)
+		})
+	}
+}
+
+func Test_parseModuleFuncArgument(t *testing.T) {
+	p := newTestProject(t, "./testdata")
+
+	tests := []struct {
+		name       string
+		arg        string
+		wantModule string
+		wantFn     string
+		wantErr    string
+	}{
+		{
+			name:       "reference by name and fn",
+			arg:        "main:foo",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/main",
+			wantFn:     "foo",
+		}, {
+			name:       "no path provided",
+			arg:        ":default",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata",
+			wantFn:     "default",
+		}, {
+			name:       "relative path to file",
+			arg:        "bar/main:other",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
+			wantFn:     "other",
+		}, {
+			name:       "full module name",
+			arg:        "github.com/maxmcd/bramble:all",
+			wantModule: "github.com/maxmcd/bramble",
+			wantFn:     "all",
+		}, {
+			name:       "relative path to file with slash",
+			arg:        "./bar/main:other",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
+			wantFn:     "other",
+		}, {
+			name:       "relative path to file with extension",
+			arg:        "bar/main.bramble:other",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
+			wantFn:     "other",
+		}, {
+			name:       "reference by subdirectory default",
+			arg:        "foo:ok",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/foo",
+			wantFn:     "ok",
+		}, {
+			name:       "reference by subdirectory default with no function",
+			arg:        "foo",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/foo",
+		}, {
+			name:       "reference by default fn",
+			arg:        ":default",
+			wantModule: "github.com/maxmcd/bramble/internal/project/testdata",
+			wantFn:     "default",
+		}, {
+			name:    "missing file",
+			arg:     "missing:foo",
+			wantErr: "no such file",
+		}, {
+			name:    "missing arg",
+			arg:     "",
+			wantErr: "module name can't be blank",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotModule, gotFn, err := p.parseModuleFuncArgument(tt.arg)
+			if test.ErrContains(t, err, tt.wantErr) {
+				return
+			}
+			if gotModule != tt.wantModule {
+				t.Errorf("argsToImport() gotModule = %v, want %v", gotModule, tt.wantModule)
+			}
+			if gotFn != tt.wantFn {
+				t.Errorf("argsToImport() gotFn = %v, want %v", gotFn, tt.wantFn)
+			}
 		})
 	}
 }

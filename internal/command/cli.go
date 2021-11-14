@@ -72,9 +72,7 @@ func cliApp(wd string) *cli.App {
 				Name:  "build",
 				Usage: "Build derivations",
 				UsageText: `
-
-bramble build [options] [module]:<function>
-bramble build [options] [path]
+bramble build [options] [modules]
 
 The build command is used to build derivations returned by bramble functions.
 Calling build with a module location and function will call that function, take
@@ -82,8 +80,11 @@ any derivations that are returned, and build that derivation and its
 dependencies.
 
 bramble build ./tests/basic:self_reference
-bramble build github.com/maxmcd/bramble:all
-bramble build github.com/username/repo/subdirectory:all
+bramble build ./...
+bramble build ./tests/...
+bramble build github.com/maxmcd/bramble/...
+bramble build github.com/maxmcd/bramble:bash
+bramble build github.com/username/repo/subdirectory:function
 
 Calls to build with a path argument will build everything in that directory and
 all of its subdirectories. This is done by searching for all bramble files and
@@ -91,9 +92,6 @@ calling all of their public functions. Any derivations that are returned by
 these functions are built along with all of their dependencies. Call to build
 without a path will run all builds from the current directory and its
 subdirectories.
-
-bramble build
-bramble build ./tests
 `,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
@@ -107,7 +105,7 @@ bramble build ./tests
 						Usage: "the target that you'd like to build for",
 					},
 					&cli.BoolFlag{
-						Name:  "parse-only",
+						Name:  "just-parse",
 						Value: false,
 						Usage: "only parse and run bramble files, don't build",
 					},
@@ -121,17 +119,22 @@ bramble build ./tests
 				Action: func(c *cli.Context) error {
 					ctx, span := tracer.Start(c.Context, "bramble build "+fmt.Sprintf("%q", c.Args().Slice()))
 					defer span.End()
+
+					if c.Args().Len() == 0 {
+						return cli.ShowCommandHelp(c, "build")
+					}
+
 					b, err := newBramble(wd, "")
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule(ctx, "build", c.Args().Slice(), execModuleOptions{
+					output, err := b.execModule(ctx, c.Args().Slice(), execModuleOptions{
 						target: c.String("target"),
 					})
 					if err != nil {
 						return err
 					}
-					if c.Bool("parse-only") {
+					if c.Bool("just-parse") {
 						return nil
 					}
 					_, err = b.runBuild(ctx, output, runBuildOptions{
@@ -239,7 +242,7 @@ good way to debug a derivation that you're building.`,
 					if err != nil {
 						return err
 					}
-					output, err := b.execModule(ctx, "shell", c.Args().Slice(), execModuleOptions{})
+					output, err := b.execModule(ctx, c.Args().Slice(), execModuleOptions{})
 					if err != nil {
 						return err
 					}
