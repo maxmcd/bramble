@@ -254,13 +254,10 @@ Here are some examples:
 bramble build ./tests/basic:self_reference
 bramble build github.com/maxmcd/bramble:all
 bramble build github.com/username/repo/subdirectory:all
-```
-
-Calls to `build` with a path argument will build everything in that directory and all of its subdirectories. This is done by searching for all bramble files and calling all of their public functions. Any derivations that are returned by these functions are built along with all of their dependencies (TODO: should a call with a path just search that location). Call to `build` without a path will run all builds from the current directory and its subdirectories.
-
-```
-bramble build
-bramble build ./tests
+bramble build github.com/maxmcd/bramble/lib
+bramble build github.com/maxmcd/bramble/...
+bramble build github.com/maxmcd/bramble/tests/...
+bramble build ./...
 ```
 
 #### `bramble run`

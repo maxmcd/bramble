@@ -22,7 +22,7 @@ $(gopath)/bin/gotestsum:
 	go mod tidy
 
 build: install
-	bramble build
+	bramble build ./...
 
 integration_test: install
 	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -run=$(run) -v ./internal/command/
