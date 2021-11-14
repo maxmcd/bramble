@@ -26,26 +26,16 @@ func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOp
 	ctx, span = tracer.Start(ctx, "command.execModule "+fmt.Sprintf("%q", args))
 	defer span.End()
 
-	if len(args) > 0 {
-		// Building something specific
-		b.project.ExecModule(ctx, project.ExecModuleInput{
-			Arguments:    args,
-			IncludeTests: opt.includeTests,
-			Target:       opt.target,
-		})
-	}
-
-	// Building everything in this directory and its children
-	modules, err := b.project.FindAllModules(b.project.WD())
+	modules, err := b.project.BuildArgumentsToModules(args)
 	if err != nil {
-		return output, err
+		return project.ExecModuleOutput{}, err
 	}
 	output.AllDerivations = make(map[string]project.Derivation)
 	output.Output = make(map[string]project.Derivation)
 	output.Modules = make(map[string]map[string][]string)
 	for _, module := range modules {
 		o, err := b.project.ExecModule(ctx, project.ExecModuleInput{
-			Arguments:    []string{module},
+			Module:       module,
 			IncludeTests: opt.includeTests,
 			Target:       opt.target,
 		})
@@ -63,6 +53,7 @@ func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOp
 			// returned for a given module
 			output.Modules[m] = fns
 		}
+		output.Run = append(output.Run, o.Run...)
 	}
 	return output, nil
 }

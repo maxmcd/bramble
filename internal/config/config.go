@@ -54,8 +54,9 @@ func (cfg Config) LoadValueToDependency(val string) string {
 		// TODO: need to support subprojects that could be within the projects import path
 		return ""
 	}
+
 	for dep := range cfg.Dependencies {
-		if strings.HasPrefix(val, dep) {
+		if strings.HasPrefix(val, dep) && len(dep) > len(longest) {
 			longest = dep
 		}
 	}

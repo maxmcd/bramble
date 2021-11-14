@@ -218,3 +218,30 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 		})
 	}
 }
+
+func TestProject_BuildArgumentsToModules(t *testing.T) {
+	tests := []struct {
+		name        string
+		wd          string
+		args        []string
+		wantModules []string
+		wantErr     bool
+	}{
+		{"simple", "./testdata/project", []string{"./..."}, []string{"testproject/a", "testproject"}, false},
+		{"simple", ".", []string{"./testdata"}, []string{"./testdata"}, false},
+		// TODO: this just expands ./... and then accepts all other arguments
+		// as-is. Will want to expand this if we move more validation logic into
+		// this fn
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newTestProject(t, tt.wd)
+			gotModules, err := p.BuildArgumentsToModules(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Project.BuildArgumentsToModules() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			assert.Equal(t, gotModules, tt.wantModules)
+		})
+	}
+}

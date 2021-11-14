@@ -2,10 +2,14 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBramble_resolveModule(t *testing.T) {
@@ -63,10 +67,10 @@ func TestBramble_resolveModule(t *testing.T) {
 	}
 }
 
-// TODO: move to its own module so that the regular module can build entirely
-// func TestCircularImport(t *testing.T) {
-// 	rt := newTestRuntime(t)
-// 	_, err := rt.execModule("github.com/maxmcd/bramble/internal/project/testdata/circular/a")
-// 	require.Error(t, err)
-// 	assert.Contains(t, err.Error(), "cycle in load graph")
-// }
+func TestCircularImport(t *testing.T) {
+	p := newTestProject(t, "./testdata/circular")
+	fmt.Println(p.location)
+	_, err := p.ExecModule(context.Background(), ExecModuleInput{Module: "github.com/maxmcd/bramble/internal/project/testdata/circular/a"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle in load graph")
+}

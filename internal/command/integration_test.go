@@ -239,7 +239,7 @@ func TestDep(t *testing.T) {
 							return err
 						}
 					}
-					if err := app.Run([]string{"bramble", "build", "--parse-only"}); err != nil {
+					if err := app.Run([]string{"bramble", "build", "--just-parse", "./..."}); err != nil {
 						return err
 					}
 				}

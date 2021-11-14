@@ -1,27 +1,31 @@
 
 
+gopath := $(shell go env GOPATH)
+
 test: go_test \
 	integration_test
 
 ci_test: install gotestsum
 	bash ./tests/run.sh
 
-gotestsum:
-	go get gotest.tools/gotestsum
 
-
-go_test:
-	go test -race -v ./...
+go_test: gotestsum
+	gotestsum -- -race -v ./...
 
 install:
 	go mod tidy
 	go install
 
+gotestsum: $(gopath)/bin/gotestsum
+$(gopath)/bin/gotestsum:
+	go get gotest.tools/gotestsum
+	go mod tidy
+
 build: install
 	bramble build
 
 integration_test: install
-	env BRAMBLE_INTEGRATION_TEST=truthy go test -run=$(run) -v ./internal/command/
+	env BRAMBLE_INTEGRATION_TEST=truthy gotestsum -- -run=$(run) -v ./internal/command/
 
 rootless_within_docker:
 	docker build -t bramble . && docker run --privileged -it bramble bramble build ./lib:busybox
@@ -33,3 +37,4 @@ cover:
 	env BRAMBLE_INTEGRATION_TEST=truthy go test -coverpkg=./... -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	rm coverage.out
+

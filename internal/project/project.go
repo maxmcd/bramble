@@ -170,6 +170,9 @@ func (p *Project) FindAllModules(path string) (modules []string, err error) {
 		if err != nil {
 			return nil, err
 		}
+		if strings.HasSuffix(module, "/") {
+			module = module[:len(module)-1]
+		}
 		modules = append(modules, module)
 	}
 	return modules, nil
@@ -296,10 +299,15 @@ func FindAllProjects(loc string) (paths []string, err error) {
 
 func (p *Project) BuildArgumentsToModules(args []string) (modules []string, err error) {
 	for _, arg := range args {
-		_ = arg
-		// if idx := strings.Index(arg, "/..."); idx != -1 {
-		// 	arg[:idx]
-		// }
+		if idx := strings.Index(arg, "/..."); idx != -1 {
+			ms, err := p.FindAllModules(arg[:idx])
+			if err != nil {
+				return nil, err
+			}
+			modules = append(modules, ms...)
+		} else {
+			modules = append(modules, arg)
+		}
 	}
-	return nil, nil
+	return modules, nil
 }
