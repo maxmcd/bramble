@@ -51,17 +51,18 @@ func WriteFile(t *testing.T, path, body string) {
 	// be left with their boneyard.
 }
 
-func ErrContains(t *testing.T, err error, errContains string) {
+func ErrContains(t *testing.T, err error, errContains string) bool {
 	t.Helper()
 	if errContains == "" && err == nil {
-		return
+		return false
 	}
 	if errContains == "" && err != nil {
 		t.Error(err)
-		return
+		return false
 	}
 	if errContains != "" && err == nil {
 		t.Error(fmt.Sprintf("error should have contained %q, but it was nil", errContains))
+		return false
 	}
-	assert.Contains(t, err.Error(), errContains)
+	return assert.Contains(t, err.Error(), errContains)
 }

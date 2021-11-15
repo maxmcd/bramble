@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -24,7 +23,6 @@ import (
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
-	"golang.org/x/sync/errgroup"
 )
 
 type Manager struct {
@@ -65,11 +63,9 @@ func (dd dir) localPackageLocation(pkg types.Package) (path string) {
 
 func (dm *Manager) PackagePathOrDownload(ctx context.Context, pkg types.Package) (path string, err error) {
 	path = dm.dir.localPackageLocation(pkg)
-	// If we have it, return it
 	if fileutil.DirExists(path) {
 		return path, nil
 	}
-	// If we don't have it, download it
 	body, err := dm.dependencyClient.getPackageSource(ctx, pkg)
 	if err != nil {
 		if err == os.ErrNotExist {
@@ -99,6 +95,10 @@ func (dm *Manager) PackagePathOrDownload(ctx context.Context, pkg types.Package)
 		return "", errors.Wrap(err, "error unwrapping chunked archive")
 	}
 	return path, os.RemoveAll(name)
+}
+
+func (dm *Manager) FindPackage(name string) {
+
 }
 
 func mvsVersionFromPackage(p types.Package) mvs.Version {
@@ -296,23 +296,56 @@ func (dc *dependencyClient) getPackageVersions(ctx context.Context, name string)
 		&vs)
 }
 
-func (dc *dependencyClient) getAllPackageVersions(ctx context.Context, name string) (vs []string, err error) {
+func possiblePackageVariants(name string) (variants []string) {
 	parts := strings.Split(name, "/")
-	group, ctx := errgroup.WithContext(ctx)
-	var lock sync.Mutex
-	for len(parts) > 1 {
-		group.Go(func() error {
-			subversions, err := dc.getAllPackageVersions(ctx, strings.Join(parts, "/"))
-			if err != nil {
-				return err
-			}
-			lock.Lock()
-			vs = append(vs, subversions...)
-			lock.Unlock()
-			return nil
-		})
+	for len(parts) > 0 {
+		n := strings.Join(parts, "/")
+		parts = parts[:len(parts)-1]
+		variants = append(variants, n)
 	}
-	return vs, group.Wait()
+	return
+}
+
+func (dc *dependencyClient) findPackageFromModuleName(ctx context.Context, name string) (n string, vs []string, err error) {
+	for _, n := range possiblePackageVariants(name) {
+		vs, err := dc.getPackageVersions(ctx, n)
+		if err != nil {
+			if err == os.ErrNotExist {
+				continue
+			}
+			return "", nil, err
+		}
+		return n, vs, nil
+	}
+	return "", nil, os.ErrNotExist
+}
+
+func (dd dir) findPackageFromModuleName(module string) (name string, vs []string, err error) {
+	for _, n := range possiblePackageVariants(module) {
+		vs, err := dd.localPackageVersions(n)
+		if err != nil {
+			return "", nil, err
+		}
+		// Found something
+		if len(vs) > 0 {
+			return n, vs, nil
+		}
+	}
+	return "", nil, os.ErrNotExist
+}
+func (dm *Manager) FindPackageFromModuleName(ctx context.Context, module string) (name string, vs []string, err error) {
+	// Prefer local
+	name, vs, err = dm.dir.findPackageFromModuleName(module)
+	if err != nil && err != os.ErrNotExist {
+		return "", nil, err
+	}
+	if err == os.ErrNotExist {
+		name, vs, err = dm.dependencyClient.findPackageFromModuleName(ctx, module)
+	}
+	if err == os.ErrNotExist {
+		return "", nil, errors.Errorf("can't find package for module %q", module)
+	}
+	return name, vs, err
 }
 
 func (dc *dependencyClient) getPackageSource(ctx context.Context, pkg types.Package) (body io.ReadCloser, err error) {

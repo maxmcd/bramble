@@ -1,2 +1,1 @@
-# load("github.com/maxmcd/bramble/pkg/brambleproject/testdata/circular/a")
-
+load("github.com/maxmcd/bramble/internal/project/testdata/circular/b")

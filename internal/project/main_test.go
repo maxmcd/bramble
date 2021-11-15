@@ -12,17 +12,16 @@ import (
 )
 
 func newTestRuntime(t *testing.T, wd string) *runtime {
-	if wd == "" {
-		var err error
-		wd, err = os.Getwd()
-		require.NoError(t, err)
+	p := newTestProject(t, wd)
+	return p.newRuntime("")
+}
+
+func newTestProject(t *testing.T, wd string) *Project {
+	p, err := NewProject(wd)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	projectLocation, err := filepath.Abs("../../")
-	require.NoError(t, err)
-
-	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", "", nil)
-	return rt
+	return p
 }
 
 type scriptTest struct {

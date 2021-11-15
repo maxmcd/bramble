@@ -19,24 +19,26 @@ func sortLines(in string) (out string) {
 func TestExecModuleOutput_WalkAndPatch(t *testing.T) {
 	ctx := context.Background()
 	project, err := NewProject("./testdata/project")
-	require.NoError(t, err)
-	firstGraph, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":first_graph"},
-	})
 
-	require.NoError(t, err)
-	replaceCWith, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":replace_c_with"},
-	})
-	require.NoError(t, err)
-	expectedResult, err := project.ExecModule(ctx, ExecModuleInput{
-		Arguments: []string{":expected_result"},
-	})
+	execModule := func(name string) ExecModuleOutput {
+		module, err := project.ParseModuleFuncArgument(context.Background(), name, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := project.ExecModule(ctx, ExecModuleInput{
+			Module: module,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
 
-	require.NoError(t, err)
+	firstGraph := execModule("./:first_graph")
+	replaceCWith := execModule("./:replace_c_with")
+	expectedResult := execModule("./:expected_result")
 
 	expectedWalker, err := expectedResult.newWalker()
-	require.NoError(t, err)
 
 	outputWalker, err := firstGraph.walkAndPatch(1, func(dep Dependency, drv Derivation) (
 		addGraph *ExecModuleOutput,
@@ -57,11 +59,16 @@ func TestExecModuleAndWalk(t *testing.T) {
 	project, err := NewProject(".")
 	require.NoError(t, err)
 
+	module, err := project.ParseModuleFuncArgument(context.Background(), "github.com/maxmcd/bramble:all", false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gotOutput, err := project.ExecModule(context.Background(), ExecModuleInput{
-		Command:   "build",
-		Arguments: []string{"github.com/maxmcd/bramble:all"},
+		Module: module,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	allDerivations := []Derivation{}
 	allDrvLock := sync.Mutex{}

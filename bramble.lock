@@ -1,7 +1,7 @@
 [URLHashes]
   "basic_fetch_url https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "uw5ichj6dhcccmcts6p7jq6etzlh5baf"
   "basic_fetch_url https://brmbl.s3.amazonaws.com/url_fetcher.tar.gz" = "p2vbvabkdqckjlm43rf7bfccdseizych"
-  "fetch_git https://github.com/maxmcd/bramble.git@v0" = "pmmv5trnrwwgirp4urxo54ydje55qq2v"
+  "fetch_git https://github.com/maxmcd/bramble.git@v0" = "ebzl4qxuufyxuejtyujh7mdul4spjcgk"
   "fetch_url http://s.minos.io/archive/bifrost/x86_64/git-2.10.2-1.tar.gz" = "omtz2dd5irsgvbg7eeksovceutw5abhb"
   "fetch_url http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz" = "cspu7ndkuuq2f7t5vvgsmvdt3xnoypqb"
   "fetch_url https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz" = "uw5ichj6dhcccmcts6p7jq6etzlh5baf"

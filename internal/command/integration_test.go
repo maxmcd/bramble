@@ -16,6 +16,7 @@ import (
 	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
+	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/test"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
@@ -59,7 +60,7 @@ func TestRun(t *testing.T) {
 	}
 	exitCodeIs := func(v int) check {
 		return func(t *testing.T, exitCode int, err error) {
-			assert.Equal(t, exitCode, v)
+			assert.Equal(t, v, exitCode)
 		}
 	}
 	noError := func() check {
@@ -68,6 +69,7 @@ func TestRun(t *testing.T) {
 			assert.NoError(t, err)
 		}
 	}
+	_, _ = noError, errContains
 	runRun := func(t *testing.T, tt test) (exitCode int, err error) {
 		t.Helper()
 		app := cliApp(".")
@@ -105,6 +107,13 @@ func TestRun(t *testing.T) {
 			args: []string{"../../:bash", "bash", "-c", "exit 2"},
 			checks: []check{
 				exitCodeIs(2),
+			},
+		},
+		{
+			name: "write to readonly system",
+			args: []string{"../../:bash", "bash", "-c", "touch foo"},
+			checks: []check{
+				exitCodeIs(1),
 			},
 		},
 		{
@@ -239,7 +248,7 @@ func TestDep(t *testing.T) {
 							return err
 						}
 					}
-					if err := app.Run([]string{"bramble", "build", "--parse-only"}); err != nil {
+					if err := app.Run([]string{"bramble", "build", "--just-parse", "./..."}); err != nil {
 						return err
 					}
 				}
@@ -295,5 +304,51 @@ func TestStore_CacheServer(t *testing.T) {
 		}
 
 		fmt.Println(serverBramblePath)
+	}
+}
+
+func TestModuleCLIParsing(t *testing.T) {
+	initIntegrationTest(t)
+
+	tests := []struct {
+		args    string
+		wd      string
+		wantErr bool
+	}{
+		// build
+		{"build ./...", "../../", false},
+		{"build tests", "../../", true},
+		{"build github.com/maxmcd/bramble/...", "../../", false},
+		{"build ./lib", "../../", false},
+		{"build ./internal", "../../", true},
+		{"build :all", "../../", true},
+		{"build ./:all", "../../", false},
+		{"build github.com/maxmcd/bramble/tests/...", "../../", false},
+		{"build github.com/maxmcd/busybox/...", "../../", true},
+		// run
+		{"run ./...", "../../", true},
+		{"run tests", "../../", true},
+		{"run :print_simple", "../../", true},
+		{"run ./:print_simple simple", "../../", false},
+		{"run ./lib:git git", "../../", false},
+		{"run ./internal:foo foo", "../../", true},
+		{"run github.com/maxmcd/bramble:print_simple simple", "../../", false},
+		{"run github.com/maxmcd/busybox:busybox ash", "../../", false},
+		// {"run github.com/maxmcd/busybox@0.0.1:busybox ash", "../../", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.args, func(t *testing.T) {
+			app := cliApp(tt.wd)
+			idx := strings.Index(tt.args, " ")
+			err := app.Run(append(
+				[]string{"bramble", tt.args[:idx], "--just-parse"},
+				strings.Fields(tt.args[idx:])...),
+			)
+			if (err != nil) != tt.wantErr {
+				fxt.Printpvln(err)
+				t.Errorf("ExecModule() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
 	}
 }

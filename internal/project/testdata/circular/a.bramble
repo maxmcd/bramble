@@ -1,4 +1,5 @@
-# load("github.com/maxmcd/bramble/pkg/brambleproject/testdata/circular/b")
+load("github.com/maxmcd/bramble/internal/project/testdata/circular/b")
 
-# def a():
-#     pass
+
+def a():
+    pass

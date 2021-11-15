@@ -18,19 +18,19 @@ func TestExecModule(t *testing.T) {
 	}
 	tests := []struct {
 		name       string
-		args       []string
+		arg        string
 		wantOutput output
 		wantErr    bool
 	}{
 		{
-			args: []string{":chain"},
+			arg: ".:chain",
 			wantOutput: output{
 				output: []string{"c"},
 				all:    []string{"a", "b", "c"},
 			},
 		},
 		{
-			args: []string{":foo"},
+			arg: "./:foo",
 			wantOutput: output{
 				output: []string{"name"},
 				all:    []string{"example.com", "name"},
@@ -39,9 +39,12 @@ func TestExecModule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			modules, err := project.ArgumentsToModules(context.Background(), []string{tt.arg}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
 			gotOutput, err := project.ExecModule(context.Background(), ExecModuleInput{
-				Command:   "build",
-				Arguments: tt.args,
+				Module: modules[0],
 			})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ExecModule() error = %v, wantErr %v", err, tt.wantErr)

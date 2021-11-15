@@ -17,36 +17,28 @@ import (
 )
 
 type execModuleOptions struct {
-	includeTests bool
-	target       string
+	includeTests  bool
+	target        string
+	allowExternal bool
 }
 
-func (b bramble) execModule(ctx context.Context, command string, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
+func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
 	var span trace.Span
-	ctx, span = tracer.Start(ctx, "command.execModule "+command+" "+fmt.Sprintf("%q", args))
+	ctx, span = tracer.Start(ctx, "command.execModule "+fmt.Sprintf("%q", args))
 	defer span.End()
-	if len(args) > 0 {
-		// Building something specific
-		return b.project.ExecModule(ctx, project.ExecModuleInput{
-			Command:      command,
-			Arguments:    args,
-			IncludeTests: opt.includeTests,
-			Target:       opt.target,
-		})
-	}
 
-	// Building everything in this directory and its children
-	modules, err := b.project.FindAllModules(b.project.WD())
+	modules, err := b.project.ArgumentsToModules(ctx, args, opt.allowExternal)
 	if err != nil {
-		return output, err
+		return project.ExecModuleOutput{}, err
 	}
 	output.AllDerivations = make(map[string]project.Derivation)
 	output.Output = make(map[string]project.Derivation)
 	output.Modules = make(map[string]map[string][]string)
 	for _, module := range modules {
 		o, err := b.project.ExecModule(ctx, project.ExecModuleInput{
-			Command:   command,
-			Arguments: []string{module},
+			Module:       module,
+			IncludeTests: opt.includeTests,
+			Target:       opt.target,
 		})
 		if err != nil {
 			return output, err
@@ -62,6 +54,7 @@ func (b bramble) execModule(ctx context.Context, command string, args []string, 
 			// returned for a given module
 			output.Modules[m] = fns
 		}
+		output.Run = append(output.Run, o.Run...)
 	}
 	return output, nil
 }
@@ -231,7 +224,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 
 func (b bramble) fullBuild(ctx context.Context, args []string, opts types.BuildOptions) (br buildResponse, err error) {
 	br.FinalHashMapping = make(map[string]store.Derivation)
-	br.Output, err = b.execModule(ctx, "builder.Build", args, execModuleOptions{})
+	br.Output, err = b.execModule(ctx, args, execModuleOptions{})
 	if err != nil {
 		return
 	}

@@ -15,7 +15,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/pkg/errors"
-	"go.starlark.net/starlark"
 )
 
 const BrambleExtension = ".bramble"
@@ -123,58 +122,6 @@ func (p *Project) WriteLockfile() error {
 	return config.WriteLockfile(p.lockFile, p.location)
 }
 
-// TODO: function that takes load() argument values and references the config and pulls down the needed version
-func (p *Project) fetchExternalModule(ctx context.Context, module string) (path string, err error) {
-	if strings.HasPrefix(module, p.config.Package.Name) {
-		return "", errors.Errorf("%q is not an external module", module)
-	}
-	cd, found := p.config.Dependencies[module]
-	if !found {
-		return "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", module)
-	}
-	if cd.Path != "" {
-		// TODO: Does this actually work
-		// TODO: cd.Path must be relative?
-		return filepath.Join(p.location, cd.Path), nil
-	}
-	return p.dm.PackagePathOrDownload(ctx, types.Package{Name: module, Version: cd.Version})
-}
-
-func (p *Project) filepathToModuleName(path string) (module string, err error) {
-	if !strings.HasSuffix(path, BrambleExtension) {
-		return "", errors.Errorf("path %q is not a bramblefile", path)
-	}
-	if !fileutil.FileExists(path) {
-		return "", errors.Wrap(os.ErrNotExist, path)
-	}
-	rel, err := filepath.Rel(p.location, path)
-	if err != nil {
-		return "", errors.Wrapf(err, "%q is not relative to the project directory %q", path, p.location)
-	}
-	if strings.HasSuffix(path, "default"+BrambleExtension) {
-		rel = strings.TrimSuffix(rel, "default"+BrambleExtension)
-	} else {
-		rel = strings.TrimSuffix(rel, BrambleExtension)
-	}
-	rel = strings.TrimSuffix(rel, "/")
-	return p.config.Package.Name + "/" + rel, nil
-}
-
-func (p *Project) FindAllModules(path string) (modules []string, err error) {
-	files, err := p.findAllBramblefiles(path)
-	if err != nil {
-		return nil, err
-	}
-	for _, file := range files {
-		module, err := p.filepathToModuleName(file)
-		if err != nil {
-			return nil, err
-		}
-		modules = append(modules, module)
-	}
-	return modules, nil
-}
-
 func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 	path, err = fileutil.Abs(p.wd, path)
 	if err != nil {
@@ -192,6 +139,7 @@ func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 			if path != p.location && d.IsDir() && fileutil.FileExists(filepath.Join(path, "bramble.toml")) {
 				return fs.SkipDir
 			}
+
 			// TODO: ignore .git, ignore .gitignore?
 			if strings.HasSuffix(path, ".bramble") {
 				files = append(files, path)
@@ -199,31 +147,6 @@ func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 			return nil
 		},
 	)
-}
-
-func (p *Project) scanForLoadNames() (moduleNames []string, err error) {
-	modules, err := p.findAllBramblefiles(p.location)
-	if err != nil {
-		return nil, err
-	}
-
-	names := map[string]struct{}{}
-	// Just need to know what builtins exist
-	rt := newRuntime("", "", "", "", nil)
-	for _, module := range modules {
-		_, program, err := starlark.SourceProgram(module, nil, rt.predeclared.Has)
-		if err != nil {
-			return nil, err
-		}
-		for i := 0; i < program.NumLoads(); i++ {
-			name, _ := program.Load(i)
-			names[name] = struct{}{}
-		}
-	}
-	for n := range names {
-		moduleNames = append(moduleNames, n)
-	}
-	return moduleNames, nil
 }
 
 func (p *Project) CalculateDependencies() (err error) {
@@ -247,10 +170,7 @@ func (p *Project) CalculateDependencies() (err error) {
 
 	fxt.Printqln(external)
 
-	// for _, name := range external {
-	// 	p.dm
-	// }
-
+	// TODO: lots of magic to navigate here, do it sometime
 	return nil
 }
 
@@ -277,7 +197,6 @@ func (p *Project) writeConfig(cfg config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	cfg.Render(os.Stdout)
 	cfg.Render(f)
 	return f.Close()
 }

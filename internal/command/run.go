@@ -13,13 +13,24 @@ type runOptions struct {
 	paths         []string
 	readOnlyPaths []string
 	hiddenPaths   []string
+	justParse     bool
 	network       bool
 }
 
 func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err error) {
-	output, err := b.execModule(ctx, "run", args, execModuleOptions{})
+	module, err := b.project.ParseModuleFuncArgument(ctx, args[0], true)
+	if err != nil {
+		return err
+	}
+	output, err := b.project.ExecModule(ctx, project.ExecModuleInput{
+		Module: module,
+		// TODO: Target: ,
+	})
 	if err != nil {
 		return
+	}
+	if ro.justParse {
+		return nil
 	}
 	outputDerivations, err := b.runBuild(ctx, output, runBuildOptions{
 		quiet: true,
@@ -50,10 +61,10 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 			ro.paths = run.Paths
 		}
 		if len(ro.readOnlyPaths) == 0 {
-			ro.readOnlyPaths = run.Paths
+			ro.readOnlyPaths = run.ReadOnlyPaths
 		}
 		if len(ro.hiddenPaths) == 0 {
-			ro.hiddenPaths = run.Paths
+			ro.hiddenPaths = run.HiddenPaths
 		}
 		if !ro.network && run.Network {
 			ro.network = run.Network

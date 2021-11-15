@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestConfig_LoadValueToDependency(t *testing.T) {
 	tests := []struct {
@@ -40,12 +44,14 @@ func TestConfig_LoadValueToDependency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := Config{
-				Package:      Package{Name: "something"},
-				Dependencies: tt.deps,
-			}
-			if got := cfg.LoadValueToDependency(tt.val); got != tt.want {
-				t.Errorf("Config.LoadValueToDependency() = %v, want %v", got, tt.want)
+			for i := 0; i < 10; i++ {
+				// Random order of range over a map has affected this test in
+				// the past so let's run it a few times.
+				cfg := Config{
+					Package:      Package{Name: "something"},
+					Dependencies: tt.deps,
+				}
+				require.Equal(t, tt.want, cfg.LoadValueToDependency(tt.val))
 			}
 		})
 	}
