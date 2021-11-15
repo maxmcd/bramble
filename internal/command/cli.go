@@ -83,7 +83,7 @@ bramble build ./tests/basic:self_reference
 bramble build ./...
 bramble build ./tests/...
 bramble build github.com/maxmcd/bramble/...
-bramble build github.com/maxmcd/bramble:bash
+bramble build github.com/maxmcd/bramble:bash github.com/maxmcd/bramble:all
 bramble build github.com/username/repo/subdirectory:function
 
 Calls to build with a path argument will build everything in that directory and
@@ -261,7 +261,7 @@ good way to debug a derivation that you're building.`,
 			{
 				Name:      "init",
 				Usage:     "Initialize a new directory as a bramble project",
-				UsageText: `bramble init`,
+				UsageText: `bramble init [name]`,
 				Action: func(c *cli.Context) error {
 					panic("unimplemented")
 				},

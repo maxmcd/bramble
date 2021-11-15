@@ -170,10 +170,7 @@ func (p *Project) CalculateDependencies() (err error) {
 
 	fxt.Printqln(external)
 
-	// for _, name := range external {
-	// 	p.dm
-	// }
-
+	// TODO: lots of magic to navigate here, do it sometime
 	return nil
 }
 
@@ -200,7 +197,6 @@ func (p *Project) writeConfig(cfg config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	cfg.Render(os.Stdout)
 	cfg.Render(f)
 	return f.Close()
 }

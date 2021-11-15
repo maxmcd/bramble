@@ -1,3 +1,6 @@
 [package]
 name = "github.com/maxmcd/bramble/internal/project/testdata/circular"
 version = "0.0.1"
+
+[dependencies]
+"github.com/maxmcd/busybox" = "0.0.2"

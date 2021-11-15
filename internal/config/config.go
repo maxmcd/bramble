@@ -142,6 +142,9 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		if err != nil {
 			return cfg, nil, err
 		}
+		if cfg.Dependencies == nil {
+			cfg.Dependencies = map[string]Dependency{}
+		}
 	}
 	{
 		lockFileLocation := filepath.Join(dir, "bramble.lock")
@@ -155,9 +158,6 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		}
 		defer f.Close()
 		_, err = toml.DecodeReader(f, &lockFile)
-		if cfg.Dependencies == nil {
-			cfg.Dependencies = map[string]Dependency{}
-		}
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }

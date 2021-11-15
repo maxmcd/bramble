@@ -61,10 +61,10 @@ func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err err
 			ro.paths = run.Paths
 		}
 		if len(ro.readOnlyPaths) == 0 {
-			ro.readOnlyPaths = run.Paths
+			ro.readOnlyPaths = run.ReadOnlyPaths
 		}
 		if len(ro.hiddenPaths) == 0 {
-			ro.hiddenPaths = run.Paths
+			ro.hiddenPaths = run.HiddenPaths
 		}
 		if !ro.network && run.Network {
 			ro.network = run.Network

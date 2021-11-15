@@ -60,7 +60,7 @@ func TestRun(t *testing.T) {
 	}
 	exitCodeIs := func(v int) check {
 		return func(t *testing.T, exitCode int, err error) {
-			assert.Equal(t, exitCode, v)
+			assert.Equal(t, v, exitCode)
 		}
 	}
 	noError := func() check {
@@ -69,6 +69,7 @@ func TestRun(t *testing.T) {
 			assert.NoError(t, err)
 		}
 	}
+	_, _ = noError, errContains
 	runRun := func(t *testing.T, tt test) (exitCode int, err error) {
 		t.Helper()
 		app := cliApp(".")
@@ -106,6 +107,13 @@ func TestRun(t *testing.T) {
 			args: []string{"../../:bash", "bash", "-c", "exit 2"},
 			checks: []check{
 				exitCodeIs(2),
+			},
+		},
+		{
+			name: "write to readonly system",
+			args: []string{"../../:bash", "bash", "-c", "touch foo"},
+			checks: []check{
+				exitCodeIs(1),
 			},
 		},
 		{

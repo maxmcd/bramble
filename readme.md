@@ -1,4 +1,4 @@
-5![](./notes/animated.svg)
+![](./notes/animated.svg)
 
 <h1 align="center">Bramble</h1>
 
@@ -42,12 +42,11 @@ Bramble is a functional build system that intends to be a user-friendly, robust,
 
 - **Project Based**: Every project has a `bramble.toml` and `bramble.lock` file that track dependencies and other metadata needed to build the project reliably.
 - **Reproducible**: All builds are assumed to be reproducible. Every build must consistently return the same output given the same input. You can write builds that aren't reproducible but they'll likely break things.
-- **Rootless:**: No root permissions are required to run. For sandboxing, user namespaces are used on Linux and `sandbox-exec` is used on macOS.
+- **Rootless First:**: Where possible, no root permissions are required to run. For sandboxing, user namespaces are used on Linux and `sandbox-exec` is used on macOS. Unclear how this will work beyond Linux and macOS.
 - **Daemonless**: Builds are executed directly and not handed off to a daemon.
 - **Sandboxed**: All builds are sandboxed, running software with Bramble will be sandboxed by default. Builds also take as little input as possible (no args, no environment variables, no network). Some of these might be relaxed as the project evolves, but things will hopefully stay locked down.
 - **Dependencies**: Dependencies are stored in repositories. You might reference them with `load("github.com/maxmcd/busybox")` in a build file or `bramble build bitbucket.org/maxm/foo:foo` from the command line. Dependencies are project specific.
 - **Content-Addressable Store**: Build outputs and build inputs are stored in directories that are named with the hash of their contents. This ensured build output can be verified and
-- **Store Content Relocation**: Build outputs naturally contain references to other build outputs. These locations are usually specific to the system that originally built the software. Build references are rewritten so that outputs can be shared with different systems. These values are also replaced with a known default when hashing so that there is consistency between different build environments when possible.
 - **Remote Build**: Future support for remote build execution.
 - **Starlark**: The configuration language [starlark](https://github.com/google/starlark-go) is used to define builds.
 - **Diverse Build Environment Support**: Will have first class support for all major operating systems and potentially even support for the browser, webassembly, FAAS, and others. (Bramble is Linux-only at the moment).
@@ -70,7 +69,6 @@ Many things are broken, would not expect this to work or be useful yet. The list
 - [ ] Remote Builds
 - [ ] Recursive Builds
 - [ ] Documentation Generation
-- [ ] [Running Build Outputs](https://github.com/maxmcd/bramble/issues/25)
 - [ ] Docker/OCI Container Build Output
 
 ## Installation
@@ -274,6 +272,36 @@ bramble ls <path>
 
 Calls to `ls` will search the current directory for bramble files and print their public functions with documentation. If an immediate subdirectory has a `default.bramble` documentation will be printed for those functions as well.
 
+```
+$ bramble ls
+Module: github.com/maxmcd/bramble/
+
+    def print_simple()
+
+    def bash()
+
+    def all()
+
+
+Module: github.com/maxmcd/bramble/lib
+"""
+Lib provides various derivations to help build stuff
+"""
+
+    def cacerts()
+        """cacerts provides known certificate authority certificates to verify TLS connections"""
+
+    def git()
+
+    def git_fetcher()
+
+    def git_test()
+
+    def zig()
+
+    def busybox()
+```
+
 #### `bramble repl`
 
 `repl` opens up a read-eval-print-loop for interacting with the bramble [config language](#config-language). You can make derivations and call other built-in functions. The repl has limited use because you can't build anything that you create, but it's a good place to get familiar with how the built-in modules and functions work.
@@ -287,6 +315,8 @@ Calls to `ls` will search the current directory for bramble files and print thei
 `gc` searches for all known projects (TODO: link to what "known projects" means), runs all of their public functions and calculates what derivations and configuration they need to run. All other information is deleted from the store and project configurations.
 
 ### Dependencies
+
+
 
 ### Config language
 
