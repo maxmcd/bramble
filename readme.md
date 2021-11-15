@@ -241,8 +241,9 @@ The `bramble.lock` file stores hashes so that "fetch" builders like "fetch_url" 
 #### `bramble build`
 
 ```
-bramble build [options] [module]:<function>
-bramble build [options] [path]/...
+bramble build [options] <module or path>:<function>
+bramble build [options] <path or path>
+bramble build [options] <path>/...
 ```
 
 The `build` command is used to build derivations returned by bramble functions. Calling `build` with a module location and function will call that function, take any derivations that are returned, and build that derivation and its dependencies.
@@ -250,7 +251,7 @@ The `build` command is used to build derivations returned by bramble functions. 
 Here are some examples:
 ```
 bramble build ./tests/basic:self_reference
-bramble build github.com/maxmcd/bramble:all
+bramble build github.com/maxmcd/bramble:all github.com/maxmcd/bramble:bash
 bramble build github.com/username/repo/subdirectory:all
 bramble build github.com/maxmcd/bramble/lib
 bramble build github.com/maxmcd/bramble/...
@@ -261,7 +262,7 @@ bramble build ./...
 #### `bramble run`
 
 ```
-bramble run [options] [module]:<function> [args...]
+bramble run [options] <module or path>:<function> [args...]
 ```
 
 #### `bramble ls`
