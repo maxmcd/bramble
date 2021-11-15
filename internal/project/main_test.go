@@ -12,21 +12,8 @@ import (
 )
 
 func newTestRuntime(t *testing.T, wd string) *runtime {
-	if wd == "" {
-		var err error
-		wd, err = os.Getwd()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	projectLocation, err := filepath.Abs("../../")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rt := newRuntime(wd, projectLocation, "github.com/maxmcd/bramble", "", nil)
-	return rt
+	p := newTestProject(t, wd)
+	return p.newRuntime("")
 }
 
 func newTestProject(t *testing.T, wd string) *Project {

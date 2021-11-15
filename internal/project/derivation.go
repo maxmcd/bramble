@@ -264,7 +264,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 	}
 
 	for _, src := range drv.Sources.Files {
-		abs := filepath.Join(rt.projectLocation, src)
+		abs := filepath.Join(rt.project.location, src)
 		if !fileutil.PathExists(abs) {
 			return drv, errors.Errorf("Source file %q doesn't exit", abs)
 		}

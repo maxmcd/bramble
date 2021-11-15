@@ -13,13 +13,24 @@ type runOptions struct {
 	paths         []string
 	readOnlyPaths []string
 	hiddenPaths   []string
+	justParse     bool
 	network       bool
 }
 
 func (b bramble) run(ctx context.Context, args []string, ro runOptions) (err error) {
-	output, err := b.execModule(ctx, []string{args[0]}, execModuleOptions{})
+	module, err := b.project.ParseModuleFuncArgument(ctx, args[0], true)
+	if err != nil {
+		return err
+	}
+	output, err := b.project.ExecModule(ctx, project.ExecModuleInput{
+		Module: module,
+		// TODO: Target: ,
+	})
 	if err != nil {
 		return
+	}
+	if ro.justParse {
+		return nil
 	}
 	outputDerivations, err := b.runBuild(ctx, output, runBuildOptions{
 		quiet: true,

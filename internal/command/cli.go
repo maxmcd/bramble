@@ -162,6 +162,11 @@ subdirectories.
 						Usage: "paths that are hidden from the process, to pass multiple paths use this flag multiple times",
 					},
 					&cli.BoolFlag{
+						Name:  "just-parse",
+						Value: false,
+						Usage: "only parse and run bramble files, don't build",
+					},
+					&cli.BoolFlag{
 						Name:  "network",
 						Usage: "allow network access",
 					},
@@ -201,6 +206,7 @@ subdirectories.
 						readOnlyPaths: readOnlyPaths,
 						hiddenPaths:   hiddenPaths,
 						network:       network,
+						justParse:     c.Bool("just-parse"),
 					})
 				},
 			},

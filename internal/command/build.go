@@ -17,8 +17,9 @@ import (
 )
 
 type execModuleOptions struct {
-	includeTests bool
-	target       string
+	includeTests  bool
+	target        string
+	allowExternal bool
 }
 
 func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOptions) (output project.ExecModuleOutput, err error) {
@@ -26,7 +27,7 @@ func (b bramble) execModule(ctx context.Context, args []string, opt execModuleOp
 	ctx, span = tracer.Start(ctx, "command.execModule "+fmt.Sprintf("%q", args))
 	defer span.End()
 
-	modules, err := b.project.BuildArgumentsToModules(args)
+	modules, err := b.project.ArgumentsToModules(ctx, args, opt.allowExternal)
 	if err != nil {
 		return project.ExecModuleOutput{}, err
 	}
