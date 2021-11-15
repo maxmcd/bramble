@@ -73,7 +73,7 @@ Many things are broken, would not expect this to work or be useful yet. The list
 
 ## Installation
 
-Install with `go get github.com/maxmcd/bramble` or download a recent binary release.
+Install with `go get github.com/maxmcd/bramble` or download a recent binary release. Linux is the only supported OS at the moment. macOS support should be coming soon, others much later.
 
 ### Linux
 
