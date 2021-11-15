@@ -139,6 +139,7 @@ func (p *Project) findAllBramblefiles(path string) (files []string, err error) {
 			if path != p.location && d.IsDir() && fileutil.FileExists(filepath.Join(path, "bramble.toml")) {
 				return fs.SkipDir
 			}
+
 			// TODO: ignore .git, ignore .gitignore?
 			if strings.HasSuffix(path, ".bramble") {
 				files = append(files, path)

@@ -100,7 +100,11 @@ func TestProject_FindAllModules(t *testing.T) {
 		{
 			"../../", ".",
 			[]string{"github.com/maxmcd/bramble/lib"},
-			nil, false,
+			[]string{
+				"github.com/maxmcd/bramble/internal/project/testdata/circular/b",
+				"github.com/maxmcd/bramble/internal/project/testdata/circular",
+				"github.com/maxmcd/bramble/internal/project/testdata/circular/a"},
+			false,
 		},
 		{"../../../", ".", nil, nil, true},
 		{"./testdata/project", ".", []string{"testproject/a"}, nil, false},
