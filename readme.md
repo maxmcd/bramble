@@ -165,7 +165,7 @@ done
 
 If you copy these files into a directory you can build it like so:
 ```
-$ bramble build :hello_world
+$ bramble build ./:hello_world
 bramble path directory doesn't exist, creating
 ✔ busybox-x86_64.tar.gz - 332.830943ms
 ✔ busybox - 88.136237ms
@@ -192,7 +192,7 @@ These are the three archives we had to download in order for the build to run. T
 
 We can use `bramble run` to run the resulting script.
 ```
-$ bramble run :hello_world say-hello-world
+$ bramble run ./:hello_world say-hello-world
 Hello World!
 ```
 
