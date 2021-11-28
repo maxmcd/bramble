@@ -61,3 +61,33 @@ wait, maybe not, the generating function will always be called without arguments
 
 Ok, either way, that needs to be sorted out, and we might want to consider just adding generated code to the lockfile.
 
+-------------------
+
+When a derivation that outputs other derivations is run, what does it output? A map of derivations that can be assembled into a tree? Yeah, probably an execModule ouput. So do we want people generating those from bramble code? They could also just output bramble code? Maybe we support both.
+
+What if the bramble code that is run has dependencies? These are runtime dependencies. Would be good to track those so that we can more reliably rebuild this part, maybe they are regular dependencies maybe they aren't. Would be easy to just run everything when adding dependencies and then run derivations that output derivations to get the full list of deps. Well, easy but possibly problematic.
+
+Hmmm
+
+Could require deps to be loaded before the derivation runs for now. And then yes, seems like we should support outputing bramble files. Oof, what if the derivation wants to use other relative files? Maybe we go back to code generation?
+
+Hmm, if we explore code generation (since we're already at code generation), how would that work? Generated files are marked as read only. Code is super auditable. Could generate steps be part of builds? Seems hard.
+
+Well, if it's explicit then we can make it work. If a `generate()` is a thing, and that can be run within the project generating some file, and then that can be used in a later build that's not terrible. How would it be abused? Basically you need to know what will be generated and what the sources are. Then we can just require that no generate commands are run on the server. Generate commands could require network access. This also helps with the "how tf do we generate things" problem. Generation could be first class.....
+
+Hmmm
+
+So how does this work from a graph patching standpoint? Let's say we have a go-module, we'll need to generate a bramble file from the go-module. So we mark the generate as needing go.mod as input and having go-mod-gen.bramble as output. Pass the env var "bramble2bramble". Then, we need the output file to be parsed and for that output to be parsed and used as graph input. Oh this is good, so this is great, because if there are deps in the file output we'll just get a dependency error.
+
+(Maybe we just want to pick versions by putting them in the load statement. Could mean generated code could pick versions. Also means that we're just go again, but this time with @3 and not /3 (and I'm sure I'll figure out why @ is problematic)) (later edit: ah yes, the @ is problematic because I'm required to put it at the level of the path that the package is at, which is hard, do I put the @ and then have a path after it? no. so the path is now ambiguous, ugh)
+
+Ok, so we have a generate step. Generate commands can use the network if they output just a single bramble file and set a special env var. Once build is complete file will be parsed and graph will be patched. Function to run must be included in the build input.
+
+So now we:
+
+1. Add explicit generate pattern
+2. Add special generate pattern that patches the graph
+
+Ok, so regular build uses the network and re-generates the file if the sources have changed. Is there a way to track this? Maybe this goes in the lockfile? Yeah whatf do we do with the generate step? It's a derivation? It's a derivation that points at a generated file? How does that reference work? It's in the special value. So when a file changes, we re-generate. How do we know a file has changed? With generated file, we skip it, we just trust the generated file???? Yeah this is nasty, write it out...
+
+Ah yes, ok, the problem is, how do we know that the input files have changed?
