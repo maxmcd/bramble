@@ -4,9 +4,7 @@ import { Octokit, App } from "octokit";
 import { Router, Params } from "./router";
 import { safeParseInt } from "./util";
 
-const octokit = new Octokit({
-  auth: GITHUB_TOKEN,
-});
+const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 const repo = {
   owner: "maxmcd",

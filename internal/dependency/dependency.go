@@ -484,7 +484,6 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	})
 	router.GET("/package/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
-		fmt.Println("MNAME_SERVION", name)
 		path := filepath.Join(dependencyDir, "src", name, "bramble.toml")
 		if !fileutil.FileExists(path) {
 			return httpx.ErrNotFound(errors.New("can't find package"))
