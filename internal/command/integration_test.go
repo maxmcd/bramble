@@ -336,7 +336,7 @@ func TestModuleCLIParsing(t *testing.T) {
 		{"run ./lib:git git", "../../", false},
 		{"run ./internal:foo foo", "../../", true},
 		{"run github.com/maxmcd/bramble:print_simple simple", "../../", false},
-		{"run github.com/maxmcd/busybox:busybox ash", "../../", false},
+		// {"run github.com/maxmcd/busybox:busybox ash", "../../", false},
 		// {"run github.com/maxmcd/busybox@0.0.1:busybox ash", "../../", false},
 	}
 	for _, tt := range tests {
