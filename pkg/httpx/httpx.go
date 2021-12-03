@@ -37,6 +37,9 @@ type IM map[interface{}]interface{}
 
 func (err ErrHTTPResponse) Error() string { return err.err.Error() }
 func ErrNotFound(err error) error         { return ErrHTTPResponse{err: err, code: http.StatusNotFound} }
+func ErrNotAcceptable(err error) error {
+	return ErrHTTPResponse{err: err, code: http.StatusNotAcceptable}
+}
 func ErrUnprocessableEntity(err error) error {
 	return ErrHTTPResponse{err: err, code: http.StatusUnprocessableEntity}
 }

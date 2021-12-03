@@ -24,7 +24,7 @@ func newBramble(wd string, bramblePath string) (b bramble, err error) {
 	b.project.AddModuleFetcher(
 		dependency.NewManager(
 			filepath.Join(b.store.BramblePath, "var/dependencies"),
-			"https://bramble-server.fly.dev",
+			"https://store.bramble.run",
 		),
 	)
 	return b, nil

@@ -68,7 +68,7 @@ func (s *Store) CacheServer() http.Handler {
 	router.POST("/derivation", func(c httpx.Context) (err error) {
 		var drv Derivation
 		if err := json.NewDecoder(c.Request.Body).Decode(&drv); err != nil {
-			return httpx.ErrUnprocessableEntity(err)
+			return httpx.ErrNotAcceptable(err)
 		}
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(drv); err != nil {
@@ -84,7 +84,7 @@ func (s *Store) CacheServer() http.Handler {
 	router.POST("/output", func(c httpx.Context) (err error) {
 		var req OutputRequestBody
 		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-			return httpx.ErrUnprocessableEntity(err)
+			return httpx.ErrNotAcceptable(err)
 		}
 
 		tempDir, err := os.MkdirTemp("", "")
@@ -119,7 +119,7 @@ func (s *Store) CacheServer() http.Handler {
 		}
 		if fi.Size() > 4e6 {
 			_ = os.Remove(loc)
-			return httpx.ErrUnprocessableEntity(errors.New("chunk size can't be larger than 4MB"))
+			return httpx.ErrNotAcceptable(errors.New("chunk size can't be larger than 4MB"))
 		}
 
 		fmt.Fprint(c.ResponseWriter, hash)

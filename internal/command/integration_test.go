@@ -299,6 +299,9 @@ func TestStore_CacheServer(t *testing.T) {
 			drvs = append(drvs, drv)
 		}
 		cc := cacheclient.New(server.URL)
+		// s3 := simples3.New("", "", "")
+		// s3.SetEndpoint("nyc3.digitaloceanspaces.com")
+		// cc := store.NewS3CacheClient(s3)
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}
@@ -333,7 +336,7 @@ func TestModuleCLIParsing(t *testing.T) {
 		{"run ./lib:git git", "../../", false},
 		{"run ./internal:foo foo", "../../", true},
 		{"run github.com/maxmcd/bramble:print_simple simple", "../../", false},
-		{"run github.com/maxmcd/busybox:busybox ash", "../../", false},
+		// {"run github.com/maxmcd/busybox:busybox ash", "../../", false},
 		// {"run github.com/maxmcd/busybox@0.0.1:busybox ash", "../../", false},
 	}
 	for _, tt := range tests {

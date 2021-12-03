@@ -2,11 +2,14 @@ package store
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,6 +22,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/pkg/errors"
+	"github.com/rhnvrm/simples3"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -394,4 +398,115 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	case <-doneChan:
 		return nil
 	}
+}
+
+type S3CacheClient struct {
+	s3 *simples3.S3
+}
+
+type fakeSizeSeeker struct {
+	buf *bytes.Buffer
+	loc int64
+}
+
+func (fss fakeSizeSeeker) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		fss.loc = offset
+		// Ignore seeks beyond loc
+		return fss.loc, nil
+	case io.SeekCurrent:
+		return 0, nil
+	case io.SeekEnd:
+		fss.loc -= offset
+		// Ignore seeks beyond loc
+		return int64(fss.buf.Len()) - fss.loc, nil
+	}
+	panic("unimplemented")
+}
+func (fss fakeSizeSeeker) Read(p []byte) (n int, err error) { return fss.buf.Read(p) }
+
+var _ CacheClient = new(S3CacheClient)
+
+func NewS3CacheClient(s3 *simples3.S3) CacheClient {
+	return &S3CacheClient{s3: s3}
+}
+
+func fileUpload(s3 *simples3.S3, body *bytes.Buffer, ui simples3.UploadInput) error {
+	checkIt := "https://store.bramble.run/" + ui.ObjectKey
+	resp, err := http.Head(checkIt)
+	if err != nil {
+		return err
+	}
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+	case http.StatusOK:
+		return nil
+	default:
+		return errors.Errorf("unexpected response code %d for url %q", resp.StatusCode, checkIt)
+	}
+	// TODO: Could reduce memory overhead here
+	buf := &bytes.Buffer{}
+	w := gzip.NewWriter(buf)
+	if _, err := io.Copy(w, bytes.NewBuffer(body.Bytes())); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+
+	ui.Body = fakeSizeSeeker{buf: body}
+	if _, err := s3.FileUpload(ui); err != nil {
+		return err
+	}
+
+	ui.Body = fakeSizeSeeker{buf: buf}
+	ui.FileName += ".gz"
+	ui.ObjectKey += ".gz"
+	if _, err := s3.FileUpload(ui); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cc *S3CacheClient) PostChunk(ctx context.Context, r io.Reader) (string, error) {
+	var buf bytes.Buffer
+	h := hasher.New()
+	tee := io.TeeReader(r, h)
+	if _, err := io.Copy(&buf, tee); err != nil {
+		return "", err
+	}
+	err := fileUpload(cc.s3, &buf, simples3.UploadInput{
+		Bucket:      "bramble",
+		ACL:         "public-read",
+		ObjectKey:   "chunk/" + h.String(),
+		FileName:    h.String(),
+		ContentType: "application/octet-stream",
+	})
+	return "", err
+}
+func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
+	filename := drv.Filename()
+	err := fileUpload(cc.s3, bytes.NewBuffer([]byte(drv.JSON())), simples3.UploadInput{
+		Bucket:      "bramble",
+		ACL:         "public-read",
+		ObjectKey:   "derivation/" + drv.Filename(),
+		FileName:    drv.Filename(),
+		ContentType: "application/json",
+	})
+	return filename, err
+}
+func (cc *S3CacheClient) PostOutput(ctx context.Context, req OutputRequestBody) error {
+	buf := &bytes.Buffer{}
+	if err := json.NewEncoder(buf).Encode(req); err != nil {
+		return err
+	}
+	err := fileUpload(cc.s3, buf, simples3.UploadInput{
+		Bucket:      "bramble",
+		ACL:         "public-read",
+		ObjectKey:   "output/" + req.Output.Path,
+		FileName:    req.Output.Path,
+		ContentType: "application/json",
+	})
+	return err
 }

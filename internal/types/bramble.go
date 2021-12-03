@@ -26,7 +26,9 @@ func (p Package) String() string {
 }
 
 type Builder interface {
+	// Build runs a build as if it's being run from the command line
 	Build(ctx context.Context, location string, args []string, opts BuildOptions) (BuildResponse, error)
+	// Packages returns all packages in this location
 	Packages() map[string]Package
 }
 

@@ -1,0 +1,19 @@
+name = "builder-worker"
+type = "javascript"
+account_id = "974726b43aff80f733a99f285967519c"
+workers_dev = true
+compatibility_date = "2021-11-28"
+
+[build]
+command = "npm install && npm run build"
+[build.upload]
+format = "service-worker"
+
+[vars]
+GITHUB_TOKEN = "token"
+
+[env.production]
+name = "builder-worker-production"
+zone_id = "922b7279f73094acebae55d35dd6c11c"
+route = "store.bramble.run/job*"
+
