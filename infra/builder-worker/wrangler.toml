@@ -1,8 +1,6 @@
 name = "builder-worker"
 type = "javascript"
-zone_id = "bramble.run"
-account_id = ""
-route = "store.bramble.run/job/*"
+account_id = "974726b43aff80f733a99f285967519c"
 workers_dev = true
 compatibility_date = "2021-11-28"
 
@@ -15,4 +13,7 @@ format = "service-worker"
 GITHUB_TOKEN = "token"
 
 [env.production]
-name = "production"
+name = "builder-worker-production"
+zone_id = "922b7279f73094acebae55d35dd6c11c"
+route = "store.bramble.run/job*"
+

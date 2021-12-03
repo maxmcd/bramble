@@ -530,9 +530,8 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 		if err != nil {
 			return err
 		}
-		p := pkg // assign to variable to ensure same value is used
+		p := pkg // assign to variable to ensure correct value is used
 		src := path
-		// Only add if we return without erroring
 		toRun = append(toRun, func() error {
 			return addDependencyMetadata(
 				dependencyDir,
@@ -542,6 +541,8 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 				resp.Packages)
 		})
 	}
+	// We do this in a separate loop so that we can ensure all builds work
+	// before writing packages to the store
 	for _, tr := range toRun {
 		if err = tr(); err != nil {
 			return err

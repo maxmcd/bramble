@@ -299,6 +299,9 @@ func TestStore_CacheServer(t *testing.T) {
 			drvs = append(drvs, drv)
 		}
 		cc := cacheclient.New(server.URL)
+		// s3 := simples3.New("", "", "")
+		// s3.SetEndpoint("nyc3.digitaloceanspaces.com")
+		// cc := store.NewS3CacheClient(s3)
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}

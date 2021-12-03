@@ -16,10 +16,18 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
+type cacheClient interface {
+	PostChunk(context.Context, io.Reader) (string, error)
+	PostDerivation(context.Context, store.Derivation) (string, error)
+	PostOutput(context.Context, store.OutputRequestBody) error
+}
+
 type Client struct {
 	host   string
 	client *http.Client
 }
+
+var _ cacheClient = new(Client)
 
 func New(host string) *Client {
 	return &Client{
