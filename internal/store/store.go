@@ -410,15 +410,14 @@ type fakeSizeSeeker struct {
 }
 
 func (fss fakeSizeSeeker) Seek(offset int64, whence int) (int64, error) {
-	if whence == io.SeekStart {
+	switch whence {
+	case io.SeekStart:
 		fss.loc = offset
 		// Ignore seeks beyond loc
 		return fss.loc, nil
-	}
-	if whence == io.SeekCurrent {
+	case io.SeekCurrent:
 		return 0, nil
-	}
-	if whence == io.SeekEnd {
+	case io.SeekEnd:
 		fss.loc -= offset
 		// Ignore seeks beyond loc
 		return int64(fss.buf.Len()) - fss.loc, nil
