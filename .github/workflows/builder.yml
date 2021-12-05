@@ -23,8 +23,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Run all tests
         run: |
-          curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register
-            -H 'Content-Type: application/json'
+          curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
+            -H 'Content-Type: application/json' \
             -d '{"RunID": "$GITHUB_RUN_ID"}'
           echo ${{ github.event.inputs.JobID }}
           echo ${{ github.event.inputs.Reference }}
