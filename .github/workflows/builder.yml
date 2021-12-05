@@ -1,14 +1,15 @@
-on: workflow_dispatch
-inputs:
-  JobID:
-    description: "ID of the job"
-    required: true
-  Package:
-    description: "Package location"
-    required: true
-  Reference:
-    description: Version control reference, if any
-    required: false
+on:
+  workflow_dispatch:
+    inputs:
+      JobID:
+        description: "ID of the job"
+        required: true
+      Package:
+        description: "Package location"
+        required: true
+      Reference:
+        description: Version control reference, if any
+        required: false
 name: Builder
 jobs:
   test:
@@ -21,4 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run all tests
-        run: echo hi
+        run: |
+          echo ${{ github.event.inputs.JobID }}
+          echo ${{ github.event.inputs.Reference }}
