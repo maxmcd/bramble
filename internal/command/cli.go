@@ -396,10 +396,13 @@ their public functions with documentation. If an immediate subdirectory has a
 								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))
 							s3.SetEndpoint("nyc3.digitaloceanspaces.com")
 							cc := store.NewS3CacheClient(s3)
+							fmt.Println("Uploading derivations")
+							fmt.Println(drvs)
 							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
 								return err
 							}
 						}
+						return nil
 					}
 
 					url := "http://localhost:2726"
