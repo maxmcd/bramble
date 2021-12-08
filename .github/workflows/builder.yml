@@ -26,7 +26,4 @@ jobs:
           curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
             -H 'Content-Type: application/json' \
             -d '{"RunID": ${{ github.run_id }}}'
-          go run . publish --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
-          echo ${{ github.event.inputs.JobID }}
-          echo ${{ github.event.inputs.Package }}
-          echo ${{ github.event.inputs.Reference }}
+          go run . publish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}

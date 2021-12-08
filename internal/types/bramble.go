@@ -12,7 +12,9 @@ type BuildOptions struct {
 }
 
 type BuildResponse struct {
-	Packages         map[string]map[string][]string
+	// Modules is a map of all modules. Each module has a map of all module functions and their outputs.
+	Modules map[string]map[string][]string
+	// FinalHashMapping is a map of the starlark input hash to the resulting built derivation filename.
 	FinalHashMapping map[string]string
 }
 

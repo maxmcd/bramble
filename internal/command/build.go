@@ -294,7 +294,7 @@ func (b builder) Build(ctx context.Context, location string, args []string, opts
 	if err != nil {
 		return types.BuildResponse{}, err
 	}
-	resp.Packages = br.moduleFunctionMapping()
+	resp.Modules = br.moduleFunctionMapping()
 	resp.FinalHashMapping = map[string]string{}
 	for hash, drv := range br.FinalHashMapping {
 		resp.FinalHashMapping[hash] = drv.Filename()

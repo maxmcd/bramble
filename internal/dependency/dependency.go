@@ -444,7 +444,8 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			jq.End(job.ID, buildJob(job, dependencyDir, newBuilder, downloadGithubRepo))
+			_, err := buildJob(job, dependencyDir, newBuilder, downloadGithubRepo)
+			jq.End(job.ID, err)
 		}()
 
 		return nil
@@ -502,10 +503,10 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	return router
 }
 
-func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (err error) {
+func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (builtDerivations []string, err error) {
 	loc, err := downloadGithubRepo(job.Package, job.Reference)
 	if err != nil {
-		return errors.Wrap(err, "error downloading git repo")
+		return nil, errors.Wrap(err, "error downloading git repo")
 	}
 	builder, err := newBuilder(loc)
 	if err != nil {
@@ -519,16 +520,20 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 		}
 		expectedPackageName := strings.TrimSuffix(job.Package+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
 		if expectedPackageName != pkg.Name {
-			return errors.Errorf("package name %q does not match the location the project was fetched from: %q",
+			return nil, errors.Errorf("package name %q does not match the location the project was fetched from: %q",
 				pkg.Name,
 				expectedPackageName)
 		}
 	}
 	toRun := []func() error{}
+	// Build each package in the repository
 	for path, pkg := range packages {
 		resp, err := builder.Build(context.Background(), path, nil, types.BuildOptions{Check: true})
 		if err != nil {
-			return err
+			return nil, err
+		}
+		for _, drvFilename := range resp.FinalHashMapping {
+			builtDerivations = append(builtDerivations, drvFilename)
 		}
 		p := pkg // assign to variable to ensure correct value is used
 		src := path
@@ -538,25 +543,25 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 				p.Name,
 				p.Version,
 				src,
-				resp.Packages)
+				resp.Modules)
 		})
 	}
 	// We do this in a separate loop so that we can ensure all builds work
 	// before writing packages to the store
 	for _, tr := range toRun {
 		if err = tr(); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return builtDerivations, nil
 }
 
 func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) http.Handler {
 	return serverHandler(dependencyDir, newBuilder, dgr)
 }
 
-func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(*Job) error {
-	return func(job *Job) error {
+func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(*Job) ([]string, error) {
+	return func(job *Job) ([]string, error) {
 		return buildJob(job, dependencyDir, newBuilder, dgr)
 	}
 }
