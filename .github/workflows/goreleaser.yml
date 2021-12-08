@@ -1,5 +1,8 @@
 name: Publishing Release
-on: [push]
+on:
+  create:
+    tags:
+      - "v*"
 permissions:
   contents: write
 
