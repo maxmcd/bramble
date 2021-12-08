@@ -21,9 +21,12 @@ jobs:
           go-version: 1.17.x
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Install
+        run: |
+          go install
       - name: Build ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
         run: |
           curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
             -H 'Content-Type: application/json' \
             -d '{"RunID": ${{ github.run_id }}}'
-          go run . publish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
+          bramble publish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
