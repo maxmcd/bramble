@@ -17,7 +17,7 @@ jobs:
           go-version: 1.17.x
       - name: Install musl
         run: |
-          sudo apt-get install -y musl-tools linux-musl-dev
+          sudo apt-get install -y musl-tools musl-dev
       - name: Publish release
         uses: goreleaser/goreleaser-action@v2
         with:
