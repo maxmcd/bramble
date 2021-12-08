@@ -15,16 +15,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.17.x
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Run all tests
+      - name: Build ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
         run: |
           curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
             -H 'Content-Type: application/json' \
             -d '{"RunID": ${{ github.run_id }}}'
           echo ${{ github.event.inputs.JobID }}
+          echo ${{ github.event.inputs.Package }}
           echo ${{ github.event.inputs.Reference }}
