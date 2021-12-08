@@ -331,12 +331,17 @@ their public functions with documentation. If an immediate subdirectory has a
 			},
 			{
 				Name:      "publish",
-				UsageText: `bramble publish module [reference]`,
+				UsageText: `bramble publish package [reference]`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "url",
 						Value: "",
-						Usage: "The url (schema+host) of the module cache server. Eg: \"https://cache.bramble.bramble\"",
+						Usage: "The url (schema+host) of the package cache server. Eg: \"https://cache.bramble.bramble\"",
+					},
+					&cli.BoolFlag{
+						Name:  "local",
+						Value: false,
+						Usage: "Build locally, don't send to a build server.",
 					},
 				},
 				Action: func(c *cli.Context) error {
@@ -347,12 +352,28 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) > 2 {
 						return errors.New("bramble publish takes at most two arguments")
 					}
-
 					module := args[0]
 					reference := ""
 					if len(args) == 2 {
 						reference = args[1]
 					}
+
+					if c.Bool("local") {
+						// TODO: add build cache handler to this server
+						store, err := store.NewStore("")
+						if err != nil {
+							return err
+						}
+						builder := dependency.Builder(filepath.Join(store.BramblePath, "var/dependencies"),
+							newBuilder(store),
+							dependency.DownloadGithubRepo,
+						)
+						return builder(&dependency.Job{
+							Package:   module,
+							Reference: reference,
+						})
+					}
+
 					url := "http://localhost:2726"
 					if u := c.String("url"); u != "" {
 						url = u

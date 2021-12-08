@@ -555,6 +555,12 @@ func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.
 	return serverHandler(dependencyDir, newBuilder, dgr)
 }
 
+func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(*Job) error {
+	return func(job *Job) error {
+		return buildJob(job, dependencyDir, newBuilder, dgr)
+	}
+}
+
 func DownloadGithubRepo(url string, reference string) (location string, err error) {
 	url = "https://" + url + ".git"
 	location, err = os.MkdirTemp("", "")

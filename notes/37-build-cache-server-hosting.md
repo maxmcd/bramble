@@ -7,6 +7,9 @@ Pluuuummminnggg
 https://docs.github.com/en/actions/learn-github-actions/events-that-trigger-workflows#workflow_dispatch
 https://docs.github.com/en/rest/reference/actions#create-a-workflow-dispatch-event
 
+
+be mindful of TOS: https://docs.github.com/en/github/site-policy/github-terms-for-additional-products-and-features#actions
+
 ```
 GITHUB_RUN_ATTEMPT=1
 GITHUB_RUN_ID=1538965021
