@@ -10,7 +10,7 @@ on:
       Reference:
         description: Version control reference, if any
         required: false
-name: Builder ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
+name: Building Package
 jobs:
   test:
     runs-on: ubuntu-latest
