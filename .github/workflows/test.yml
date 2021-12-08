@@ -19,6 +19,5 @@ jobs:
       #   uses: mxschmitt/action-tmate@v3
       - name: Run all tests
         run: |
-          sudo apt-get update -y
           sudo apt-get install -y musl-tools
           make ci_test
