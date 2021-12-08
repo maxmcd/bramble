@@ -4,10 +4,21 @@ account_id = "974726b43aff80f733a99f285967519c"
 workers_dev = true
 compatibility_date = "2021-11-28"
 
+[[kv_namespaces]]
+binding = "BRAMBLE"
+preview_id = "f89484ce3a7742b090816a8035b5ccf5"
+id = "f89484ce3a7742b090816a8035b5ccf5"
+
+[durable_objects]
+bindings = [
+  { name = "BRAMBLE_DO", class_name = "BuilderWorker" } # Binding to our DurableObjectExample class
+]
+
 [build]
 command = "npm install && npm run build"
 [build.upload]
-format = "service-worker"
+format = "modules"
+main = "./index.mjs"
 
 [vars]
 GITHUB_TOKEN = "token"
@@ -16,4 +27,7 @@ GITHUB_TOKEN = "token"
 name = "builder-worker-production"
 zone_id = "922b7279f73094acebae55d35dd6c11c"
 route = "store.bramble.run/job*"
-
+kv_namespaces = [
+    { binding = "BRAMBLE", preview_id = "f89484ce3a7742b090816a8035b5ccf5", id = "49a6fed81549435881ace7c19fc4419e"}
+]
+durable_objects = {bindings = [{ name = "BRAMBLE_DO", class_name = "BuilderWorker" } ]}

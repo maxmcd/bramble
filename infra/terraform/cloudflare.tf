@@ -31,4 +31,3 @@ resource "cloudflare_page_rule" "store_redirect" {
   }
 }
 
-
