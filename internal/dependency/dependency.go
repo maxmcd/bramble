@@ -529,7 +529,7 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 	// Build each package in the repository
 	for path, pkg := range packages {
 		fmt.Println("Building package", path, pkg)
-		resp, err := builder.Build(context.Background(), path, nil, types.BuildOptions{Check: true})
+		resp, err := builder.Build(context.Background(), path, []string{"./..."}, types.BuildOptions{Check: true})
 		if err != nil {
 			return nil, err
 		}
