@@ -13,7 +13,7 @@ jobs:
           fetch-depth: 0 # required for goreleaser
       - name: Publish release
         run: |
-          docker build -t goreleaser -f goreleaser.Dockerfile ./.github/workflows
+          docker build -t goreleaser -f $(pwd)/.github/workflows/goreleaser.Dockerfile $(pwd)/.github/workflows/
           docker run \
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
             -it \
