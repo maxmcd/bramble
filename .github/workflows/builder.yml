@@ -35,4 +35,4 @@ jobs:
           DIGITALOCEAN_SPACES_ACCESS_ID: ${{ secrets.DIGITALOCEAN_SPACES_ACCESS_ID }}
           DIGITALOCEAN_SPACES_SECRET_KEY: ${{ secrets.DIGITALOCEAN_SPACES_SECRET_KEY }}
         run: |
-          bramble pulish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
+          bramble publish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}

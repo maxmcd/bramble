@@ -190,7 +190,7 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 			return err
 		}
 		if job.Error != "" {
-			fmt.Println(dc.getLogs(context.Background(), id, os.Stdout))
+			_ = dc.getLogs(context.Background(), id, os.Stdout)
 			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
@@ -293,8 +293,8 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 		&job)
 }
 
-func (dc *dependencyClient) getLogs(ctx context.Context, id string, out io.Writer) (job Job, err error) {
-	return job, dc.request(ctx,
+func (dc *dependencyClient) getLogs(ctx context.Context, id string, out io.Writer) (err error) {
+	return dc.request(ctx,
 		http.MethodGet,
 		"/job/"+id+"/logs",
 		"",
