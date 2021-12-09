@@ -15,7 +15,7 @@ require (
 	github.com/minio/sha256-simd v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6
-	github.com/opencontainers/runc v1.0.2
+	github.com/opencontainers/runc v1.0.3
 	github.com/pkg/errors v0.9.1
 	github.com/rhnvrm/simples3 v0.7.0
 	github.com/stretchr/testify v1.7.0
