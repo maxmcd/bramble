@@ -21,4 +21,4 @@ jobs:
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
             -v $(pwd):/opt \
             --workdir=/opt \
-            goreleaser/goreleaser release --rm-dist
+            goreleaser release --rm-dist
