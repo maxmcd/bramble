@@ -163,7 +163,7 @@ func (dm *Manager) remotePackageDependencies(ctx context.Context, m types.Packag
 	return configVersions(cfg), nil
 }
 
-func PostJob(url, pkg, reference string) (err error) {
+func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 	jr := JobRequest{Package: pkg, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
 	fmt.Println("Sending build to build server")
@@ -175,6 +175,11 @@ func PostJob(url, pkg, reference string) (err error) {
 	count := 0
 	fmt.Println("Waiting for build result...")
 	for {
+		select {
+		case <-ctx.Done():
+			return context.Canceled
+		default:
+		}
 		if count > 5 {
 			// Many jobs finish quickly, but if they don't, we can check less
 			// often

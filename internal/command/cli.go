@@ -409,7 +409,7 @@ their public functions with documentation. If an immediate subdirectory has a
 					if u := c.String("url"); u != "" {
 						url = u
 					}
-					return dependency.PostJob(url, module, reference)
+					return dependency.PostJob(c.Context, url, module, reference)
 				},
 			},
 			{

@@ -343,7 +343,7 @@ func TestPushJob(t *testing.T) {
 		serverHandler(t.TempDir(), tb.NewBuilder, tb.testGithubDownloader),
 	)
 
-	if err := PostJob(server.URL, "x.y/z", ""); err != nil {
+	if err := PostJob(context.Background(), server.URL, "x.y/z", ""); err != nil {
 		t.Fatal(err)
 	}
 	dc := &dependencyClient{
