@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
@@ -167,12 +166,14 @@ func (dm *Manager) remotePackageDependencies(ctx context.Context, m types.Packag
 func PostJob(url, pkg, reference string) (err error) {
 	jr := JobRequest{Package: pkg, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
+	fmt.Println("Sending build to build server")
 	id, err := dc.postJob(context.Background(), jr)
 	if err != nil {
 		return err
 	}
-	dur := (time.Millisecond * 100)
+	dur := (time.Millisecond * 1000)
 	count := 0
+	fmt.Println("Waiting for build result...")
 	for {
 		if count > 5 {
 			// Many jobs finish quickly, but if they don't, we can check less
@@ -180,11 +181,11 @@ func PostJob(url, pkg, reference string) (err error) {
 			dur = time.Second
 		}
 		job, err := dc.getJob(context.Background(), id)
-		spew.Dump(job)
 		if err != nil {
 			return err
 		}
 		if job.Error != "" {
+			fmt.Println(dc.getLogs(context.Background(), id, os.Stdout))
 			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
@@ -285,6 +286,15 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 		"",
 		nil,
 		&job)
+}
+
+func (dc *dependencyClient) getLogs(ctx context.Context, id string, out io.Writer) (job Job, err error) {
+	return job, dc.request(ctx,
+		http.MethodGet,
+		"/job/"+id+"/logs",
+		"",
+		nil,
+		out)
 }
 
 func (dc *dependencyClient) getPackageVersions(ctx context.Context, name string) (vs []string, err error) {

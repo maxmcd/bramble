@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Install
         run: |
-          go install
+          go instal
       - name: Build ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
         env:
           DIGITALOCEAN_SPACES_ACCESS_ID: ${{ secrets.DIGITALOCEAN_SPACES_ACCESS_ID }}
