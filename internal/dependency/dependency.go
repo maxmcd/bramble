@@ -172,18 +172,12 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 		return err
 	}
 	dur := (time.Millisecond * 1000)
-	count := 0
 	fmt.Println("Waiting for build result...")
 	for {
 		select {
 		case <-ctx.Done():
 			return context.Canceled
 		default:
-		}
-		if count > 5 {
-			// Many jobs finish quickly, but if they don't, we can check less
-			// often
-			dur = time.Second
 		}
 		job, err := dc.getJob(context.Background(), id)
 		if err != nil {
@@ -197,7 +191,6 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 			fmt.Printf("Build complete in %s\n", job.End.Sub(job.Start))
 			break
 		}
-		count++
 		time.Sleep(dur)
 	}
 	return nil

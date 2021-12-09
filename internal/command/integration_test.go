@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -133,37 +132,37 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestDep_handler(t *testing.T) {
-	initIntegrationTest(t)
-	app := cliApp(".")
-	ctx, cancel := context.WithCancel(context.Background())
-	errChan := make(chan error)
-	test.SetEnv(t, "BRAMBLE_PATH", t.TempDir())
-	go func() {
-		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
-			errChan <- err
-		}
-	}()
-	t.Cleanup(func() { cancel() })
-	for {
-		resp, _ := http.Get("http://localhost:2726")
-		if resp != nil {
-			resp.Body.Close()
-		}
-		if resp != nil && resp.StatusCode == http.StatusNotFound {
-			break
-		}
-		select {
-		case err := <-errChan:
-			t.Fatal(err)
-		default:
-		}
-	}
-	// TODO: this actually pulls from github, no network access in tests
-	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
-		t.Fatal(err)
-	}
-}
+// TODO: don't hit the real build server
+// func TestDep_handler(t *testing.T) {
+// 	initIntegrationTest(t)
+// 	app := cliApp(".")
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	errChan := make(chan error)
+// 	test.SetEnv(t, "BRAMBLE_PATH", t.TempDir())
+// 	go func() {
+// 		if err := app.RunContext(ctx, []string{"bramble", "server"}); err != nil {
+// 			errChan <- err
+// 		}
+// 	}()
+// 	t.Cleanup(func() { cancel() })
+// 	for {
+// 		resp, _ := http.Get("http://localhost:2726")
+// 		if resp != nil {
+// 			resp.Body.Close()
+// 		}
+// 		if resp != nil && resp.StatusCode == http.StatusNotFound {
+// 			break
+// 		}
+// 		select {
+// 		case err := <-errChan:
+// 			t.Fatal(err)
+// 		default:
+// 		}
+// 	}
+// 	if err := app.RunContext(ctx, []string{"bramble", "publish", "github.com/maxmcd/busybox"}); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestBuildAllFunction(t *testing.T) {
 	initIntegrationTest(t)

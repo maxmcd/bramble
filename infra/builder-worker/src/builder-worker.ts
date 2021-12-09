@@ -72,7 +72,7 @@ export class BuilderWorker {
           owner: "maxmcd",
           repo: "bramble",
           workflow_id: ".github/workflows/builder.yml",
-          ref: "infra-2",
+          ref: "main",
           inputs: { ...body, JobID: id },
         },
       );
