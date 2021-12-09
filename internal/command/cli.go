@@ -391,6 +391,7 @@ their public functions with documentation. If an immediate subdirectory has a
 								drvs = append(drvs, drv)
 							}
 							// TODO: replace with something generally usable
+							fmt.Println(len(os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID")), len(os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY")))
 							s3 := simples3.New("",
 								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
 								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))

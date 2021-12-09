@@ -26,9 +26,10 @@ jobs:
         run: |
           go install
       - name: Build ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
+        env:
+          DIGITALOCEAN_SPACES_ACCESS_ID: ${{ secrets.DIGITALOCEAN_SPACES_ACCESS_ID }}
+          DIGITALOCEAN_SPACES_SECRET_KEY: ${{ secrets.DIGITALOCEAN_SPACES_SECRET_KEY }}
         run: |
-          export DIGITALOCEAN_SPACES_ACCESS_ID=${{ env.DIGITALOCEAN_SPACES_ACCESS_ID }}
-          export DIGITALOCEAN_SPACES_SECRET_KEY=${{ env.DIGITALOCEAN_SPACES_SECRET_KEY }}
           curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
             -H 'Content-Type: application/json' \
             -d '{"RunID": ${{ github.run_id }}}'
