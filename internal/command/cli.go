@@ -404,7 +404,7 @@ their public functions with documentation. If an immediate subdirectory has a
 						return nil
 					}
 
-					url := "http://localhost:2726"
+					url := "https://store.bramble.run"
 					if u := c.String("url"); u != "" {
 						url = u
 					}
