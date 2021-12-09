@@ -13,7 +13,6 @@ on:
 name: Building Package
 jobs:
   build:
-    environment: builder
     runs-on: ubuntu-latest
     steps:
       - name: Register
