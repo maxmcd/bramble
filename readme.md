@@ -36,7 +36,7 @@
     - [The build sandbox](#the-build-sandbox)
 <hr>
 
-Bramble is a work-in-progress functional build system inspired by [nix](https://nixos.org/).
+Bramble is a work-in-progress functional build system inspired by [Nix](https://nixos.org/).
 
 Bramble is a functional build system that intends to be a user-friendly, robust, and reliable way to build software. Here are some if the ideas behind it:
 

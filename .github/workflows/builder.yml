@@ -1,0 +1,38 @@
+on:
+  workflow_dispatch:
+    inputs:
+      JobID:
+        description: "ID of the job"
+        required: true
+      Package:
+        description: "Package location"
+        required: true
+      Reference:
+        description: Version control reference, if any
+        required: false
+name: Building Package
+jobs:
+  build:
+    environment: builder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Register
+        run: |
+          curl -X POST https://store.bramble.run/job/${{ github.event.inputs.JobID }}/register \
+            -H 'Content-Type: application/json' \
+            -d '{"RunID": ${{ github.run_id }}}'
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Install
+        run: |
+          go install
+      - name: Build ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}
+        env:
+          DIGITALOCEAN_SPACES_ACCESS_ID: ${{ secrets.DIGITALOCEAN_SPACES_ACCESS_ID }}
+          DIGITALOCEAN_SPACES_SECRET_KEY: ${{ secrets.DIGITALOCEAN_SPACES_SECRET_KEY }}
+        run: |
+          bramble publish --upload --local ${{ github.event.inputs.Package }} ${{ github.event.inputs.Reference }}

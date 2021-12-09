@@ -94,7 +94,7 @@ def zig():
 def busybox():
     b = std.fetch_url("https://brmbl.s3.amazonaws.com/busybox-x86_64.tar.gz")
     script = """
-    set -e
+    set -ex
     $busybox_download/busybox-x86_64 mkdir $out/bin
     $busybox_download/busybox-x86_64 cp $busybox_download/busybox-x86_64 $out/bin/busybox
     cd $out/bin

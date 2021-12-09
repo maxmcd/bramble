@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/chunkedarchive"
@@ -164,30 +163,38 @@ func (dm *Manager) remotePackageDependencies(ctx context.Context, m types.Packag
 	return configVersions(cfg), nil
 }
 
-func PostJob(url, pkg, reference string) (err error) {
+func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 	jr := JobRequest{Package: pkg, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
+	fmt.Println("Sending build to build server")
 	id, err := dc.postJob(context.Background(), jr)
 	if err != nil {
 		return err
 	}
-	dur := (time.Millisecond * 100)
+	dur := (time.Millisecond * 1000)
 	count := 0
+	fmt.Println("Waiting for build result...")
 	for {
+		select {
+		case <-ctx.Done():
+			return context.Canceled
+		default:
+		}
 		if count > 5 {
 			// Many jobs finish quickly, but if they don't, we can check less
 			// often
 			dur = time.Second
 		}
 		job, err := dc.getJob(context.Background(), id)
-		spew.Dump(job)
 		if err != nil {
 			return err
 		}
 		if job.Error != "" {
+			_ = dc.getLogs(context.Background(), id, os.Stdout)
 			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
+			fmt.Printf("Build complete in %s\n", job.End.Sub(job.Start))
 			break
 		}
 		count++
@@ -285,6 +292,15 @@ func (dc *dependencyClient) getJob(ctx context.Context, id string) (job Job, err
 		"",
 		nil,
 		&job)
+}
+
+func (dc *dependencyClient) getLogs(ctx context.Context, id string, out io.Writer) (err error) {
+	return dc.request(ctx,
+		http.MethodGet,
+		"/job/"+id+"/logs",
+		"",
+		nil,
+		out)
 }
 
 func (dc *dependencyClient) getPackageVersions(ctx context.Context, name string) (vs []string, err error) {
@@ -444,7 +460,8 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			jq.End(job.ID, buildJob(job, dependencyDir, newBuilder, downloadGithubRepo))
+			_, err := buildJob(job, dependencyDir, newBuilder, downloadGithubRepo)
+			jq.End(job.ID, err)
 		}()
 
 		return nil
@@ -502,10 +519,10 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	return router
 }
 
-func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (err error) {
+func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (builtDerivations []string, err error) {
 	loc, err := downloadGithubRepo(job.Package, job.Reference)
 	if err != nil {
-		return errors.Wrap(err, "error downloading git repo")
+		return nil, errors.Wrap(err, "error downloading git repo")
 	}
 	builder, err := newBuilder(loc)
 	if err != nil {
@@ -519,16 +536,21 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 		}
 		expectedPackageName := strings.TrimSuffix(job.Package+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
 		if expectedPackageName != pkg.Name {
-			return errors.Errorf("package name %q does not match the location the project was fetched from: %q",
+			return nil, errors.Errorf("package name %q does not match the location the project was fetched from: %q",
 				pkg.Name,
 				expectedPackageName)
 		}
 	}
 	toRun := []func() error{}
+	// Build each package in the repository
 	for path, pkg := range packages {
-		resp, err := builder.Build(context.Background(), path, nil, types.BuildOptions{Check: true})
+		fmt.Println("Building package", path, pkg)
+		resp, err := builder.Build(context.Background(), path, []string{"./..."}, types.BuildOptions{Check: true})
 		if err != nil {
-			return err
+			return nil, err
+		}
+		for _, drvFilename := range resp.FinalHashMapping {
+			builtDerivations = append(builtDerivations, drvFilename)
 		}
 		p := pkg // assign to variable to ensure correct value is used
 		src := path
@@ -538,21 +560,27 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 				p.Name,
 				p.Version,
 				src,
-				resp.Packages)
+				resp.Modules)
 		})
 	}
 	// We do this in a separate loop so that we can ensure all builds work
 	// before writing packages to the store
 	for _, tr := range toRun {
 		if err = tr(); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return builtDerivations, nil
 }
 
 func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) http.Handler {
 	return serverHandler(dependencyDir, newBuilder, dgr)
+}
+
+func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(*Job) ([]string, error) {
+	return func(job *Job) ([]string, error) {
+		return buildJob(job, dependencyDir, newBuilder, dgr)
+	}
 }
 
 func DownloadGithubRepo(url string, reference string) (location string, err error) {

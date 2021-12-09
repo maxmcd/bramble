@@ -24,6 +24,7 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/pkg/errors"
+	"github.com/rhnvrm/simples3"
 	cli "github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -331,12 +332,22 @@ their public functions with documentation. If an immediate subdirectory has a
 			},
 			{
 				Name:      "publish",
-				UsageText: `bramble publish module [reference]`,
+				UsageText: `bramble publish package [reference]`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "url",
 						Value: "",
-						Usage: "The url (schema+host) of the module cache server. Eg: \"https://cache.bramble.bramble\"",
+						Usage: "The url (schema+host) of the package cache server. Eg: \"https://cache.bramble.bramble\"",
+					},
+					&cli.BoolFlag{
+						Name:  "local",
+						Value: false,
+						Usage: "Build locally, don't send to a build server.",
+					},
+					&cli.BoolFlag{
+						Name:  "upload",
+						Value: false,
+						Usage: "Upload resulting build artifacts to an object store.",
 					},
 				},
 				Action: func(c *cli.Context) error {
@@ -347,17 +358,58 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) > 2 {
 						return errors.New("bramble publish takes at most two arguments")
 					}
-
 					module := args[0]
 					reference := ""
 					if len(args) == 2 {
 						reference = args[1]
 					}
-					url := "http://localhost:2726"
+
+					if c.Bool("local") {
+						// TODO: add build cache handler to this server
+						s, err := store.NewStore("")
+						if err != nil {
+							return err
+						}
+						builder := dependency.Builder(filepath.Join(s.BramblePath, "var/dependencies"),
+							newBuilder(s),
+							dependency.DownloadGithubRepo,
+						)
+						builtDerivations, err := builder(&dependency.Job{
+							Package:   module,
+							Reference: reference,
+						})
+						if err != nil {
+							return err
+						}
+						if c.Bool("upload") {
+							var drvs []store.Derivation
+							for _, drvFilename := range builtDerivations {
+								drv, _, err := s.LoadDerivation(drvFilename)
+								if err != nil {
+									return errors.Wrap(err, "error loading derivation from store")
+								}
+								drvs = append(drvs, drv)
+							}
+							// TODO: replace with something generally usable
+							fmt.Println(len(os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID")), len(os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY")))
+							s3 := simples3.New("",
+								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
+								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))
+							s3.SetEndpoint("nyc3.digitaloceanspaces.com")
+							cc := store.NewS3CacheClient(s3)
+							fmt.Printf("Uploading %d derivations\n", len(drvs))
+							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
+								return err
+							}
+						}
+						return nil
+					}
+
+					url := "https://store.bramble.run"
 					if u := c.String("url"); u != "" {
 						url = u
 					}
-					return dependency.PostJob(url, module, reference)
+					return dependency.PostJob(c.Context, url, module, reference)
 				},
 			},
 			{

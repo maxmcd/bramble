@@ -5,6 +5,16 @@ Pluuuummminnggg
 3. Most endpoints are just immutable, but the `/package/versions/*name` endpoint is not. Set up a cloudflare worker to read from the blob index and generate the json response we need. Maybe cache with a short ttl.
 
 https://docs.github.com/en/actions/learn-github-actions/events-that-trigger-workflows#workflow_dispatch
+https://docs.github.com/en/rest/reference/actions#create-a-workflow-dispatch-event
+
+
+be mindful of TOS: https://docs.github.com/en/github/site-policy/github-terms-for-additional-products-and-features#actions
+
+```
+GITHUB_RUN_ATTEMPT=1
+GITHUB_RUN_ID=1538965021
+GITHUB_RUN_NUMBER=536
+```
 
 Job builders are run as github actions. I think we can run a cloudflare worker that just talks to the github api. Status is checked by checking the status of the job. We can return the job id to the client and use it to confirm the value of the github worker job.
 
