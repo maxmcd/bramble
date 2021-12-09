@@ -194,6 +194,7 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
+			fmt.Printf("Build complete in %s\n", job.End.Sub(job.Start))
 			break
 		}
 		count++
