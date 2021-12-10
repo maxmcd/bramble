@@ -36,6 +36,8 @@ jobs:
           git tag $version
           git push origin $version
 
+          # Must be clean for git
+          git clean -f
           docker build -t goreleaser -f .github/workflows/goreleaser.Dockerfile .github/workflows/
           docker run \
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
