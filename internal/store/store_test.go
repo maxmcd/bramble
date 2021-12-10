@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,28 @@ func Test_ensureBramblePath(t *testing.T) {
 	}
 	// -1 because the output path is "/foo/bar" plus the trailing slash
 	assert.Equal(t, len(s.StorePath), PathPaddingLength-1)
+
+	_ = os.MkdirAll("/tmp/bramble-test-34079652", 0755)
+
+}
+
+func Test_calculatePaddedDirectoryNameAll(t *testing.T) {
+	start := "/"
+	for i := 0; i < PathPaddingLength-4; i++ {
+		start += "b"
+		t.Run(start, func(t *testing.T) {
+			out, err := calculatePaddedDirectoryName(start, PathPaddingLength)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// fullpath includes a trailing slash because it would always have
+			// one when replacing a store reference in a build output
+			fullPath := filepath.Join(start, out) + "/"
+			if len(fullPath) != PathPaddingLength {
+				t.Errorf("len of %s is not %d it's %d", fullPath, PathPaddingLength, len(fullPath))
+			}
+		})
+	}
 }
 
 func Test_calculatePaddedDirectoryName(t *testing.T) {
@@ -37,6 +60,12 @@ func Test_calculatePaddedDirectoryName(t *testing.T) {
 		args: args{
 			bramblePath:   "/bramble",
 			paddingLength: 40,
+		},
+	}, {
+		name: "basic",
+		args: args{
+			bramblePath:   "/tmp/bramble-test-34079652",
+			paddingLength: PathPaddingLength,
 		},
 	}, {
 		name: "basic",

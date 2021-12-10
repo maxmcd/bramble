@@ -293,11 +293,23 @@ func calculatePaddedDirectoryName(bramblePath string, paddingLength int) (storeD
 	paddingSize := len(PathPaddingCharacters)
 	repetitions := paddingLen / (paddingSize + 1)
 	extra := paddingLen % (paddingSize + 1)
-
 	for i := 0; i < repetitions; i++ {
 		storeDirectoryName += ("/" + PathPaddingCharacters)
 	}
-	storeDirectoryName += ("/" + PathPaddingCharacters[:extra])
+	if extra == 0 {
+		// Of we have 0 extra characters the path ends up being too short.
+		// If we have this path and we add one character to the bramble path
+		// /bb/bramble_store_padding/bramble_store_padding/b/
+		// We get this, which is one too short:
+		// /bbb/bramble_store_padding/bramble_store_padding/
+		// So we pad this path like so:
+		// /bbb/bramble_store_padding/bramble_store_paddingb/
+		// TODO: find a more elegant way to handle this
+		storeDirectoryName += PathPaddingCharacters[0:1]
+	} else {
+		storeDirectoryName += ("/" + PathPaddingCharacters[:extra])
+	}
+
 	return storeDirectoryName, nil
 }
 

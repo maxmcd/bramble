@@ -236,9 +236,7 @@ subdirectories.
 			{
 				Name:      "config",
 				UsageText: "bramble config",
-				Action: func(c *cli.Context) error {
-					return cli.ShowAppHelp(c)
-				},
+				Action:    cli.ShowAppHelp,
 				Subcommands: []*cli.Command{
 					{
 						Name:      "version",
