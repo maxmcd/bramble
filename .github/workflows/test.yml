@@ -20,3 +20,20 @@ jobs:
       - name: Run all tests
         run: |
           make ci_test
+      - uses: actions-ecosystem/action-get-latest-tag@v1
+        id: get-latest-tag
+        # if: github.ref == 'refs/heads/main'
+      - name: Publish release
+        # if: github.ref == 'refs/heads/main'
+        run: |
+          version="v$(bramble config version)"
+
+          # Exit if version is not different from the previous tag
+          if [ $version = "${{ steps.get-latest-tag.outputs.tag }}" ]; then exit 0; fi
+
+          docker build -t goreleaser -f .github/workflows/goreleaser.Dockerfile .github/workflows/
+          docker run \
+            -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -v $(pwd):/opt \
+            --workdir=/opt \
+            goreleaser release --rm-dist --version $(bramble config version)
