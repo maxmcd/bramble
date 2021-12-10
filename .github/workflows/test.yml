@@ -41,4 +41,4 @@ jobs:
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
             -v $(pwd):/opt \
             --workdir=/opt \
-            goreleaser release --rm-dist --version $(bramble config version)
+            goreleaser release --rm-dist
