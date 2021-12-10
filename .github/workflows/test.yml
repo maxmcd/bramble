@@ -23,9 +23,10 @@ jobs:
       - name: Publish release
         # if: github.ref == 'refs/heads/main'
         run: |
+          set -x
           version="v$(bramble config version)"
           git fetch --tags
-          latest_tag=$(git describe --abbrev=0 --tags)
+          latest_tag="$(git describe --abbrev=0 --tags)"
 
           # Exit if version is not different from the latest tag
           if [ $version = $latest_tag ]; then exit 0; fi
