@@ -17,15 +17,16 @@ jobs:
       # for your debugging needs, will pause job and print ssh connection string
       # - name: Setup tmate session
       #   uses: mxschmitt/action-tmate@v3
-      - name: Run all tests
-        run: |
-          make ci_test
+      # - name: Run all tests
+      #   run: |
+      #     make ci_test
       - name: Publish release
         # if: github.ref == 'refs/heads/main'
         run: |
           set -x
           version="v$(bramble config version)"
           git fetch --tags
+          git fetch --prune --unshallow || true
           latest_tag="$(git describe --abbrev=0 --tags)"
 
           # Exit if version is not different from the latest tag
