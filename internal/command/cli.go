@@ -234,6 +234,26 @@ subdirectories.
 				},
 			},
 			{
+				Name:      "config",
+				UsageText: "bramble config",
+				Action:    cli.ShowAppHelp,
+				Subcommands: []*cli.Command{
+					{
+						Name:      "version",
+						UsageText: "bramble config version",
+						Action: func(c *cli.Context) error {
+							project, err := project.NewProject(".")
+							if err != nil {
+								return err
+							}
+							fmt.Println(project.Version())
+							return nil
+						},
+						Subcommands: []*cli.Command{},
+					},
+				},
+			},
+			{
 				Name:  "shell",
 				Usage: "Open a shell within a derivation build context",
 				UsageText: `bramble shell [options] [module]:<function>

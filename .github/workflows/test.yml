@@ -20,3 +20,25 @@ jobs:
       - name: Run all tests
         run: |
           make ci_test
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -x
+          version="v$(bramble config version)"
+          git fetch --tags
+          git fetch --prune --unshallow || true
+          latest_tag="$(git describe --abbrev=0 --tags)"
+
+          # Exit if version is not different from the latest tag
+          # TODO: ensure there is actually a release for the tag, so if this job fails, we can re-run
+          if [ $version = $latest_tag ]; then exit 0; fi
+
+          git tag $version
+          git push origin $version
+
+          docker build -t goreleaser -f .github/workflows/goreleaser.Dockerfile .github/workflows/
+          docker run \
+            -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -v $(pwd):/opt \
+            --workdir=/opt \
+            goreleaser release --rm-dist
