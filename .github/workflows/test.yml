@@ -24,6 +24,7 @@ jobs:
         # if: github.ref == 'refs/heads/main'
         run: |
           set -x
+          make install
           version="v$(bramble config version)"
           git fetch --tags
           git fetch --prune --unshallow || true
