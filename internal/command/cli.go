@@ -446,8 +446,14 @@ their public functions with documentation. If an immediate subdirectory has a
 					if err != nil {
 						return err
 					}
-					parts := strings.Split(c.Args().First(), "@")
-					return b.project.AddDependency(types.Package{Version: parts[1], Name: parts[0]})
+					cut := func(s, sep string) (before, after string, ok bool) {
+						if i := strings.Index(s, sep); i >= 0 {
+							return s[:i], s[i+len(sep):], true
+						}
+						return s, "", false
+					}
+					first, second, _ := cut(c.Args().First(), "@")
+					return b.project.AddDependency(types.Package{Version: first, Name: second})
 				},
 			},
 			{

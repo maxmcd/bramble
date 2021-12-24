@@ -20,6 +20,7 @@
     - [`bramble shell`](#bramble-shell)
     - [`bramble gc`](#bramble-gc)
   - [Dependencies](#dependencies)
+    - [Adding a dependency](#adding-a-dependency)
   - [Config language](#config-language)
     - [.bramble, default.bramble and the load() statement](#bramble-defaultbramble-and-the-load-statement)
     - [derivation()](#derivation)
@@ -317,6 +318,56 @@ Lib provides various derivations to help build stuff
 
 ### Dependencies
 
+Bramble dependencies are packages. Packages are collections of modules. All bramble dependencies must be served from version control repositories. Git is currently the only VCS supported, others will be added.
+
+Package paths use the location of the VCS repository. If you want to add a dependency that's at "https://github.com/maxmcd/bramble.git" you can use the package path "github.com/maxmcd/bramble". In a `load()` statement or `run` command you can also reference a specific module within a package by appending the path: "github.com/maxmcd/bramble/lib".
+
+Bramble uses Go's [Minimal Version Selection](https://research.swtch.com/vgo-mvs) (MVS) to select dependency versions. Package versions use [Semantic Versioning](https://semver.org/).
+
+Dependencies should follow the following rules to ensure compatibility with the broader ecosystem:
+
+1. Semantic versioning rules must be followed. Code changes within a Major version should not break API compatibility. Minor and Patch version increases should correspond with feature additions and bugfixes respectively.
+2. The import path structure within a repository cannot be overwritten without a major version change. (TODO: explain)
+
+#### Adding a dependency
+
+Dependencies can be added to a current project with the `bramble add` command. The following formats are supported:
+
+| Import                                         | Outcome                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| `bramble add github.com/maxmcd/busybox`        | Adds the most recent version of busybox that we can find      |
+| `bramble add github.com/maxmcd/busybox@v1`     | Adds the the highest available version with the prefix `1.`   |
+| `bramble add github.com/maxmcd/busybox@v1.1`   | Adds the the highest available version with the prefix `1.1`  |
+| `bramble add github.com/maxmcd/busybox@v1.1.0` | Adds the specific version `1.1.0` will fail if it's not found |
+
+Dependencies are added to `bramble.toml`. Here are various valid dependency configurations and their meaning:
+
+```toml
+[package]
+name = "github.com/maxmcd/bramble"
+version = "0.0.3"
+
+
+[dependencies]
+# Just a regular dependency and version
+"github.com/maxmcd/busybox" = "0.0.2"
+# If we need to include two major versions of a package we add a suffix of `@v`
+# followed by the major version number.
+"github.com/maxmcd/busybox@v1" = "1.0.0"
+# We can point at sub-packages within this package. The path must be valid and
+# the version must match the version in the bramble.toml of the sub-package.
+"github.com/maxmcd/bramble/lib/foo" = {version="1.0.0", path="./lib/foo"}
+# We can also point to sub-packages by version and they will just be treated
+# like regular dependencies.
+"github.com/maxmcd/bramble/lib/bar" = "1.0.0"
+```
+
+Checksums and sub-versions are added to `bramble.lock`.
+
+Load statements must include a major version number if it's included in the `bramble.toml`, like so:
+```python
+load("github.com/maxmcd/busybox@v1/foo/bar")
+```
 
 
 ### Config language

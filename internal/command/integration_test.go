@@ -173,6 +173,10 @@ func TestBuildAllFunction(t *testing.T) {
 	}
 }
 
+func TestDepComplex(t *testing.T) {
+
+}
+
 func TestDep(t *testing.T) {
 	initIntegrationTest(t)
 
@@ -214,7 +218,7 @@ func TestDep(t *testing.T) {
 		{"third with load", "third", map[string]interface{}{
 			"./third/bramble.toml":    config.Config{Package: config.Package{Name: "third", Version: "0.0.1"}},
 			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
-		}, "", []string{"first@0.0.1"}},
+		}, "", []string{"first"}},
 		{"fourth nested", "fourth", map[string]interface{}{
 			"./fourth/bramble.toml":           config.Config{Package: config.Package{Name: "fourth", Version: "0.0.1"}},
 			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",

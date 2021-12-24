@@ -189,9 +189,9 @@ func (b *Builder) checkFetchDerivationHashes(drv Derivation, url string) error {
 	// If we have a hash to validate, ensure it's valid
 	if hash != "" && outputPath != hash {
 		return errors.Errorf(
-			"Urlfetch content doesn't match with the existing hash. "+
+			"Urlfetch for %q content doesn't match with the existing hash. "+
 				"Hash %q was provided by the output was %q",
-			hash, outputPath)
+			url, hash, outputPath)
 	}
 	// If we never had a hash to validate, add it to lockfile
 	if hash == "" {

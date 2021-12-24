@@ -134,7 +134,7 @@ func (dm *Manager) localPackageDependencies(pkg types.Package) (vs []types.Packa
 	return configVersions(cfg), nil
 }
 
-func (dm *Manager) CalculateConfigBuildlist(cfg config.Config) (config.Config, error) {
+func (dm *Manager) CalculateConfigBuildlist(ctx context.Context, cfg config.Config) (config.Config, error) {
 	versions, err := mvs.BuildList(
 		mvsVersionFromPackage(types.Package{Name: cfg.Package.Name, Version: cfg.Package.Version}),
 		dm.reqs(cfg),
@@ -207,6 +207,8 @@ type dependencyManagerReqs struct {
 
 var _ mvs.Reqs = dependencyManagerReqs{}
 
+// Required returns the module versions explicitly required by m itself.
+// The caller must not modify the returned list.
 func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, err error) {
 	p := packageFromMVSVersion(m)
 	var pkgs []types.Package
@@ -233,20 +235,34 @@ func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, 
 	return
 }
 
+// Max returns the maximum of v1 and v2 (it returns either v1 or v2).
+//
+// For all versions v, Max(v, "none") must be v, and for the target passed as
+// the first argument to MVS functions, Max(target, v) must be target.
+//
+// Note that v1 < v2 can be written Max(v1, v2) != v1 and similarly v1 <= v2 can
+// be written Max(v1, v2) == v2.
 func (r dependencyManagerReqs) Max(v1, v2 string) (o string) {
-	switch semver.Compare("v0."+v1, "v0."+v2) {
-	case -1:
+	if semver.Compare("v0."+v1, "v0."+v2) == -1 {
 		return v2
-	default:
-		return v1
 	}
+	return v1
 }
 
+// Upgrade returns the upgraded version of m, for use during an UpgradeAll
+// operation. If m should be kept as is, Upgrade returns m. If m is not yet used
+// in the build, then m.Version will be "none". More typically, m.Version will
+// be the version required by some other module in the build.
+//
+// If no module version is available for the given path, Upgrade returns a
+// non-nil error.
 func (r dependencyManagerReqs) Upgrade(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
 }
 
+// Previous returns the version of m.Path immediately prior to m.Version, or
+// "none" if no such version is known.
 func (r dependencyManagerReqs) Previous(m mvs.Version) (v mvs.Version, err error) {
 	panic("")
 	return
@@ -342,13 +358,31 @@ func (dd dir) findPackageFromModuleName(module string) (name string, vs []string
 	}
 	return "", nil, os.ErrNotExist
 }
-func (dm *Manager) FindPackageFromModuleName(ctx context.Context, module string) (name string, vs []string, err error) {
+
+// FindPackageFromModuleName will search locally for a module, and if it's not
+// found it will search remotely for a module. Passing version is optional, but
+// if passed it will force a remote search if that version is not found locally
+func (dm *Manager) FindPackageFromModuleName(ctx context.Context, module string, version string) (name string, vs []string, err error) {
 	// Prefer local
 	name, vs, err = dm.dir.findPackageFromModuleName(module)
 	if err != nil && err != os.ErrNotExist {
 		return "", nil, err
 	}
-	if err == os.ErrNotExist {
+
+	matchingVersion := func() bool {
+		for _, v := range vs {
+			if v == version {
+				return true
+			}
+		}
+		return false
+	}
+	versionNotFound := false
+	if version != "" {
+		versionNotFound = !matchingVersion()
+	}
+
+	if err == os.ErrNotExist || versionNotFound {
 		name, vs, err = dm.dependencyClient.findPackageFromModuleName(ctx, module)
 	}
 	if err == os.ErrNotExist {

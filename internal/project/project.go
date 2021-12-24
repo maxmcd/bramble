@@ -174,17 +174,26 @@ func (p *Project) CalculateDependencies() (err error) {
 	return nil
 }
 
-func (p *Project) AddDependency(v types.Package) (err error) {
+func (p *Project) AddDependency(ctx context.Context, v types.Package) (err error) {
+
+	name, vs, err := p.dm.FindPackageFromModuleName(ctx, v.Name)
+	if err != nil {
+		return err
+	}
+
 	existing, found := p.config.Dependencies[v.Name]
 	if found {
-		existing.Version = v.Version
-		p.config.Dependencies[v.Name] = existing
+		if v.Version != "" {
+			// TODO: validate that the version is well formed
+			existing.Version = v.Version
+			p.config.Dependencies[v.Name] = existing
+		}
 	} else {
 		p.config.Dependencies[v.Name] = config.Dependency{
 			Version: v.Version,
 		}
 	}
-	cfg, err := p.dm.CalculateConfigBuildlist(p.config)
+	cfg, err := p.dm.CalculateConfigBuildlist(ctx, p.config)
 	if err != nil {
 		return err
 	}

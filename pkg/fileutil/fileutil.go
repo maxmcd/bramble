@@ -1,7 +1,6 @@
 package fileutil
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -134,11 +133,6 @@ func CopyDirectory(scrDir, dest string) error {
 			return errors.WithStack(err)
 		}
 
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		_ = stat
-		if !ok {
-			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
-		}
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeSymlink:
 			if err := CopySymLink(sourcePath, destPath); err != nil {
@@ -157,6 +151,10 @@ func CopyDirectory(scrDir, dest string) error {
 			}
 		}
 
+		// stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		// if !ok {
+		// 	return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
+		// }
 		// if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
 		// 	return errors.WithStack(err)
 		// }
@@ -190,11 +188,6 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 			return errors.Wrap(err, "error finding source file")
 		}
 
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
-		}
-
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
 			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
@@ -209,10 +202,19 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 				return errors.WithStack(err)
 			}
 		}
-
-		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return errors.WithStack(err)
-		}
+		// TODO: Commenting this out (and the one in the function above) because
+		// we hit an issue where a file's group was `root`, but we can't write a
+		// file as the root group. Seems fine to leave this out, files should be
+		// greated with the default user and group of the of the current user,
+		// but just commenting for now. Who knows what the future holds.
+		//
+		// stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		// if !ok {
+		// 	return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
+		// }
+		// if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+		//  return errors.WithStack(err)
+		// }
 
 		// TODO: when does this happen???
 		isSymlink := fileInfo.Mode()&os.ModeSymlink != 0
