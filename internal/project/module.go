@@ -194,7 +194,7 @@ func (p *Project) ParseModuleFuncArgument(ctx context.Context, name string, allo
 		}
 		return module, nil
 	} else if allowExternal {
-		name, versions, err := p.dm.FindPackageFromModuleName(ctx, module.Name)
+		name, versions, err := p.dm.FindPackageFromModuleName(ctx, module.Name, "")
 		if err != nil {
 			return Module{}, err
 		}

@@ -331,14 +331,15 @@ Dependencies should follow the following rules to ensure compatibility with the 
 
 #### Adding a dependency
 
-Dependencies can be added to a current project with the `bramble add` command. The following formats are supported:
+Dependencies can be added to a current project with the `bramble add` command. The following formats are supported as arguments to `bramble add`.
 
-| Import                                         | Outcome                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------- |
-| `bramble add github.com/maxmcd/busybox`        | Adds the most recent version of busybox that we can find      |
-| `bramble add github.com/maxmcd/busybox@v1`     | Adds the the highest available version with the prefix `1.`   |
-| `bramble add github.com/maxmcd/busybox@v1.1`   | Adds the the highest available version with the prefix `1.1`  |
-| `bramble add github.com/maxmcd/busybox@v1.1.0` | Adds the specific version `1.1.0` will fail if it's not found |
+| Argument                                 | Outcome                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `github.com/maxmcd/busybox`              | Adds the most recent version of busybox that we can find            |
+| `github.com/maxmcd/busybox@v1`           | Adds the the highest available version with the prefix `1.`         |
+| `github.com/maxmcd/busybox@v1.1`         | Adds the the highest available version with the prefix `1.1`        |
+| `github.com/maxmcd/busybox@v1.1.0`       | Adds the specific version `1.1.0` will fail if it's not found       |
+| `github.com/maxmcd/busybox@v1.1.0-pre.1` | Adds the specific version `1.1.0-pre.1` will fail if it's not found |
 
 Dependencies are added to `bramble.toml`. Here are various valid dependency configurations and their meaning:
 
