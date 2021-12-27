@@ -3,7 +3,6 @@ package cacheclient
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,16 +10,13 @@ import (
 	"strings"
 
 	"github.com/maxmcd/bramble/internal/store"
-	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/httpx"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type cacheClient interface {
-	PostChunk(context.Context, io.Reader) (string, bool, error)
-	PostDerivation(context.Context, store.Derivation) (string, bool, error)
-	PostOutput(context.Context, store.OutputRequestBody) (bool, error)
-	OutputExists(ctx context.Context, name string) (bool, error)
+	PostDerivation(context.Context, store.Derivation) (string, error)
+	PostOutput(ctx context.Context, hash string, body io.Reader) error
 }
 
 type Client struct {
@@ -39,17 +35,20 @@ func New(host string) *Client {
 	}
 }
 
-func (cc *Client) request(ctx context.Context, method, path, contentType string, body io.Reader, resp interface{}) (err error) {
-	url := fmt.Sprintf("%s/%s",
+func (cc *Client) url(path string) string {
+	return fmt.Sprintf("%s/%s",
 		strings.TrimSuffix(cc.host, "/"),
 		strings.TrimPrefix(path, "/"),
 	)
-	return httpx.Request(ctx, cc.client, method, url, contentType, body, resp)
 }
 
-func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (filename string, exists bool, err error) {
-	// TODO: actually check if it existed
-	return filename, false, cc.request(ctx,
+func (cc *Client) request(ctx context.Context, method, path, contentType string, body io.Reader, resp interface{}) (err error) {
+	return httpx.Request(ctx, cc.client, method, cc.url(path), contentType, body, resp)
+}
+
+func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (filename string, err error) {
+
+	return filename, cc.request(ctx,
 		http.MethodPost,
 		"/derivation",
 		"application/json",
@@ -57,33 +56,13 @@ func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (fil
 		&filename)
 }
 
-func (cc *Client) PostOutput(ctx context.Context, req store.OutputRequestBody) (exists bool, err error) {
-	b, err := json.Marshal(req)
-	if err != nil {
-		return false, err
-	}
-	// TODO: actually check if it existed
-	return false, cc.request(ctx,
+func (cc *Client) PostOutput(ctx context.Context, hash string, body io.Reader) (err error) {
+	return cc.request(ctx,
 		http.MethodPost,
-		"/output",
-		"application/json",
-		bytes.NewBuffer(b),
-		nil)
-}
-
-func (cc *Client) OutputExists(ctx context.Context, name string) (bool, error) {
-	// TODO: implement
-	return false, nil
-}
-
-func (cc *Client) PostChunk(ctx context.Context, chunk io.Reader) (hash string, exists bool, err error) {
-	// TODO: actually check if it existed
-	return hash, false, cc.request(ctx,
-		http.MethodPost,
-		"/chunk",
+		"/output?hash="+hash,
 		"application/octet-stream",
-		chunk,
-		&hash)
+		body,
+		nil)
 }
 
 func (cc *Client) GetDerivation(ctx context.Context, filename string) (drv store.Derivation, exists bool, err error) {
@@ -99,24 +78,10 @@ func (cc *Client) GetDerivation(ctx context.Context, filename string) (drv store
 	return drv, err == nil, err
 }
 
-func (cc *Client) GetOutput(ctx context.Context, hash string) (output []chunkedarchive.TOCEntry, exists bool, err error) {
-	err = cc.request(ctx,
-		http.MethodGet,
-		"/output/"+hash,
-		"",
-		nil,
-		&output)
+func (cc *Client) GetOutput(ctx context.Context, hash string) (body io.ReadCloser, exists bool, err error) {
+	err = cc.request(ctx, http.MethodGet, "output/"+hash, "", nil, &body)
 	if err == os.ErrNotExist {
 		return nil, false, nil
 	}
-	return output, err == nil, err
-}
-
-func (cc *Client) GetChunk(ctx context.Context, hash string, chunk io.Writer) (err error) {
-	return cc.request(ctx,
-		http.MethodGet,
-		"/chunk/"+hash,
-		"",
-		nil,
-		chunk)
+	return body, true, nil
 }

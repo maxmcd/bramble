@@ -492,7 +492,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	// write the output files into an archive
 	go func() {
 		btpw := bufio.NewWriter(tarPipeWriter)
-		if err := reptar.Reptar(s.joinStorePath(storeFolder), btpw); err != nil {
+		if err := reptar.Archive(s.joinStorePath(storeFolder), btpw); err != nil {
 			errChan <- err
 			return
 		}
@@ -593,7 +593,7 @@ func (s *Store) hashNormalizedBuildOutput(location string, hash string) (err err
 	errChan := make(chan error)
 	resultChan := make(chan string)
 	go func() {
-		if err := reptar.Reptar(location, pipeWriter); err != nil {
+		if err := reptar.Archive(location, pipeWriter); err != nil {
 			errChan <- err
 		}
 		pipeWriter.Close()

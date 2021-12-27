@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -22,13 +23,19 @@ func run(args []string) error {
 		return errors.New("reptar is run like: reptar outputfile.tar.gz ./files-to-package")
 	}
 
-	var fn func(a string, b io.Writer) error
+	var fn func(location string, output io.Writer) error
 
 	switch {
 	case strings.HasSuffix(args[1], ".tar"):
-		fn = reptar.Reptar
+		fn = reptar.Archive
 	case strings.HasSuffix(args[1], ".tar.gz"):
-		fn = reptar.GzipReptar
+		fn = func(location string, output io.Writer) error {
+			zw := gzip.NewWriter(output)
+			if err := reptar.Archive(location, zw); err != nil {
+				return err
+			}
+			return zw.Close()
+		}
 	default:
 		return errors.New("archive name must end in .tar or .tar.gz")
 	}

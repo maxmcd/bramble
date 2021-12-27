@@ -8,25 +8,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/maxmcd/bramble/pkg/chunkedarchive"
+	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/httpx"
+	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/pkg/errors"
 )
-
-type storeHashFetcher struct {
-	store *Store
-}
-
-var _ chunkedarchive.HashFetcher = new(storeHashFetcher)
-
-func (hf *storeHashFetcher) Lookup(hash string) (file io.ReadCloser, err error) {
-	return os.Open(hf.store.joinStorePath(hash))
-}
-
-type OutputRequestBody struct {
-	Output Output
-	TOC    []chunkedarchive.TOCEntry
-}
 
 // Uploads a derivation and all outputs
 // Sources aren't uploaded
@@ -43,28 +29,15 @@ func (s *Store) CacheServer() http.Handler {
 		return err
 	})
 	router.GET("/output/:hash", func(c httpx.Context) (err error) {
-		f, err := os.Open(s.joinStorePath(c.Params.ByName("hash")))
-		if err != nil {
-			return httpx.ErrNotFound(err)
+		output := s.joinStorePath(c.Params.ByName("hash"))
+		if !fileutil.DirExists(output) {
+			return httpx.ErrNotFound(errors.New("Output not found"))
 		}
-		var toc []chunkedarchive.TOCEntry
-		if err := json.NewDecoder(f).Decode(&toc); err != nil {
-			// If the hash isn't a valid TOC then it's not an output
-			return httpx.ErrNotFound(err)
+		if err := reptar.Archive(output, c.ResponseWriter); err != nil {
+			return httpx.ErrInternalServerError(err)
 		}
-		_, _ = f.Seek(0, 0)
-		_, err = io.Copy(c.ResponseWriter, f)
-		return err
+		return nil
 	})
-	router.GET("/chunk/:hash", func(c httpx.Context) (err error) {
-		f, err := os.Open(s.joinStorePath(c.Params.ByName("hash")))
-		if err != nil {
-			return httpx.ErrNotFound(err)
-		}
-		_, err = io.Copy(c.ResponseWriter, f)
-		return err
-	})
-
 	router.POST("/derivation", func(c httpx.Context) (err error) {
 		var drv Derivation
 		if err := json.NewDecoder(c.Request.Body).Decode(&drv); err != nil {
@@ -82,47 +55,26 @@ func (s *Store) CacheServer() http.Handler {
 		return nil
 	})
 	router.POST("/output", func(c httpx.Context) (err error) {
-		var req OutputRequestBody
-		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-			return httpx.ErrNotAcceptable(err)
+		hash := c.Request.URL.Query().Get("hash")
+		if hash == "" {
+			return httpx.ErrNotAcceptable(errors.New("the 'hash' query parameter is required"))
 		}
-
 		tempDir, err := os.MkdirTemp("", "")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(tempDir)
-		if err := chunkedarchive.Unarchive(req.TOC, &storeHashFetcher{store: s}, tempDir); err != nil {
-			return err
-		}
-		if err := s.hashNormalizedBuildOutput(tempDir, req.Output.Path); err != nil {
-			return err
-		}
-		f, err := os.Create(s.joinStorePath(req.Output.Path + ".output"))
-		if err != nil {
-			return err
-		}
-		if err := json.NewEncoder(f).Encode(req.TOC); err != nil {
-			return err
-		}
-		return nil
-	})
-	router.POST("/chunk", func(c httpx.Context) (err error) {
-		hash, err := s.WriteBlob(c.Request.Body)
-		if err != nil {
-			return err
-		}
-		loc := s.joinStorePath(hash)
-		fi, err := os.Stat(loc)
-		if err != nil {
-			return err
-		}
-		if fi.Size() > 4e6 {
-			_ = os.Remove(loc)
-			return httpx.ErrNotAcceptable(errors.New("chunk size can't be larger than 4MB"))
-		}
 
-		fmt.Fprint(c.ResponseWriter, hash)
+		if err := reptar.Unarchive(c.Request.Body, tempDir); err != nil {
+			return httpx.ErrNotAcceptable(errors.Wrap(err, "error unarchiving request body"))
+		}
+		if err := s.hashNormalizedBuildOutput(tempDir, hash); err != nil {
+			return err
+		}
+		storeLocation := s.joinStorePath(hash)
+		if !fileutil.PathExists(storeLocation) {
+			return os.Rename(tempDir, storeLocation)
+		}
 		return nil
 	})
 

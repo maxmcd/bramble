@@ -26,7 +26,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/pkg/errors"
-	"github.com/rhnvrm/simples3"
 	cli "github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -412,12 +411,11 @@ their public functions with documentation. If an immediate subdirectory has a
 								}
 								drvs = append(drvs, drv)
 							}
-							// TODO: replace with something generally usable
-							s3 := simples3.New("",
+							cc := store.NewS3CacheClient(
 								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
-								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))
-							s3.SetEndpoint("https://nyc3.digitaloceanspaces.com")
-							cc := store.NewS3CacheClient(s3)
+								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"),
+								"nyc3.digitaloceanspaces.com",
+							)
 							fmt.Printf("Uploading %d derivations\n", len(drvs))
 							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
 								return err

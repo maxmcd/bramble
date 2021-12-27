@@ -2,13 +2,15 @@ package reptar
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 var zeroTime time.Time
@@ -29,7 +31,7 @@ var zeroTime time.Time
 //
 // This command is currently not complete and only works on very basic test
 // cases. GNU Tar also adds padding to outputted files
-func Reptar(location string, out io.Writer) (err error) {
+func Archive(location string, out io.Writer) (err error) {
 	// TODO: add our own null padding to match GNU Tar
 	// TODO: test with hardlinks
 	// TODO: confirm name sorting is identical in all cases
@@ -108,13 +110,62 @@ func Reptar(location string, out io.Writer) (err error) {
 	return tw.Close()
 }
 
-// GzipReptar just wraps reptar in gzip.
-func GzipReptar(location string, out io.Writer) (err error) {
-	w := gzip.NewWriter(out)
-	defer w.Close()
-	return Reptar(location, w)
-}
-
 func isSymlink(fi os.FileInfo) bool {
 	return fi.Mode()&os.ModeSymlink != 0
+}
+
+func Unarchive(in io.Reader, location string) error {
+	reader := tar.NewReader(in)
+	madeDir := map[string]bool{}
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return errors.Wrap(err, "error reading next tar header")
+		}
+		rel := filepath.FromSlash(header.Name)
+		abs := filepath.Join(location, rel)
+		fi := header.FileInfo()
+		mode := fi.Mode()
+		switch mode & os.ModeType {
+		case os.ModeDir:
+			if err := os.MkdirAll(abs, 0755); err != nil {
+				return err
+			}
+			madeDir[abs] = true
+		case os.ModeSymlink:
+			if err := os.Symlink(header.Linkname, abs); err != nil {
+				return err
+			}
+		case os.ModeNamedPipe:
+			if err := syscall.Mkfifo(abs, uint32(mode.Perm())); err != nil {
+				return err
+			}
+		default:
+			dir := filepath.Dir(abs)
+			if !madeDir[dir] {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return err
+				}
+				madeDir[dir] = true
+			}
+			wf, err := os.OpenFile(abs, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode.Perm())
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			var n int64
+			if n, err = io.Copy(wf, reader); err != nil {
+				return errors.WithStack(err)
+			}
+			if err := wf.Close(); err != nil {
+				return fmt.Errorf("error writing to %s: %v", abs, err)
+			}
+			if n != header.Size {
+				return fmt.Errorf("only wrote %d bytes to %s; expected %d", n, abs, header.Size)
+			}
+		}
+	}
+
 }

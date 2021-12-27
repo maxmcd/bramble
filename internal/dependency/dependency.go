@@ -16,9 +16,9 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
-	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/httpx"
+	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
 	"github.com/pkg/errors"
 	"golang.org/x/mod/semver"
@@ -76,24 +76,7 @@ func (dm *Manager) PackagePathOrDownload(ctx context.Context, pkg types.Package)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return "", err
 	}
-	// Copy body to file, we can stream the unarchive if we figure out how to
-	// get the final size earlier and/or seek over http.
-	var name string
-	{
-		f, err := os.CreateTemp("", "")
-		if err != nil {
-			return "", err
-		}
-		name = f.Name()
-		_, _ = io.Copy(f, body)
-		if err := f.Close(); err != nil {
-			return "", err
-		}
-	}
-	if err := chunkedarchive.FileUnarchive(name, path); err != nil {
-		return "", errors.Wrap(err, "error unwrapping chunked archive")
-	}
-	return path, os.RemoveAll(name)
+	return path, reptar.Unarchive(body, path)
 }
 
 func (dm *Manager) FindPackage(name string) {
@@ -524,7 +507,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 		if !fileutil.DirExists(path) {
 			return httpx.ErrNotFound(errors.New("can't find package"))
 		}
-		return chunkedarchive.StreamArchive(c.Request.Context(), c.ResponseWriter, path)
+		return reptar.Archive(path, c.ResponseWriter)
 	})
 	router.GET("/package/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
