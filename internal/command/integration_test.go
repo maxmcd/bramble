@@ -277,11 +277,11 @@ func TestStore_CacheServer(t *testing.T) {
 	{
 		test.SetEnv(t, "BRAMBLE_PATH", clientBramblePath)
 		app := cliApp(".")
-		if err := app.Run([]string{"bramble", "build", "../../lib:busybox"}); err != nil {
+		if err := app.Run([]string{"bramble", "build", "../../tests/busybox:busybox"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-
+	fmt.Println("build complete")
 	{
 		serverBramblePath := t.TempDir()
 		s, err := store.NewStore(serverBramblePath)

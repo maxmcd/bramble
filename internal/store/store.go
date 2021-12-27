@@ -19,6 +19,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rlmcpherson/s3gof3r"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -330,54 +331,47 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 
 	numParallel := 12
 	sem := make(chan struct{}, numParallel)
-	errChan := make(chan error)
-	doneChan := make(chan struct{})
 
-	go func() {
-		for _, drv := range derivations {
+	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		for _, d := range derivations {
+			drv := d // copy
 			sem <- struct{}{}
-			go func(drv Derivation) {
+			group.Go(func() error {
 				// Normalize them with the fixed prefix path
 				normalized, err := s.normalizeDerivation(drv)
 				if err != nil {
-					errChan <- err
-					return
+					return err
 				}
 				// Upload, could confirm hash
 				if _, err := cc.PostDerivation(ctx, normalized); err != nil {
-					errChan <- err
-					return
+					return err
 				}
 				// Loop through outputs and post them
 				for _, output := range normalized.Outputs {
 					r, w := io.Pipe()
-					go func() {
+					group.Go(func() error {
 						bufWriter := bufio.NewWriter(w)
 						if err := reptar.Archive(s.joinStorePath(output.Path), bufWriter); err != nil {
-							errChan <- err
-							return
+							return err
 						}
 						if err := bufWriter.Flush(); err != nil {
-							errChan <- err
-							return
+							return err
 						}
-					}()
+						return w.Close()
+					})
 					if err := cc.PostOutput(ctx, output.Path, r); err != nil {
-						errChan <- err
-						return
+						return nil
 					}
 				}
 				<-sem
-			}(drv)
+				return nil
+			})
 		}
-	}()
-
-	select {
-	case <-doneChan:
 		return nil
-	case err := <-errChan:
-		return err
-	}
+	})
+	return group.Wait()
 }
 
 type S3CacheClient struct {

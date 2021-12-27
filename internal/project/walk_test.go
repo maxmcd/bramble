@@ -59,7 +59,7 @@ func TestExecModuleAndWalk(t *testing.T) {
 	project, err := NewProject(".")
 	require.NoError(t, err)
 
-	module, err := project.ParseModuleFuncArgument(context.Background(), "github.com/maxmcd/bramble:all", false)
+	module, err := project.ParseModuleFuncArgument(context.Background(), "github.com/maxmcd/bramble/tests:all", false)
 	if err != nil {
 		t.Fatal(err)
 	}
