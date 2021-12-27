@@ -17,9 +17,10 @@ import (
 )
 
 type cacheClient interface {
-	PostChunk(context.Context, io.Reader) (string, error)
-	PostDerivation(context.Context, store.Derivation) (string, error)
-	PostOutput(context.Context, store.OutputRequestBody) error
+	PostChunk(context.Context, io.Reader) (string, bool, error)
+	PostDerivation(context.Context, store.Derivation) (string, bool, error)
+	PostOutput(context.Context, store.OutputRequestBody) (bool, error)
+	OutputExists(ctx context.Context, name string) (bool, error)
 }
 
 type Client struct {
@@ -46,8 +47,9 @@ func (cc *Client) request(ctx context.Context, method, path, contentType string,
 	return httpx.Request(ctx, cc.client, method, url, contentType, body, resp)
 }
 
-func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (filename string, err error) {
-	return filename, cc.request(ctx,
+func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (filename string, exists bool, err error) {
+	// TODO: actually check if it existed
+	return filename, false, cc.request(ctx,
 		http.MethodPost,
 		"/derivation",
 		"application/json",
@@ -55,12 +57,13 @@ func (cc *Client) PostDerivation(ctx context.Context, drv store.Derivation) (fil
 		&filename)
 }
 
-func (cc *Client) PostOutput(ctx context.Context, req store.OutputRequestBody) (err error) {
+func (cc *Client) PostOutput(ctx context.Context, req store.OutputRequestBody) (exists bool, err error) {
 	b, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return cc.request(ctx,
+	// TODO: actually check if it existed
+	return false, cc.request(ctx,
 		http.MethodPost,
 		"/output",
 		"application/json",
@@ -68,8 +71,14 @@ func (cc *Client) PostOutput(ctx context.Context, req store.OutputRequestBody) (
 		nil)
 }
 
-func (cc *Client) PostChunk(ctx context.Context, chunk io.Reader) (hash string, err error) {
-	return hash, cc.request(ctx,
+func (cc *Client) OutputExists(ctx context.Context, name string) (bool, error) {
+	// TODO: implement
+	return false, nil
+}
+
+func (cc *Client) PostChunk(ctx context.Context, chunk io.Reader) (hash string, exists bool, err error) {
+	// TODO: actually check if it existed
+	return hash, false, cc.request(ctx,
 		http.MethodPost,
 		"/chunk",
 		"application/octet-stream",

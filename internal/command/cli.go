@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/project"
@@ -394,7 +396,7 @@ their public functions with documentation. If an immediate subdirectory has a
 							newBuilder(s),
 							dependency.DownloadGithubRepo,
 						)
-						builtDerivations, err := builder(&dependency.Job{
+						builtDerivations, err := builder(c.Context, &dependency.Job{
 							Package:   module,
 							Reference: reference,
 						})
@@ -414,7 +416,7 @@ their public functions with documentation. If an immediate subdirectory has a
 							s3 := simples3.New("",
 								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
 								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))
-							s3.SetEndpoint("nyc3.digitaloceanspaces.com")
+							s3.SetEndpoint("https://nyc3.digitaloceanspaces.com")
 							cc := store.NewS3CacheClient(s3)
 							fmt.Printf("Uploading %d derivations\n", len(drvs))
 							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
@@ -549,6 +551,9 @@ func RunCLI() {
 		panic("give me the stack")
 	}()
 	sandbox.Entrypoint()
+
+	go func() { _ = http.ListenAndServe(":6060", nil) }()
+
 	defer tracing.Stop()
 
 	// Patch cli lib to remove bool default

@@ -52,6 +52,11 @@ type BuildDerivationOptions struct {
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
+	select {
+	case <-ctx.Done():
+		return Derivation{}, false, context.Canceled
+	default:
+	}
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.BuildDerivation")
 	defer span.End()

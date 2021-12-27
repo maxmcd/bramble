@@ -432,9 +432,9 @@ func addDependencyMetadata(dependencyDir, pkg, version, src string, mapping map[
 	// If the metadata is here we already have a record of the output mapping.
 	// If we checked the src directory it might just be there as a dependency of
 	// another nomad project
-	fmt.Println(metadataDest)
 	if fileutil.PathExists(metadataDest) {
-		return errors.Errorf("version %s of package %q is already present on this server", version, pkg)
+		fmt.Println(pkg, version, "already exists locally, skipping writing to store")
+		return nil
 	}
 
 	if err := os.MkdirAll(fileDest, 0755); err != nil {
@@ -487,7 +487,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			_, err := buildJob(job, dependencyDir, newBuilder, downloadGithubRepo)
+			_, err := buildJob(c.Request.Context(), job, dependencyDir, newBuilder, downloadGithubRepo)
 			jq.End(job.ID, err)
 		}()
 
@@ -524,7 +524,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 		if !fileutil.DirExists(path) {
 			return httpx.ErrNotFound(errors.New("can't find package"))
 		}
-		return chunkedarchive.StreamArchive(c.ResponseWriter, path)
+		return chunkedarchive.StreamArchive(c.Request.Context(), c.ResponseWriter, path)
 	})
 	router.GET("/package/config/*name_version", func(c httpx.Context) error {
 		name := c.Params.ByName("name_version")
@@ -546,7 +546,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	return router
 }
 
-func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (builtDerivations []string, err error) {
+func buildJob(ctx context.Context, job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (builtDerivations []string, err error) {
 	loc, err := downloadGithubRepo(job.Package, job.Reference)
 	if err != nil {
 		return nil, errors.Wrap(err, "error downloading git repo")
@@ -572,7 +572,7 @@ func buildJob(job *Job, dependencyDir string, newBuilder types.NewBuilder, downl
 	// Build each package in the repository
 	for path, pkg := range packages {
 		fmt.Println("Building package", path, pkg)
-		resp, err := builder.Build(context.Background(), path, []string{"./..."}, types.BuildOptions{Check: true})
+		resp, err := builder.Build(ctx, path, []string{"./..."}, types.BuildOptions{Check: true})
 		if err != nil {
 			return nil, err
 		}
@@ -604,9 +604,9 @@ func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.
 	return serverHandler(dependencyDir, newBuilder, dgr)
 }
 
-func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(*Job) ([]string, error) {
-	return func(job *Job) ([]string, error) {
-		return buildJob(job, dependencyDir, newBuilder, dgr)
+func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(context.Context, *Job) ([]string, error) {
+	return func(ctx context.Context, job *Job) ([]string, error) {
+		return buildJob(ctx, job, dependencyDir, newBuilder, dgr)
 	}
 }
 

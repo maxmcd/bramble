@@ -321,9 +321,10 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 }
 
 type CacheClient interface {
-	PostChunk(context.Context, io.Reader) (string, error)
-	PostDerivation(context.Context, Derivation) (string, error)
-	PostOutput(context.Context, OutputRequestBody) error
+	PostChunk(context.Context, string, io.Reader) (string, bool, error)
+	PostDerivation(context.Context, Derivation) (string, bool, error)
+	PostOutput(context.Context, OutputRequestBody) (bool, error)
+	OutputExists(ctx context.Context, name string) (bool, error)
 }
 
 func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc CacheClient) (err error) {
@@ -335,18 +336,22 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	defer cancel()
 
 	bodyWriter := chunkedarchive.NewParallelBodyWriter(
-		8,
-		func(rc io.ReadCloser) (out []string, err error) {
+		12,
+		func(ctx context.Context, name string, rc io.ReadCloser) (out []string, err error) {
+			select {
+			case <-ctx.Done():
+				return nil, context.Canceled
+			default:
+			}
 			buf := bufio.NewReader(rc)
 			for {
 				// TODO: hash the body before uploading to confirm it doesn't already exist
 				limited := io.LimitReader(buf, 4e6)
-				hash, err := cc.PostChunk(ctx, limited)
+				hash, _, err := cc.PostChunk(ctx, name, limited)
 				if err != nil {
 					return nil, err
 				}
 				out = append(out, hash)
-				fmt.Println("Finished uploading chunk", hash)
 				if _, err := buf.Peek(1); err != nil {
 					break
 				}
@@ -369,7 +374,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 			return err
 		}
 		// Upload, could confirm hash
-		if _, err := cc.PostDerivation(ctx, normalized); err != nil {
+		if _, _, err := cc.PostDerivation(ctx, normalized); err != nil {
 			return err
 		}
 		// Loop through outputs and post them
@@ -378,18 +383,31 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 				continue
 			}
 			uploaded[output.Path] = struct{}{}
+
+			exists, err := cc.OutputExists(ctx, output.Path)
+			if err != nil {
+				return err
+			}
+			if exists {
+				fmt.Printf("output %s for derivation %s already exists\n", output.Path, drv.Filename())
+				continue
+			} else {
+				fmt.Printf("output %s for derivation %s doesn't exist\n", output.Path, drv.Filename())
+			}
+
 			wg.Add(1)
 			go func(output Output) {
 				// Limit parallelism
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				// This will upload using the spawned queue in parallel
-				toc, err := chunkedarchive.Archive(bodyWriter, s.joinStorePath(output.Path))
+				toc, err := chunkedarchive.Archive(ctx, bodyWriter, s.joinStorePath(output.Path))
 				if err != nil {
 					errChan <- err
+					return
 				}
 
-				if err := cc.PostOutput(ctx, OutputRequestBody{
+				if _, err := cc.PostOutput(ctx, OutputRequestBody{
 					TOC:    toc,
 					Output: output,
 				}); err != nil {
@@ -405,6 +423,8 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 		doneChan <- struct{}{}
 	}()
 	select {
+	case <-ctx.Done():
+		return context.Canceled
 	case err := <-errChan:
 		return err
 	case <-doneChan:
@@ -444,81 +464,106 @@ func NewS3CacheClient(s3 *simples3.S3) CacheClient {
 	return &S3CacheClient{s3: s3}
 }
 
-func fileUpload(s3 *simples3.S3, body *bytes.Buffer, ui simples3.UploadInput) error {
+func fileUpload(s3 *simples3.S3, body *bytes.Buffer, ui simples3.UploadInput, info string) (bool, error) {
 	checkIt := "https://store.bramble.run/" + ui.ObjectKey
+	fmt.Println("Uploading", info)
 	resp, err := http.Head(checkIt)
 	if err != nil {
-		return err
+		return false, err
 	}
+	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 	case http.StatusOK:
-		return nil
+		return true, nil
 	default:
-		return errors.Errorf("unexpected response code %d for url %q", resp.StatusCode, checkIt)
+		var buf bytes.Buffer
+		if resp.Body != nil {
+			_, _ = io.Copy(&buf, resp.Body)
+		}
+		return false, errors.Errorf("unexpected response code %d for url %q: %s", resp.StatusCode, checkIt, buf.String())
 	}
 	// TODO: Could reduce memory overhead here
 	buf := &bytes.Buffer{}
 	w := gzip.NewWriter(buf)
 	if _, err := io.Copy(w, bytes.NewBuffer(body.Bytes())); err != nil {
-		return err
+		return false, err
 	}
 	if err := w.Close(); err != nil {
-		return err
+		return false, err
 	}
 
 	ui.Body = fakeSizeSeeker{buf: body}
 	if _, err := s3.FileUpload(ui); err != nil {
-		return err
+		return false, err
 	}
 
 	ui.Body = fakeSizeSeeker{buf: buf}
 	ui.FileName += ".gz"
 	ui.ObjectKey += ".gz"
 	if _, err := s3.FileUpload(ui); err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return false, nil
 }
 
-func (cc *S3CacheClient) PostChunk(ctx context.Context, r io.Reader) (string, error) {
+func (cc *S3CacheClient) PostChunk(ctx context.Context, name string, r io.Reader) (string, bool, error) {
 	var buf bytes.Buffer
 	h := hasher.New()
 	tee := io.TeeReader(r, h)
 	if _, err := io.Copy(&buf, tee); err != nil {
-		return "", err
+		return "", false, err
 	}
-	err := fileUpload(cc.s3, &buf, simples3.UploadInput{
+	exists, err := fileUpload(cc.s3, &buf, simples3.UploadInput{
 		Bucket:      "bramble",
 		ACL:         "public-read",
 		ObjectKey:   "chunk/" + h.String(),
 		FileName:    h.String(),
 		ContentType: "application/octet-stream",
-	})
-	return "", err
+	}, fmt.Sprintf("chunk %s for %s", h.String(), name))
+	return "", exists, err
 }
-func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
+func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, bool, error) {
 	filename := drv.Filename()
-	err := fileUpload(cc.s3, bytes.NewBuffer([]byte(drv.JSON())), simples3.UploadInput{
+
+	exists, err := fileUpload(cc.s3, bytes.NewBuffer([]byte(drv.JSON())), simples3.UploadInput{
 		Bucket:      "bramble",
 		ACL:         "public-read",
 		ObjectKey:   "derivation/" + drv.Filename(),
 		FileName:    drv.Filename(),
 		ContentType: "application/json",
-	})
-	return filename, err
+	}, "derivation "+filename)
+	return filename, exists, err
 }
-func (cc *S3CacheClient) PostOutput(ctx context.Context, req OutputRequestBody) error {
+func (cc *S3CacheClient) PostOutput(ctx context.Context, req OutputRequestBody) (bool, error) {
 	buf := &bytes.Buffer{}
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
-		return err
+		return false, err
 	}
-	err := fileUpload(cc.s3, buf, simples3.UploadInput{
+	exists, err := fileUpload(cc.s3, buf, simples3.UploadInput{
 		Bucket:      "bramble",
 		ACL:         "public-read",
 		ObjectKey:   "output/" + req.Output.Path,
 		FileName:    req.Output.Path,
 		ContentType: "application/json",
-	})
-	return err
+	}, "output "+req.Output.Path)
+	return exists, err
+}
+
+func (cc *S3CacheClient) OutputExists(ctx context.Context, name string) (bool, error) {
+	// url := "https://store.bramble.run/output/" + name
+	url := "https://bramble.nyc3.digitaloceanspaces.com/output/" + name
+	resp, err := http.Head(url)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, errors.Errorf("unexpected response code when requesting %s: %d", url, resp.StatusCode)
+	}
 }
