@@ -364,6 +364,9 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 					if err := cc.PostOutput(ctx, output.Path, r); err != nil {
 						return nil
 					}
+					// If we exit early, ensure writing stops. Don't check the
+					// error in case we've already closed the pipe
+					_ = r.Close()
 				}
 				<-sem
 				return nil

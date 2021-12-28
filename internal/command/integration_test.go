@@ -85,17 +85,17 @@ func TestRun(t *testing.T) {
 	for _, tt := range []test{
 		{
 			name:   "simple",
-			args:   []string{"../../:print_simple"},
+			args:   []string{"../../tests:print_simple"},
 			checks: []check{noError()},
 		},
 		{
 			name:   "simple explicit",
-			args:   []string{"../../:print_simple", "simple"},
+			args:   []string{"../../tests:print_simple", "echo", "simple"},
 			checks: []check{noError()},
 		},
 		{
 			name: "sim",
-			args: []string{"../../:print_simple", "sim"},
+			args: []string{"../../tests:print_simple", "foo"},
 			checks: []check{
 				errContains("executable file not found"),
 				exitCodeIs(1),
@@ -103,21 +103,21 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "exit code",
-			args: []string{"../../:bash", "bash", "-c", "exit 2"},
+			args: []string{"../../tests:ash", "ash", "-c", "exit 2"},
 			checks: []check{
 				exitCodeIs(2),
 			},
 		},
 		{
 			name: "write to readonly system",
-			args: []string{"../../:bash", "bash", "-c", "touch foo"},
+			args: []string{"../../tests:ash", "ash", "-c", "touch foo"},
 			checks: []check{
 				exitCodeIs(1),
 			},
 		},
 		{
 			name: "weird exit code",
-			args: []string{"../../:bash", "bash", "-c", "exit 56"},
+			args: []string{"../../tests:ash", "ash", "-c", "exit 56"},
 			checks: []check{
 				exitCodeIs(56),
 			},
@@ -168,7 +168,7 @@ func TestBuildAllFunction(t *testing.T) {
 	initIntegrationTest(t)
 
 	app := cliApp(".")
-	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble:all"}); err != nil {
+	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble/tests:all"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -218,7 +218,7 @@ func TestDep(t *testing.T) {
 		{"third with load", "third", map[string]interface{}{
 			"./third/bramble.toml":    config.Config{Package: config.Package{Name: "third", Version: "0.0.1"}},
 			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
-		}, "", []string{"first"}},
+		}, "", []string{"first@0.0.1"}},
 		{"fourth nested", "fourth", map[string]interface{}{
 			"./fourth/bramble.toml":           config.Config{Package: config.Package{Name: "fourth", Version: "0.0.1"}},
 			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",
@@ -325,20 +325,20 @@ func TestModuleCLIParsing(t *testing.T) {
 		{"build ./...", "../../", false},
 		{"build tests", "../../", true},
 		{"build github.com/maxmcd/bramble/...", "../../", false},
-		{"build ./lib", "../../", false},
+		{"build ./tests", "../../", false},
 		{"build ./internal", "../../", true},
-		{"build :all", "../../", true},
-		{"build ./:all", "../../", false},
+		{"build tests:all", "../../", true},
+		{"build ./tests:all", "../../", false},
 		{"build github.com/maxmcd/bramble/tests/...", "../../", false},
 		{"build github.com/maxmcd/busybox/...", "../../", true},
 		// run
 		{"run ./...", "../../", true},
 		{"run tests", "../../", true},
 		{"run :print_simple", "../../", true},
-		{"run ./:print_simple simple", "../../", false},
-		{"run ./lib:git git", "../../", false},
+		{"run ./tests:print_simple simple", "../../", false},
+		{"run ./tests:ash ash", "../../", false},
 		{"run ./internal:foo foo", "../../", true},
-		{"run github.com/maxmcd/bramble:print_simple simple", "../../", false},
+		{"run github.com/maxmcd/bramble/tests:print_simple simple", "../../", false},
 		// {"run github.com/maxmcd/busybox:busybox ash", "../../", false},
 		// {"run github.com/maxmcd/busybox@0.0.1:busybox ash", "../../", false},
 	}

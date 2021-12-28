@@ -12,14 +12,14 @@ def link_test():
     )
 
 
-load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load(busybox="github.com/maxmcd/bramble/tests/busybox")
 
 
 def self_reference():
     return derivation(
         name="self-reference",
-        builder=nix_seed.stdenv().out + "/bin/bash",
-        env={"stdenv": nix_seed.stdenv(), "PATH": nix_seed.stdenv().out + "/bin"},
+        builder=busybox.busybox().out + "/bin/ash",
+        env={"PATH": busybox.busybox().out + "/bin"},
         args=[
             "-c",
             """
