@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/internal/cacheclient"
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/store"
@@ -301,10 +300,8 @@ func TestStore_CacheServer(t *testing.T) {
 			}
 			drvs = append(drvs, drv)
 		}
-		cc := cacheclient.New(server.URL)
-		// s3 := simples3.New("", "", "")
-		// s3.SetEndpoint("nyc3.digitaloceanspaces.com")
-		// cc := store.NewS3CacheClient(s3)
+		// cc := cacheclient.New(server.URL)
+		cc := store.NewS3CacheClient("", "", "nyc3.digitaloceanspaces.com")
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}

@@ -452,8 +452,8 @@ their public functions with documentation. If an immediate subdirectory has a
 						}
 						return s, "", false
 					}
-					first, second, _ := cut(c.Args().First(), "@")
-					return b.project.AddDependency(c.Context, types.Package{Version: first, Name: second})
+					name, version, _ := cut(c.Args().First(), "@")
+					return b.project.AddDependency(c.Context, types.Package{Name: name, Version: version})
 				},
 			},
 			{

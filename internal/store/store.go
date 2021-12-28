@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -388,6 +389,7 @@ func NewS3CacheClient(accessKeyID, secretAccessKey, hostname string) CacheClient
 		AccessKey: accessKeyID,
 		SecretKey: secretAccessKey,
 	}
+	os.Setenv("AWS_REGION", " ")
 	s3 := s3gof3r.New(hostname, keys)
 	return &S3CacheClient{bucket: s3.Bucket("bramble")}
 }
@@ -435,9 +437,22 @@ func NewS3CacheClient(accessKeyID, secretAccessKey, hostname string) CacheClient
 // 	return nil
 // }
 
+func aclPublic(h http.Header, acl string) http.Header {
+	h.Set("x-amz-acl", acl)
+	return h
+}
+
+func (cc *S3CacheClient) putWriter(path string) (w io.WriteCloser, err error) {
+	return cc.bucket.PutWriter(path, aclPublic(http.Header{}, "public-read"), &s3gof3r.Config{
+		Client:   http.DefaultClient,
+		Scheme:   "https",
+		Md5Check: false,
+	})
+}
+
 func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
 	filename := drv.Filename()
-	w, err := cc.bucket.PutWriter("derivation/"+drv.Filename(), nil, &s3gof3r.Config{})
+	w, err := cc.putWriter("derivation/" + drv.Filename())
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -446,8 +461,9 @@ func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (st
 	}
 	return filename, w.Close()
 }
+
 func (cc *S3CacheClient) PostOutput(ctx context.Context, hash string, body io.Reader) error {
-	w, err := cc.bucket.PutWriter("output/"+hash, nil, &s3gof3r.Config{})
+	w, err := cc.putWriter("output/" + hash)
 	if err != nil {
 		return errors.WithStack(err)
 	}

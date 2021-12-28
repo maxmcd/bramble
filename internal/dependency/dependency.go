@@ -351,7 +351,7 @@ func (dm *Manager) FindPackageFromModuleName(ctx context.Context, module string,
 	if err != nil && err != os.ErrNotExist {
 		return "", nil, err
 	}
-
+	fmt.Println(name, vs)
 	matchingVersion := func() bool {
 		for _, v := range vs {
 			if v == version {
