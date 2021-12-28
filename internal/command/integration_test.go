@@ -202,6 +202,7 @@ func TestDep(t *testing.T) {
 		name        string
 		pkg         string
 		files       map[string]interface{}
+		installed   map[string]config.Dependency
 		errContains string
 		install     []string
 	}
@@ -209,25 +210,25 @@ func TestDep(t *testing.T) {
 		{"first", "first", map[string]interface{}{
 			"./first/bramble.toml":    config.Config{Package: config.Package{Name: "first", Version: "0.0.1"}},
 			"./first/default.bramble": "def first():\n  print('print from first')",
-		}, "", nil},
+		}, map[string]config.Dependency{}, "", nil},
 		{"second syntax err", "second", map[string]interface{}{
 			"./second/bramble.toml":    config.Config{Package: config.Package{Name: "second", Version: "0.0.1"}},
 			"./second/default.bramble": "def first)",
-		}, "second/default.bramble:1:10", nil},
+		}, map[string]config.Dependency{}, "second/default.bramble:1:10", nil},
 		{"third with load", "third", map[string]interface{}{
 			"./third/bramble.toml":    config.Config{Package: config.Package{Name: "third", Version: "0.0.1"}},
 			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
-		}, "", []string{"first@0.0.1"}},
+		}, map[string]config.Dependency{"first": {Version: "0.0.1"}}, "", []string{"first@0.0.1"}},
 		{"fourth nested", "fourth", map[string]interface{}{
 			"./fourth/bramble.toml":           config.Config{Package: config.Package{Name: "fourth", Version: "0.0.1"}},
 			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",
 			"./fourth/nested/bramble.toml":    config.Config{Package: config.Package{Name: "fourth/nested", Version: "0.0.1"}},
 			"./fourth/nested/default.bramble": "def nested():\n  print('hello nested')",
-		}, "", []string{"third@0.0.1"}},
+		}, map[string]config.Dependency{"third": {Version: "0.0.1"}}, "", []string{"third@0.0.1"}},
 		{"fifth with nested load", "fifth", map[string]interface{}{
 			"./fifth/bramble.toml":    config.Config{Package: config.Package{Name: "fifth", Version: "0.0.1"}},
 			"./fifth/default.bramble": "load('fourth/nested')\ndef fifth():\n  nested.nested()",
-		}, "", []string{"fourth/nested@0.0.1"}},
+		}, map[string]config.Dependency{"fourth/nested": {Version: "0.0.1"}}, "", []string{"fourth/nested@0.0.1"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for path, file := range tt.files {
@@ -243,9 +244,11 @@ func TestDep(t *testing.T) {
 				}
 			}
 			test.ErrContains(t, func() error {
+				loc := filepath.Join(projectDir, tt.pkg)
 				{
-					app := cliApp(filepath.Join(projectDir, tt.pkg))
+					app := cliApp(loc)
 					for _, toInstall := range tt.install {
+						fmt.Println(toInstall, "-------------")
 						if err := app.Run([]string{"bramble", "add", toInstall}); err != nil {
 							return err
 						}
@@ -259,6 +262,14 @@ func TestDep(t *testing.T) {
 					if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
 						return err
 					}
+				}
+				{
+					cfg, err := config.ReadConfig(loc + "/bramble.toml")
+					if err != nil {
+						t.Fatal(err)
+					}
+					cfg.Render(os.Stdout)
+					require.Equal(t, cfg.Dependencies, tt.installed)
 				}
 				return nil
 			}(), tt.errContains)
