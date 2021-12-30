@@ -157,7 +157,13 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 			return cfg, lockFile, errors.Wrapf(err, "error opening lockfile %q", lockFileLocation)
 		}
 		defer f.Close()
-		_, err = toml.DecodeReader(f, &lockFile)
+		_, err = toml.DecodeReader(io.TeeReader(f, os.Stdout), &lockFile)
+		for name, d := range lockFile.Dependencies {
+			if d.Version == "" {
+				fmt.Println(name, d)
+				panic("hi")
+			}
+		}
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }
@@ -197,8 +203,8 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 		}
 	}
 	lf.Dependencies = lockFile.Dependencies
-
-	return toml.NewEncoder(f).Encode(&lf)
+	lockFile.Render(f)
+	return nil
 }
 
 type LockFile struct {
@@ -206,6 +212,33 @@ type LockFile struct {
 	lock      sync.RWMutex
 
 	Dependencies map[string]Dependency
+}
+
+func (lf *LockFile) Render(w io.Writer) {
+	var keys []string
+	{
+		fmt.Fprintln(w, "[URLHashes]")
+		for key := range lf.URLHashes {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fxt.Fprintfln(w, "%q = %q", key, lf.URLHashes[key])
+		}
+	}
+	fmt.Fprintln(w)
+	{
+		fmt.Fprintln(w, "[Dependencies]")
+		var keys []string
+		for key := range lf.Dependencies {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			dep := lf.Dependencies[key]
+			fxt.Fprintfln(w, "%q = %q", key, dep.Version)
+		}
+	}
 }
 
 var _ types.LockfileWriter = new(LockFile)

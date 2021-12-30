@@ -329,6 +329,9 @@ func (dc *dependencyClient) findPackageFromModuleName(ctx context.Context, name 
 }
 
 func (dd dir) findPackageFromModuleName(module string) (name string, vs []string, err error) {
+	if module == "fourth/nested" {
+		fmt.Println("hi")
+	}
 	for _, n := range possiblePackageVariants(module) {
 		vs, err := dd.localPackageVersions(n)
 		if err != nil {

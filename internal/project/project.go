@@ -175,7 +175,7 @@ func (p *Project) CalculateDependencies() (err error) {
 }
 
 func (p *Project) AddDependency(ctx context.Context, v types.Package) (err error) {
-	name, vs, err := p.dm.FindPackageFromModuleName(ctx, v.Name, "")
+	name, vs, err := p.dm.FindPackageFromModuleName(ctx, v.Name, v.Version)
 	if err != nil {
 		return err
 	}
