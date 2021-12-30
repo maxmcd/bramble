@@ -193,12 +193,17 @@ func (p *Project) AddDependency(ctx context.Context, v types.Package) (err error
 			Version: v.Version,
 		}
 	}
-	cfg, err := p.dm.CalculateConfigBuildlist(ctx, p.config)
+	buildList, err := p.dm.CalculateConfigBuildlist(ctx, p.config)
 	if err != nil {
 		return err
 	}
-	cfg.Render(os.Stdout)
-	return p.writeConfig(cfg)
+
+	p.lockFile.Dependencies = buildList
+	if err := p.WriteLockfile(); err != nil {
+		return err
+	}
+
+	return p.writeConfig(p.config)
 }
 
 func (p *Project) writeConfig(cfg config.Config) (err error) {

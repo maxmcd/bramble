@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -256,6 +257,12 @@ func TestDep(t *testing.T) {
 					if err := app.Run([]string{"bramble", "build", "--just-parse", "./..."}); err != nil {
 						return err
 					}
+					f, err := os.Open(loc + "/bramble.lock")
+					if err != nil {
+						fmt.Println(err)
+					}
+					io.Copy(os.Stdout, f)
+
 				}
 				{
 					app := cliApp(".")

@@ -121,23 +121,32 @@ func (p *Project) scanForLoadNames() (moduleNames []string, err error) {
 }
 
 // TODO: function that takes load() argument values and references the config and pulls down the needed version
-func (p *Project) findOrDownloadModulePath(ctx context.Context, module string) (path string, err error) {
-	if strings.HasPrefix(module, p.config.Package.Name) {
-		path = module[len(p.config.Package.Name):]
+func (p *Project) findOrDownloadModulePath(ctx context.Context, pkg string) (path string, err error) {
+	if strings.HasPrefix(pkg, p.config.Package.Name) {
+		path = pkg[len(p.config.Package.Name):]
 		path = filepath.Join(p.location, path)
 		return path, nil
 	}
-	cd, found := p.config.Dependencies[module]
+	cd, found := p.doesModulePackageExist(pkg)
 	if !found {
-		return "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", module)
+		return "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", pkg)
 	}
 	if cd.Path != "" {
 		// TODO: Does this actually work
 		// TODO: cd.Path must be relative?
 		return filepath.Join(p.location, cd.Path), nil
 	}
-	path, err = p.dm.PackagePathOrDownload(ctx, types.Package{Name: module, Version: cd.Version})
+	path, err = p.dm.PackagePathOrDownload(ctx, types.Package{Name: pkg, Version: cd.Version})
 	return path, err
+}
+
+func (p *Project) doesModulePackageExist(pkg string) (config.Dependency, bool) {
+	// TODO: check for packages that could containt this module
+	if d, ok := p.config.Dependencies[pkg]; ok {
+		return d, ok
+	}
+	d, ok := p.lockFile.Dependencies[pkg]
+	return d, ok
 }
 
 func (p *Project) moduleInProject(module string) bool {

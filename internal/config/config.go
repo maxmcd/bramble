@@ -165,9 +165,6 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	lockFile.lock.Lock()
 	defer lockFile.lock.Unlock()
-	if !lockFile.changed {
-		return nil
-	}
 
 	// Get lock on lockfile
 	done, err := getConfigLock(dir)
@@ -189,26 +186,26 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	if _, err := toml.DecodeReader(f, &lf); err != nil {
 		return err
 	}
-	if reflect.DeepEqual(lockFile.URLHashes, lf.URLHashes) {
-		return nil
-	}
-
-	_ = f.Truncate(0)
-	_, _ = f.Seek(0, 0)
-	for url, hash := range lockFile.URLHashes {
-		if v, ok := lf.URLHashes[url]; ok && v != hash {
-			return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+	if !reflect.DeepEqual(lockFile.URLHashes, lf.URLHashes) {
+		_ = f.Truncate(0)
+		_, _ = f.Seek(0, 0)
+		for url, hash := range lockFile.URLHashes {
+			if v, ok := lf.URLHashes[url]; ok && v != hash {
+				return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+			}
+			lf.URLHashes[url] = hash
 		}
-		lf.URLHashes[url] = hash
 	}
+	lf.Dependencies = lockFile.Dependencies
 
 	return toml.NewEncoder(f).Encode(&lf)
 }
 
 type LockFile struct {
 	URLHashes map[string]string
-	changed   bool
 	lock      sync.RWMutex
+
+	Dependencies map[string]Dependency
 }
 
 var _ types.LockfileWriter = new(LockFile)
@@ -227,7 +224,6 @@ func (l *LockFile) AddEntry(k, v string) error {
 			l.URLHashes = map[string]string{}
 		}
 		l.URLHashes[k] = v
-		l.changed = true
 	}
 	return nil
 }

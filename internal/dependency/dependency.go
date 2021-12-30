@@ -117,25 +117,25 @@ func (dm *Manager) localPackageDependencies(pkg types.Package) (vs []types.Packa
 	return configVersions(cfg), nil
 }
 
-func (dm *Manager) CalculateConfigBuildlist(ctx context.Context, cfg config.Config) (config.Config, error) {
+func (dm *Manager) CalculateConfigBuildlist(ctx context.Context, cfg config.Config) (map[string]config.Dependency, error) {
 	versions, err := mvs.BuildList(
 		mvsVersionFromPackage(types.Package{Name: cfg.Package.Name, Version: cfg.Package.Version}),
 		dm.reqs(cfg),
 	)
 	if err != nil {
-		return config.Config{}, err
+		return nil, err
 	}
 
-	cfg.Dependencies = make(map[string]config.Dependency)
+	buildList := make(map[string]config.Dependency)
 	for _, version := range versions {
 		v := packageFromMVSVersion(version)
 		if v.Name == cfg.Package.Name {
 			continue
 		}
 		// Support path overrides
-		cfg.Dependencies[v.Name] = config.Dependency{Version: v.Version}
+		buildList[v.Name] = config.Dependency{Version: v.Version}
 	}
-	return cfg, nil
+	return buildList, nil
 }
 
 func (dm *Manager) remotePackageDependencies(ctx context.Context, m types.Package) (vs []types.Package, err error) {
