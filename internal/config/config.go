@@ -158,12 +158,6 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		}
 		defer f.Close()
 		_, err = toml.DecodeReader(io.TeeReader(f, os.Stdout), &lockFile)
-		for name, d := range lockFile.Dependencies {
-			if d.Version == "" {
-				fmt.Println(name, d)
-				panic("hi")
-			}
-		}
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }
@@ -192,9 +186,9 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	if _, err := toml.DecodeReader(f, &lf); err != nil {
 		return err
 	}
+	_ = f.Truncate(0)
+	_, _ = f.Seek(0, 0)
 	if !reflect.DeepEqual(lockFile.URLHashes, lf.URLHashes) {
-		_ = f.Truncate(0)
-		_, _ = f.Seek(0, 0)
 		for url, hash := range lockFile.URLHashes {
 			if v, ok := lf.URLHashes[url]; ok && v != hash {
 				return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
@@ -203,6 +197,7 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 		}
 	}
 	lf.Dependencies = lockFile.Dependencies
+	fmt.Println(dir)
 	lockFile.Render(f)
 	return nil
 }
@@ -226,6 +221,9 @@ func (lf *LockFile) Render(w io.Writer) {
 			fxt.Fprintfln(w, "%q = %q", key, lf.URLHashes[key])
 		}
 	}
+	if len(lf.Dependencies) == 0 {
+		return
+	}
 	fmt.Fprintln(w)
 	{
 		fmt.Fprintln(w, "[Dependencies]")
@@ -243,27 +241,27 @@ func (lf *LockFile) Render(w io.Writer) {
 
 var _ types.LockfileWriter = new(LockFile)
 
-func (l *LockFile) AddEntry(k, v string) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	oldV, found := l.URLHashes[k]
+func (lf *LockFile) AddEntry(k, v string) error {
+	lf.lock.Lock()
+	defer lf.lock.Unlock()
+	oldV, found := lf.URLHashes[k]
 	if found && oldV != v {
 		return errors.Errorf(
 			"Existing lockfile entry found for %q, old hash %q does not equal new has value %q",
 			k, oldV, v)
 	}
 	if !found {
-		if l.URLHashes == nil {
-			l.URLHashes = map[string]string{}
+		if lf.URLHashes == nil {
+			lf.URLHashes = map[string]string{}
 		}
-		l.URLHashes[k] = v
+		lf.URLHashes[k] = v
 	}
 	return nil
 }
 
-func (l *LockFile) LookupEntry(k string) (v string, found bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	v, found = l.URLHashes[k]
+func (lf *LockFile) LookupEntry(k string) (v string, found bool) {
+	lf.lock.RLock()
+	defer lf.lock.RUnlock()
+	v, found = lf.URLHashes[k]
 	return v, found
 }
