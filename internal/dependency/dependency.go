@@ -60,6 +60,10 @@ func (dd dir) localPackageLocation(pkg types.Package) (path string) {
 	return dd.join("src", pkg.String())
 }
 
+func (dm *Manager) LocalPackageLocation(pkg types.Package) (path string) {
+	return dm.dir.join("src", pkg.String())
+}
+
 func (dm *Manager) PackagePathOrDownload(ctx context.Context, pkg types.Package) (path string, err error) {
 	path = dm.dir.localPackageLocation(pkg)
 	if fileutil.DirExists(path) {
@@ -329,9 +333,6 @@ func (dc *dependencyClient) findPackageFromModuleName(ctx context.Context, name 
 }
 
 func (dd dir) findPackageFromModuleName(module string) (name string, vs []string, err error) {
-	if module == "fourth/nested" {
-		fmt.Println("hi")
-	}
 	for _, n := range possiblePackageVariants(module) {
 		vs, err := dd.localPackageVersions(n)
 		if err != nil {
@@ -354,7 +355,6 @@ func (dm *Manager) FindPackageFromModuleName(ctx context.Context, module string,
 	if err != nil && err != os.ErrNotExist {
 		return "", nil, err
 	}
-	fmt.Println(name, vs)
 	matchingVersion := func() bool {
 		for _, v := range vs {
 			if v == version {
@@ -473,7 +473,7 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 
 		// Run job
 		go func() {
-			_, err := buildJob(c.Request.Context(), job, dependencyDir, newBuilder, downloadGithubRepo)
+			_, _, err := buildJob(c.Request.Context(), job.Package, dependencyDir, newBuilder, downloadGithubRepo)
 			jq.End(job.ID, err)
 		}()
 
@@ -532,10 +532,17 @@ func serverHandler(dependencyDir string, newBuilder types.NewBuilder, downloadGi
 	return router
 }
 
-func buildJob(ctx context.Context, job *Job, dependencyDir string, newBuilder types.NewBuilder, downloadGithubRepo func(url string, reference string) (location string, err error)) (builtDerivations []string, err error) {
-	loc, err := downloadGithubRepo(job.Package, job.Reference)
+func buildJob(ctx context.Context,
+	repo string,
+	dependencyDir string,
+	newBuilder types.NewBuilder,
+	downloadGithubRepo func(url string, reference string) (location string, err error)) (
+	builtDerivations []string,
+	pkgs []types.Package,
+	err error) {
+	loc, err := downloadGithubRepo(repo, "")
 	if err != nil {
-		return nil, errors.Wrap(err, "error downloading git repo")
+		return nil, nil, errors.Wrap(err, "error downloading git repo")
 	}
 	builder, err := newBuilder(loc)
 	if err != nil {
@@ -547,12 +554,13 @@ func buildJob(ctx context.Context, job *Job, dependencyDir string, newBuilder ty
 		if err != nil {
 			panic(loc + " - " + path)
 		}
-		expectedPackageName := strings.TrimSuffix(job.Package+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
+		expectedPackageName := strings.TrimSuffix(repo+"/"+strings.Trim(strings.TrimPrefix(rel, "."), "/"), "/")
 		if expectedPackageName != pkg.Name {
-			return nil, errors.Errorf("package name %q does not match the location the project was fetched from: %q",
+			return nil, nil, errors.Errorf("package name %q does not match the location the project was fetched from: %q",
 				pkg.Name,
 				expectedPackageName)
 		}
+		pkgs = append(pkgs, pkg)
 	}
 	toRun := []func() error{}
 	// Build each package in the repository
@@ -560,7 +568,7 @@ func buildJob(ctx context.Context, job *Job, dependencyDir string, newBuilder ty
 		fmt.Println("Building package", path, pkg)
 		resp, err := builder.Build(ctx, path, []string{"./..."}, types.BuildOptions{Check: true})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, drvFilename := range resp.FinalHashMapping {
 			builtDerivations = append(builtDerivations, drvFilename)
@@ -580,19 +588,19 @@ func buildJob(ctx context.Context, job *Job, dependencyDir string, newBuilder ty
 	// before writing packages to the store
 	for _, tr := range toRun {
 		if err = tr(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return builtDerivations, nil
+	return builtDerivations, pkgs, nil
 }
 
 func ServerHandler(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) http.Handler {
 	return serverHandler(dependencyDir, newBuilder, dgr)
 }
 
-func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(context.Context, *Job) ([]string, error) {
-	return func(ctx context.Context, job *Job) ([]string, error) {
-		return buildJob(ctx, job, dependencyDir, newBuilder, dgr)
+func Builder(dependencyDir string, newBuilder types.NewBuilder, dgr types.DownloadGithubRepo) func(context.Context, string) ([]string, []types.Package, error) {
+	return func(ctx context.Context, pkg string) ([]string, []types.Package, error) {
+		return buildJob(ctx, pkg, dependencyDir, newBuilder, dgr)
 	}
 }
 
@@ -609,6 +617,9 @@ func DownloadGithubRepo(url string, reference string) (location string, err erro
 	git clone %s %s
 	cd %s`, url, location, location)
 	if reference != "" {
+		// TODO: remove, we should not allow fetches of git repos at references.
+		// Otherwise it would be difficult to stage upcoming changes on a public
+		// branch.
 		script += fmt.Sprintf("\ngit checkout %s", reference)
 	}
 	// script += "\nrm -rf ./.git"

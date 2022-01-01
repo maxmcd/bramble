@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/pkg/errors"
-	"github.com/rlmcpherson/s3gof3r"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
@@ -317,11 +315,6 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	return filename, ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
 
-type CacheClient interface {
-	PostDerivation(context.Context, Derivation) (string, error)
-	PostOutput(ctx context.Context, hash string, body io.Reader) error
-}
-
 func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc CacheClient) (err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.UploadDerivationsToCache")
@@ -338,7 +331,12 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	group.Go(func() error {
 		for _, d := range derivations {
 			drv := d // copy
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return context.Canceled
+			}
+
 			group.Go(func() error {
 				// Normalize them with the fixed prefix path
 				normalized, err := s.normalizeDerivation(drv)
@@ -352,9 +350,11 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 				// Loop through outputs and post them
 				for _, output := range normalized.Outputs {
 					r, w := io.Pipe()
+					defer r.Close()
+					defer w.Close()
 					group.Go(func() error {
 						bufWriter := bufio.NewWriter(w)
-						if err := reptar.Archive(s.joinStorePath(output.Path), bufWriter); err != nil {
+						if err := reptar.GzipArchive(s.joinStorePath(output.Path), bufWriter); err != nil {
 							return err
 						}
 						if err := bufWriter.Flush(); err != nil {
@@ -363,11 +363,8 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 						return w.Close()
 					})
 					if err := cc.PostOutput(ctx, output.Path, r); err != nil {
-						return nil
+						return err
 					}
-					// If we exit early, ensure writing stops. Don't check the
-					// error in case we've already closed the pipe
-					_ = r.Close()
 				}
 				<-sem
 				return nil
@@ -376,99 +373,4 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 		return nil
 	})
 	return group.Wait()
-}
-
-type S3CacheClient struct {
-	bucket *s3gof3r.Bucket
-}
-
-var _ CacheClient = new(S3CacheClient)
-
-func NewS3CacheClient(accessKeyID, secretAccessKey, hostname string) CacheClient {
-	keys := s3gof3r.Keys{
-		AccessKey: accessKeyID,
-		SecretKey: secretAccessKey,
-	}
-	os.Setenv("AWS_REGION", " ")
-	s3 := s3gof3r.New(hostname, keys)
-	return &S3CacheClient{bucket: s3.Bucket("bramble")}
-}
-
-// func fileUpload(s3 *simples3.S3, body *bytes.Buffer, ui simples3.UploadInput, info string) error {
-// 	checkIt := "https://store.bramble.run/" + ui.ObjectKey
-// 	fmt.Println("Uploading", info)
-// 	resp, err := http.Head(checkIt)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer resp.Body.Close()
-// 	switch resp.StatusCode {
-// 	case http.StatusNotFound:
-// 	case http.StatusOK:
-// 		return nil
-// 	default:
-// 		var buf bytes.Buffer
-// 		if resp.Body != nil {
-// 			_, _ = io.Copy(&buf, resp.Body)
-// 		}
-// 		return errors.Errorf("unexpected response code %d for url %q: %s", resp.StatusCode, checkIt, buf.String())
-// 	}
-// 	// TODO: Could reduce memory overhead here
-// 	buf := &bytes.Buffer{}
-// 	w := gzip.NewWriter(buf)
-// 	if _, err := io.Copy(w, bytes.NewBuffer(body.Bytes())); err != nil {
-// 		return err
-// 	}
-// 	if err := w.Close(); err != nil {
-// 		return err
-// 	}
-
-// 	ui.Body = fakeSizeSeeker{buf: body}
-// 	if _, err := s3.FileUpload(ui); err != nil {
-// 		return err
-// 	}
-
-// 	ui.Body = fakeSizeSeeker{buf: buf}
-// 	ui.FileName += ".gz"
-// 	ui.ObjectKey += ".gz"
-// 	if _, err := s3.FileUpload(ui); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
-func aclPublic(h http.Header, acl string) http.Header {
-	h.Set("x-amz-acl", acl)
-	return h
-}
-
-func (cc *S3CacheClient) putWriter(path string) (w io.WriteCloser, err error) {
-	return cc.bucket.PutWriter(path, aclPublic(http.Header{}, "public-read"), &s3gof3r.Config{
-		Client:   http.DefaultClient,
-		Scheme:   "https",
-		Md5Check: false,
-	})
-}
-
-func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
-	filename := drv.Filename()
-	w, err := cc.putWriter("derivation/" + drv.Filename())
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-	if _, err := w.Write([]byte(drv.JSON())); err != nil {
-		return "", errors.WithStack(err)
-	}
-	return filename, w.Close()
-}
-
-func (cc *S3CacheClient) PostOutput(ctx context.Context, hash string, body io.Reader) error {
-	w, err := cc.putWriter("output/" + hash)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if _, err := io.Copy(w, body); err != nil {
-		return errors.WithStack(err)
-	}
-	return w.Close()
 }

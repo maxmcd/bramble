@@ -9,7 +9,9 @@ require (
 	github.com/charmbracelet/bubbletea v0.15.0
 	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/containerd/console v1.0.3
+	github.com/github/s3gof3r v0.5.1-0.20211005153117-6a626f03bafa
 	github.com/julienschmidt/httprouter v1.3.0
+	github.com/klauspost/pgzip v1.2.4
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/minio/sha256-simd v1.0.0
@@ -17,7 +19,6 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6
 	github.com/opencontainers/runc v1.0.3
 	github.com/pkg/errors v0.9.1
-	github.com/rlmcpherson/s3gof3r v0.5.1-0.20170210004045-864ae0bf7cf2
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli/v2 v2.3.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.25.0
@@ -30,6 +31,7 @@ require (
 	golang.org/x/mod v0.4.2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
+	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 	gotest.tools/v3 v3.0.3 // indirect
 )
 

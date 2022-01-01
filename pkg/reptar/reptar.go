@@ -2,6 +2,7 @@ package reptar
 
 import (
 	"archive/tar"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/klauspost/pgzip"
 	"github.com/pkg/errors"
 )
 
@@ -110,13 +112,32 @@ func Archive(location string, out io.Writer) (err error) {
 	return tw.Close()
 }
 
+func GzipArchive(location string, out io.Writer) error {
+	writer := pgzip.NewWriter(out)
+	if err := Archive(location, writer); err != nil {
+		return err
+	}
+	return writer.Close()
+}
+
 func isSymlink(fi os.FileInfo) bool {
 	return fi.Mode()&os.ModeSymlink != 0
 }
 
+func GzipUnarchive(in io.Reader, location string) error {
+	reader, err := pgzip.NewReader(in)
+	if err != nil {
+		return err
+	}
+	return Unarchive(reader, location)
+}
+
 func Unarchive(in io.Reader, location string) error {
 	reader := tar.NewReader(in)
-	madeDir := map[string]bool{}
+	madeDir := map[string]struct{}{}
+
+	bufWriter := bufio.NewWriter(nil)
+
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
@@ -134,7 +155,7 @@ func Unarchive(in io.Reader, location string) error {
 			if err := os.MkdirAll(abs, 0755); err != nil {
 				return err
 			}
-			madeDir[abs] = true
+			madeDir[abs] = struct{}{}
 		case os.ModeSymlink:
 			if err := os.Symlink(header.Linkname, abs); err != nil {
 				return err
@@ -145,18 +166,22 @@ func Unarchive(in io.Reader, location string) error {
 			}
 		default:
 			dir := filepath.Dir(abs)
-			if !madeDir[dir] {
+			if _, found := madeDir[dir]; !found {
 				if err := os.MkdirAll(dir, 0755); err != nil {
 					return err
 				}
-				madeDir[dir] = true
+				madeDir[dir] = struct{}{}
 			}
 			wf, err := os.OpenFile(abs, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode.Perm())
 			if err != nil {
 				return errors.WithStack(err)
 			}
+			bufWriter.Reset(wf)
 			var n int64
-			if n, err = io.Copy(wf, reader); err != nil {
+			if n, err = io.Copy(bufWriter, reader); err != nil {
+				return errors.WithStack(err)
+			}
+			if err := bufWriter.Flush(); err != nil {
 				return errors.WithStack(err)
 			}
 			if err := wf.Close(); err != nil {
@@ -167,5 +192,4 @@ func Unarchive(in io.Reader, location string) error {
 			}
 		}
 	}
-
 }

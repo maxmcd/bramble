@@ -353,7 +353,7 @@ their public functions with documentation. If an immediate subdirectory has a
 			},
 			{
 				Name:      "publish",
-				UsageText: `bramble publish package [reference]`,
+				UsageText: `bramble publish <package>`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "url",
@@ -379,56 +379,13 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) > 2 {
 						return errors.New("bramble publish takes at most two arguments")
 					}
-					module := args[0]
-					reference := ""
-					if len(args) == 2 {
-						reference = args[1]
-					}
-
-					if c.Bool("local") {
-						// TODO: add build cache handler to this server
-						s, err := store.NewStore("")
-						if err != nil {
-							return err
-						}
-						builder := dependency.Builder(filepath.Join(s.BramblePath, "var/dependencies"),
-							newBuilder(s),
-							dependency.DownloadGithubRepo,
-						)
-						builtDerivations, err := builder(c.Context, &dependency.Job{
-							Package:   module,
-							Reference: reference,
-						})
-						if err != nil {
-							return err
-						}
-						if c.Bool("upload") {
-							var drvs []store.Derivation
-							for _, drvFilename := range builtDerivations {
-								drv, _, err := s.LoadDerivation(drvFilename)
-								if err != nil {
-									return errors.Wrap(err, "error loading derivation from store")
-								}
-								drvs = append(drvs, drv)
-							}
-							cc := store.NewS3CacheClient(
-								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
-								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"),
-								"nyc3.digitaloceanspaces.com",
-							)
-							fmt.Printf("Uploading %d derivations\n", len(drvs))
-							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
-								return err
-							}
-						}
-						return nil
-					}
-
-					url := "https://store.bramble.run"
-					if u := c.String("url"); u != "" {
-						url = u
-					}
-					return dependency.PostJob(c.Context, url, module, reference)
+					pkg := args[0]
+					return publish(c.Context, publishOptions{
+						pkg:    pkg,
+						local:  c.Bool("local"),
+						upload: c.Bool("upload"),
+						url:    c.String("url"),
+					}, dependency.DownloadGithubRepo, nil)
 				},
 			},
 			{
