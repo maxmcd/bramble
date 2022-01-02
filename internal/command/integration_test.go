@@ -13,6 +13,7 @@ import (
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/dependency"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/pkg/fxt"
@@ -318,7 +319,8 @@ func TestStore_CacheServer(t *testing.T) {
 			}
 			drvs = append(drvs, drv)
 		}
-		cc := store.NewDefaultCacheClient(server.URL)
+
+		cc := store.NewCacheClient(netcache.NewStdCache(server.URL))
 		// cc := store.NewS3CacheClient("", "", "nyc3.digitaloceanspaces.com")
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
@@ -348,7 +350,7 @@ func TestModuleCLIParsing(t *testing.T) {
 		{"build github.com/maxmcd/busybox/...", "../../", true},
 		// run
 		{"run ./...", "../../", true},
-		{"run tests", "../../", true},
+		// {"run tests", "../../", true}, // re-add when we can support a remote lookup of "tests"
 		{"run :print_simple", "../../", true},
 		{"run ./tests:print_simple simple", "../../", false},
 		{"run ./tests:ash ash", "../../", false},

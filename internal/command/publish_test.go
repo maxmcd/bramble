@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maxmcd/bramble/internal/store"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/pkg/s3test"
 )
 
@@ -45,9 +45,13 @@ version = "0.0.2"`
 
 func TestPublish(t *testing.T) {
 	server := s3test.StartServer(t, ":0")
-	cc := store.NewS3CacheClient(" ", " ", server.Hostname())
-	cc.PathStyle = true
-	cc.Scheme = "http"
+
+	cacheClient := netcache.NewDoCache("", "", server.Hostname())
+	{
+		// Needed for our test server
+		cacheClient.(*netcache.DOCache).PathStyle = true
+		cacheClient.(*netcache.DOCache).Scheme = "http"
+	}
 
 	if err := publish(context.Background(), publishOptions{
 		pkg:    "github.com/maxmcd/busybox",
@@ -59,7 +63,7 @@ func TestPublish(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(location, "bramble.lock"), []byte(lock), 0755)
 		_ = os.WriteFile(filepath.Join(location, "default.bramble"), []byte(main), 0755)
 		return location, nil
-	}, cc); err != nil {
+	}, cacheClient); err != nil {
 		t.Fatal(err)
 	}
 }

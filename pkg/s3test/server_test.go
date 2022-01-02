@@ -10,7 +10,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/github/s3gof3r"
+	"github.com/rlmcpherson/s3gof3r"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/internal/config"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
@@ -26,11 +27,11 @@ func pkg(m string, deps ...string) func() (string, []string) {
 }
 
 func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config, *Manager) {
-	dm := &Manager{dir: dir(t.TempDir())}
+	dm := &Manager{dependencyDirectory: dependencyDirectory(t.TempDir())}
 	var returnedConfig config.Config
 	for i, dep := range deps {
 		pkg, deps := dep()
-		if err := os.MkdirAll(dm.dir.join("src", pkg), 0755); err != nil {
+		if err := os.MkdirAll(dm.dependencyDirectory.join("src", pkg), 0755); err != nil {
 			t.Fatal(err)
 		}
 		parts := strings.Split(pkg, "@")
@@ -46,7 +47,7 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 			name, version := parts[0], parts[1]
 			cfg.Dependencies[name] = config.Dependency{Version: version}
 		}
-		f, err := os.Create(dm.dir.join("src", pkg, "bramble.toml"))
+		f, err := os.Create(dm.dependencyDirectory.join("src", pkg, "bramble.toml"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -144,7 +145,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 }
 
 func (dm *Manager) deleteHalfDeps(t *testing.T) {
-	list, err := filepath.Glob(dm.dir.join("src", "*"))
+	list, err := filepath.Glob(dm.dependencyDirectory.join("src", "*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,11 +170,12 @@ func TestDMReqsRemote(t *testing.T) {
 			// partially present subset
 			localDM.deleteHalfDeps(t)
 
-			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
+			server := httptest.NewServer(ServerHandler(string(remoteDM.dependencyDirectory), nil, nil))
 
 			localDM.dependencyClient = &dependencyClient{
-				client: &http.Client{},
-				host:   server.URL,
+				client:      &http.Client{},
+				host:        server.URL,
+				cacheClient: netcache.NewStdCache(server.URL),
 			}
 
 			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs(cfg))
@@ -197,11 +199,12 @@ func TestDMPathOrDownload(t *testing.T) {
 	remoteCFG, remoteDM := blogScenario(t)
 	_, localDM := testDepMgr(t) // no deps
 
-	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
+	server := httptest.NewServer(ServerHandler(string(remoteDM.dependencyDirectory), nil, nil))
 
 	localDM.dependencyClient = &dependencyClient{
-		client: &http.Client{},
-		host:   server.URL,
+		client:      &http.Client{},
+		host:        server.URL,
+		cacheClient: netcache.NewStdCache(server.URL),
 	}
 
 	path, err := localDM.PackagePathOrDownload(context.Background(), types.Package{"A", "1.1.0"})
@@ -346,9 +349,11 @@ func TestPushJob(t *testing.T) {
 	if err := PostJob(context.Background(), server.URL, "x.y/z", ""); err != nil {
 		t.Fatal(err)
 	}
+
 	dc := &dependencyClient{
-		host:   server.URL,
-		client: &http.Client{},
+		host:        server.URL,
+		client:      &http.Client{},
+		cacheClient: netcache.NewStdCache(server.URL),
 	}
 	for _, m := range tb.packages {
 		{
@@ -356,15 +361,15 @@ func TestPushJob(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, cfg.Package.Name, m.Name)
-			assert.Equal(t, cfg.Package.Version, m.Version)
+			assert.Equal(t, cfg.Config.Package.Name, m.Name)
+			assert.Equal(t, cfg.Config.Package.Version, m.Version)
 		}
 		{
-			body, err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			loc := t.TempDir()
+			err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version}, loc)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_ = body
 		}
 	}
 }

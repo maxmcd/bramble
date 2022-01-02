@@ -25,6 +25,7 @@ func newBramble(wd string, bramblePath string) (b bramble, err error) {
 		dependency.NewManager(
 			filepath.Join(b.store.BramblePath, "var/dependencies"),
 			"https://store.bramble.run",
+			nil,
 		),
 	)
 	return b, nil

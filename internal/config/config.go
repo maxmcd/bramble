@@ -135,7 +135,7 @@ func ParseConfig(r io.Reader) (cfg Config, err error) {
 	return cfg, nil
 }
 
-func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
+func ReadConfigs(dir string) (cfg Config, lockFile *Lockfile, err error) {
 	{
 		bDotToml := filepath.Join(dir, "bramble.toml")
 		cfg, err = ReadConfig(bDotToml)
@@ -150,19 +150,19 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		lockFileLocation := filepath.Join(dir, "bramble.lock")
 		if !fileutil.FileExists(lockFileLocation) {
 			// Don't read the lockfile if we don't have one
-			return cfg, &LockFile{}, err
+			return cfg, &Lockfile{}, err
 		}
 		f, err := os.Open(lockFileLocation)
 		if err != nil {
 			return cfg, lockFile, errors.Wrapf(err, "error opening lockfile %q", lockFileLocation)
 		}
 		defer f.Close()
-		_, err = toml.DecodeReader(io.TeeReader(f, os.Stdout), &lockFile)
+		_, err = toml.DecodeReader(f, &lockFile)
 		return cfg, lockFile, errors.Wrapf(err, "error decoding lockfile %q", lockFileLocation)
 	}
 }
 
-func WriteLockfile(lockFile *LockFile, dir string) (err error) {
+func WriteLockfile(lockFile *Lockfile, dir string) (err error) {
 	lockFile.lock.Lock()
 	defer lockFile.lock.Unlock()
 
@@ -180,7 +180,7 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	lf := LockFile{
+	lf := Lockfile{
 		URLHashes: map[string]string{},
 	}
 	if _, err := toml.DecodeReader(f, &lf); err != nil {
@@ -197,19 +197,18 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 		}
 	}
 	lf.Dependencies = lockFile.Dependencies
-	fmt.Println(dir)
 	lockFile.Render(f)
 	return nil
 }
 
-type LockFile struct {
+type Lockfile struct {
 	URLHashes map[string]string
 	lock      sync.RWMutex
 
 	Dependencies map[string]Dependency
 }
 
-func (lf *LockFile) Render(w io.Writer) {
+func (lf *Lockfile) Render(w io.Writer) {
 	var keys []string
 	{
 		fmt.Fprintln(w, "[URLHashes]")
@@ -239,9 +238,9 @@ func (lf *LockFile) Render(w io.Writer) {
 	}
 }
 
-var _ types.LockfileWriter = new(LockFile)
+var _ types.LockfileWriter = new(Lockfile)
 
-func (lf *LockFile) AddEntry(k, v string) error {
+func (lf *Lockfile) AddEntry(k, v string) error {
 	lf.lock.Lock()
 	defer lf.lock.Unlock()
 	oldV, found := lf.URLHashes[k]
@@ -259,9 +258,14 @@ func (lf *LockFile) AddEntry(k, v string) error {
 	return nil
 }
 
-func (lf *LockFile) LookupEntry(k string) (v string, found bool) {
+func (lf *Lockfile) LookupEntry(k string) (v string, found bool) {
 	lf.lock.RLock()
 	defer lf.lock.RUnlock()
 	v, found = lf.URLHashes[k]
 	return v, found
+}
+
+type ConfigAndLockfile struct {
+	Lockfile *Lockfile
+	Config   Config
 }

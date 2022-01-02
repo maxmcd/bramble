@@ -32,7 +32,7 @@ type Project struct {
 
 	wd string
 
-	lockFile *config.LockFile
+	lockFile *config.Lockfile
 
 	dm *dependency.Manager
 }

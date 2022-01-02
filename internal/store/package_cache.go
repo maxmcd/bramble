@@ -10,19 +10,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/github/s3gof3r"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/httpx"
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
-
-type CacheClient interface {
-	PostDerivation(context.Context, Derivation) (string, error)
-	PostOutput(ctx context.Context, hash string, body io.Reader) error
-	ObjectWriter(ctx context.Context, key string) (io.WriteCloser, error)
-}
 
 func (s *Store) CacheServer() http.Handler {
 	router := httpx.New()
@@ -45,7 +39,7 @@ func (s *Store) CacheServer() http.Handler {
 		}
 		return nil
 	})
-	router.POST("/derivation", func(c httpx.Context) (err error) {
+	router.POST("/derivation/:filename", func(c httpx.Context) (err error) {
 		var drv Derivation
 		if err := json.NewDecoder(c.Request.Body).Decode(&drv); err != nil {
 			return httpx.ErrNotAcceptable(err)
@@ -61,11 +55,8 @@ func (s *Store) CacheServer() http.Handler {
 		fmt.Fprint(c.ResponseWriter, filename)
 		return nil
 	})
-	router.POST("/output", func(c httpx.Context) (err error) {
-		hash := c.Request.URL.Query().Get("hash")
-		if hash == "" {
-			return httpx.ErrNotAcceptable(errors.New("the 'hash' query parameter is required"))
-		}
+	router.POST("/output/:hash", func(c httpx.Context) (err error) {
+		hash := c.Params.ByName("hash")
 		tempDir, err := os.MkdirTemp("", "")
 		if err != nil {
 			return err
@@ -88,12 +79,63 @@ func (s *Store) CacheServer() http.Handler {
 	return router
 }
 
+func NewCacheClient(client netcache.Client) CacheClient {
+	return CacheClient{client}
+}
+
+type CacheClient struct {
+	client netcache.Client
+}
+
+func (cc CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
+	filename := drv.Filename()
+	writer, err := cc.client.Put(ctx, "derivation/"+filename)
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	if _, err := writer.Write([]byte(drv.JSON())); err != nil {
+		return "", errors.WithStack(err)
+	}
+	return filename, writer.Close()
+}
+
+func (cc CacheClient) PostOutput(ctx context.Context, hash string, body io.Reader) error {
+	w, err := cc.client.Put(ctx, "output/"+hash)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if _, err := io.Copy(w, body); err != nil {
+		return errors.WithStack(err)
+	}
+	return errors.WithStack(w.Close())
+}
+
+func (cc CacheClient) GetOutput(ctx context.Context, hash string) (body io.ReadCloser, exists bool, err error) {
+	w, err := cc.client.Get(ctx, "output/"+hash)
+	if err != nil {
+		if _, ok := err.(netcache.ErrNotFound); ok {
+			return nil, false, nil
+		}
+		return nil, false, errors.WithStack(err)
+	}
+	return w, true, nil
+}
+
+func (cc CacheClient) GetDerivation(ctx context.Context, filename string) (drv Derivation, exists bool, err error) {
+	w, err := cc.client.Get(ctx, "derivation/"+filename)
+	if err != nil {
+		if _, ok := err.(netcache.ErrNotFound); ok {
+			return Derivation{}, false, nil
+		}
+		return Derivation{}, false, errors.WithStack(err)
+	}
+	return drv, true, json.NewDecoder(w).Decode(drv)
+}
+
 type DefaultCacheClient struct {
 	host   string
 	client *http.Client
 }
-
-var _ CacheClient = new(DefaultCacheClient)
 
 func NewDefaultCacheClient(host string) *DefaultCacheClient {
 	return &DefaultCacheClient{
@@ -156,63 +198,4 @@ func (cc *DefaultCacheClient) GetOutput(ctx context.Context, hash string) (body 
 		return nil, false, nil
 	}
 	return body, true, nil
-}
-
-type S3CacheClient struct {
-	bucket *s3gof3r.Bucket
-
-	Scheme    string
-	PathStyle bool
-}
-
-var _ CacheClient = new(S3CacheClient)
-
-func NewS3CacheClient(accessKeyID, secretAccessKey, hostname string) *S3CacheClient {
-	keys := s3gof3r.Keys{
-		AccessKey: accessKeyID,
-		SecretKey: secretAccessKey,
-	}
-	os.Setenv("AWS_REGION", " ")
-	s3 := s3gof3r.New(hostname, keys)
-	cc := &S3CacheClient{bucket: s3.Bucket("bramble")}
-	cc.Scheme = "https"
-	return cc
-}
-
-func (cc *S3CacheClient) putWriter(path string) (w io.WriteCloser, err error) {
-	h := http.Header{}
-	h.Set("x-amz-acl", "public-read")
-	return cc.bucket.PutWriter(path, h, &s3gof3r.Config{
-		Client:    http.DefaultClient,
-		Scheme:    cc.Scheme,
-		Md5Check:  false,
-		PathStyle: cc.PathStyle,
-	})
-}
-
-func (cc *S3CacheClient) ObjectWriter(ctx context.Context, path string) (writer io.WriteCloser, err error) {
-	return cc.putWriter(path)
-}
-
-func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
-	filename := drv.Filename()
-	w, err := cc.putWriter("derivation/" + filename)
-	if err != nil {
-		return "", errors.Wrap(err, "derivation/"+filename)
-	}
-	if _, err := w.Write([]byte(drv.JSON())); err != nil {
-		return "", errors.WithStack(err)
-	}
-	return filename, w.Close()
-}
-
-func (cc *S3CacheClient) PostOutput(ctx context.Context, hash string, body io.Reader) error {
-	w, err := cc.putWriter("output/" + hash)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if _, err := io.Copy(w, body); err != nil {
-		return errors.WithStack(err)
-	}
-	return w.Close()
 }

@@ -354,7 +354,7 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 					defer w.Close()
 					group.Go(func() error {
 						bufWriter := bufio.NewWriter(w)
-						if err := reptar.GzipArchive(s.joinStorePath(output.Path), bufWriter); err != nil {
+						if err := reptar.Archive(s.joinStorePath(output.Path), bufWriter); err != nil {
 							return err
 						}
 						if err := bufWriter.Flush(); err != nil {

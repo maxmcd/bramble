@@ -27,6 +27,7 @@ type PostResponse struct {
 }
 type Server struct {
 	uploads map[string]*Upload
+	lock    sync.Mutex
 
 	server *httptest.Server
 
@@ -83,7 +84,9 @@ func (s *Server) handler(rw http.ResponseWriter, r *http.Request) (err error) {
 			pr.UploadID, _ = s.newUpload(strings.TrimPrefix(r.URL.Path, "/bramble"))
 		} else {
 			// Existing
+			s.lock.Lock()
 			upload, found := s.uploads[uploadID]
+			s.lock.Unlock()
 			if !found {
 				return errors.New("upload not found ")
 			}
@@ -111,7 +114,9 @@ func (s *Server) handler(rw http.ResponseWriter, r *http.Request) (err error) {
 				panic(err)
 			}
 		}
+		s.lock.Lock()
 		upload, found := s.uploads[uploadID]
+		s.lock.Unlock()
 		if !found {
 			return errors.New("upload not found ")
 		}
@@ -143,7 +148,9 @@ func (s *Server) newUpload(path string) (id string, u *Upload) {
 
 	u.partNumber = 1
 	u.md5OfParts = md5.New()
+	s.lock.Lock()
 	s.uploads[id] = u
+	s.lock.Unlock()
 	return
 }
 
