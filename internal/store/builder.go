@@ -24,7 +24,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/maxmcd/bramble/v/untar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
@@ -234,7 +233,7 @@ func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPat
 		if err != nil {
 			return errors.Wrap(err, "requires gzip-compressed body")
 		}
-		if err = untar.Untar(r, outputPaths["out"]); err != nil {
+		if err = reptar.Unarchive(r, outputPaths["out"]); err != nil {
 			return err
 		}
 		return nil

@@ -49,10 +49,10 @@ func (e ErrFailedRequest) Error() string {
 	return out
 }
 
-func ErrUploading(path, body string) error {
+func errUploading(path, body string) error {
 	return ErrFailedRequest{isPut: true, body: body, path: path}
 }
-func ErrFetching(path, body string) error {
+func errFetching(path, body string) error {
 	return ErrFailedRequest{isPut: false, body: body, path: path}
 }
 
@@ -113,7 +113,7 @@ func (wc wrapperWriteCloser) Write(b []byte) (n int, err error) {
 	}
 	n, err = wc.writeCloser.Write(b)
 	if err != nil {
-		return n, ErrUploading(wc.path, err.Error())
+		return n, errUploading(wc.path, err.Error())
 	}
 	return n, err
 }
@@ -141,7 +141,7 @@ func (c *DOCache) putWriter(ctx context.Context, path string) (putWriter io.Writ
 		PathStyle: c.PathStyle,
 	})
 	if err != nil {
-		return nil, ErrUploading(path, err.Error())
+		return nil, errUploading(path, err.Error())
 	}
 	gzw := pgzip.NewWriter(putWriter)
 	return wrapperWriteCloser{ctx: ctx, path: path, writeCloser: io2.WriterMultiCloser(gzw, gzw, putWriter)}, nil
@@ -151,7 +151,7 @@ func (c *DOCache) Get(ctx context.Context, path string) (body io.ReadCloser, err
 	encodedPath := encodePath(path)
 	req, err := http.NewRequest(http.MethodGet, url2.Join("https://store.bramble.run", encodedPath), nil)
 	if err != nil {
-		return nil, ErrFetching(path, err.Error())
+		return nil, errFetching(path, err.Error())
 	}
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
@@ -244,7 +244,7 @@ func responseError(isPut bool, path string, resp *http.Response, err error) erro
 func (cs *StdCache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
 	req, err := http.NewRequest(http.MethodGet, url2.Join(cs.host, path), nil)
 	if err != nil {
-		return nil, ErrFetching(path, err.Error())
+		return nil, errFetching(path, err.Error())
 	}
 	resp, err := cs.client.Do(req)
 	if err := responseError(false, path, resp, err); err != nil {
