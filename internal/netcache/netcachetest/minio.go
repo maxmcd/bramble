@@ -1,31 +1,45 @@
-package netcache
+package netcachetest
 
 import (
 	"fmt"
 	"go/build"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/pkg/errors"
 )
 
-type minio struct {
-	cmd *exec.Cmd
+// getFreePort asks the kernel for a free open port that is ready to use.
+func getFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-func StartMinio(t *testing.T) Client {
+func StartMinio(t *testing.T) netcache.Client {
 	minioBin := filepath.Join(build.Default.GOPATH, "bin", "minio")
 	mcBin := filepath.Join(build.Default.GOPATH, "bin", "mc")
 	for _, bin := range [][]string{
-		[]string{minioBin, "https://dl.min.io/server/minio/release/linux-amd64/minio"},
-		[]string{mcBin, "https://dl.min.io/client/mc/release/linux-amd64/mc"},
+		{minioBin, "https://dl.min.io/server/minio/release/linux-amd64/minio"},
+		{mcBin, "https://dl.min.io/client/mc/release/linux-amd64/mc"},
 	} {
 		location, url := bin[0], bin[1]
 		if !fileutil.FileExists(location) {
@@ -57,29 +71,41 @@ func StartMinio(t *testing.T) Client {
 		t.Fatal(err)
 	}
 	fmt.Println("Minio state directory:", stateDir)
+
+	addr, err := getFreePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Start server with address and path to bucket for object state
-	cmd := exec.Command(minioBin, "server", "--address", ":9000", "--console-address", ":9001", stateDir)
+	cmd := exec.Command(minioBin, "server",
+		"--address", fmt.Sprintf(":%d", addr),
+		stateDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Pdeathsig: syscall.SIGKILL,
 	}
 
 	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "MINIO_ROOT_USER=root", "MINIO_ROOT_PASSWORD=password")
 	t.Cleanup(func() {
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 	})
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	s3Addr := fmt.Sprint("http://localhost:", addr)
+	fmt.Println("Minio running at", s3Addr)
 	for {
 		if hasExited(cmd) {
 			t.Fatal("process exited unexpectedly")
 		}
-		_, err := http.Get("http://localhost:9000")
+		resp, err := http.Get(s3Addr)
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		if err == nil {
 			// We're up!
 			break
@@ -87,13 +113,13 @@ func StartMinio(t *testing.T) Client {
 		time.Sleep(time.Millisecond * 100)
 	}
 
-	runCommand(t, mcBin, "alias", "set", "local", "http://localhost:9000", "root", "password")
+	runCommand(t, mcBin, "alias", "set", "local", s3Addr, "root", "password")
 	runCommand(t, mcBin, "policy", "set", "download", "local/bramble")
 
-	client, err := NewS3Cache(S3CacheOptions{
+	client, err := netcache.NewS3Cache(netcache.S3CacheOptions{
 		SecretAccessKey: "password",
 		AccessKeyID:     "root",
-		S3url:           "http://localhost:9000",
+		S3url:           s3Addr,
 		PathStyle:       true,
 	})
 	if err != nil {
@@ -103,10 +129,17 @@ func StartMinio(t *testing.T) Client {
 }
 
 func runCommand(t *testing.T, arguments ...string) {
-	cmd := exec.Command(arguments[0], arguments[1:]...)
-	b, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatal(errors.Wrap(err, fmt.Sprint(arguments, " ", string(b))))
+	for {
+		cmd := exec.Command(arguments[0], arguments[1:]...)
+		b, err := cmd.CombinedOutput()
+		if strings.Contains(string(b), "Server not initialized") {
+			time.Sleep(time.Millisecond * 10)
+			continue
+		}
+		if err != nil {
+			t.Fatal(errors.Wrap(err, fmt.Sprint(arguments, " ", string(b))))
+		}
+		return
 	}
 }
 

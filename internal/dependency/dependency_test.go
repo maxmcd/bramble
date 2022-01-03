@@ -11,10 +11,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/netcache"
+	"github.com/maxmcd/bramble/internal/netcache/netcachetest"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
@@ -375,20 +375,33 @@ func TestPushJobAndUpload(t *testing.T) {
 		}
 	}
 	{
-		client := netcache.StartMinio(t)
-		manager := NewManager(dependencyDir, "", client)
-		if err := manager.UploadPackage(ctx, types.Package{
+		XYZ := types.Package{
 			Name:    "x.y/z",
 			Version: "2.0.0",
-		}); err != nil {
+		}
+		client := netcachetest.StartMinio(t)
+		manager := NewManager(dependencyDir, "", client)
+		if err := manager.UploadPackage(ctx, XYZ); err != nil {
 			t.Fatal(err)
 		}
 
 		vs, err := manager.dependencyClient.getPackageVersions(ctx, "x.y/z")
-		time.Sleep(time.Minute)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println(vs)
+		require.Equal(t, vs, []string{"2.0.0"})
+
+		otherManager := NewManager(t.TempDir(), "", client)
+		path, err := otherManager.PackagePathOrDownload(ctx, XYZ)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, _, err := config.ReadConfigs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, cfg.Package.Name, XYZ.Name)
+		assert.Equal(t, cfg.Package.Version, XYZ.Version)
 	}
+
 }

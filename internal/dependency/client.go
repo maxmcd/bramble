@@ -64,7 +64,7 @@ func (dc *dependencyClient) getLogs(ctx context.Context, id string, out io.Write
 }
 
 func (dc *dependencyClient) getPackageVersions(ctx context.Context, name string) (vs []string, err error) {
-	r, err := dc.cacheClient.Get(ctx, "package/"+name)
+	r, err := dc.cacheClient.Get(ctx, "package/versions/"+name)
 	if err != nil {
 		return nil, err
 	}

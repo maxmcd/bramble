@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maxmcd/bramble/internal/netcache"
-	"github.com/maxmcd/bramble/pkg/s3test"
+	"github.com/maxmcd/bramble/internal/netcache/netcachetest"
 )
 
 var (
@@ -44,14 +43,7 @@ version = "0.0.2"`
 )
 
 func TestPublish(t *testing.T) {
-	server := s3test.StartServer(t, ":0")
-
-	cacheClient := netcache.NewDoCache("", "", server.Hostname())
-	{
-		// Needed for our test server
-		cacheClient.(*netcache.DOCache).PathStyle = true
-		cacheClient.(*netcache.DOCache).Scheme = "http"
-	}
+	cacheClient := netcachetest.StartMinio(t)
 
 	if err := publish(context.Background(), publishOptions{
 		pkg:    "github.com/maxmcd/busybox",

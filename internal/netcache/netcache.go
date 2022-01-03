@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
+	stdpath "path"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -58,21 +62,43 @@ func errFetching(path, body string) error {
 	return ErrFailedRequest{isPut: false, body: body, path: path}
 }
 
-var defaultRouter = func() *httprouter.Router {
-	nilHandler := func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		panic("unimplemented")
-	}
-	router := httprouter.New()
-	router.GET("/derivation/:filename", nilHandler)
-	router.GET("/output/:hash", nilHandler)
-	router.POST("/derivation", nilHandler)
-	router.POST("/output", nilHandler)
+type requestLookup struct {
+	router *httprouter.Router
+}
 
-	router.GET("/package/versions/*name", nilHandler)
-	router.GET("/package/sources/*name_version", nilHandler)
-	router.GET("/package/config/*name_version", nilHandler)
-	return router
-}()
+func (r requestLookup) lookup(method, path string) (string, httprouter.Params) {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	handler, params, _ := r.router.Lookup(method, path)
+	if handler == nil {
+		return "", nil
+	}
+	recorder := httptest.NewRecorder()
+	handler(recorder, nil, params)
+	return recorder.Body.String(), params
+}
+
+func newRequestLookup() requestLookup {
+	router := httprouter.New()
+	for _, route := range [][]string{
+		{http.MethodGet, "/derivation/:filename"},
+		{http.MethodGet, "/output/:hash"},
+		{http.MethodPost, "/derivation/:filename"},
+		{http.MethodPost, "/output/:hash"},
+		{http.MethodGet, "/package/versions/*name"},
+		{http.MethodGet, "/package/source/*name_version"},
+		{http.MethodGet, "/package/config/*name_version"},
+	} {
+		method, path := route[0], route[1]
+		handler := func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
+			fmt.Fprint(rw, path)
+		}
+		router.Handle(method, path, handler)
+	}
+
+	return requestLookup{router: router}
+}
 
 type S3CacheOptions struct {
 	AccessKeyID     string
@@ -105,8 +131,11 @@ func NewS3Cache(opt S3CacheOptions) (Client, error) {
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	cc.Scheme = parsed.Scheme
+	cc.S3url = opt.S3url
 	cc.CDNPrefix = opt.CDNPrefix
 	cc.PathStyle = opt.PathStyle
+
+	cc.requestLookup = newRequestLookup()
 	return cc, nil
 }
 
@@ -114,40 +143,12 @@ type S3Cache struct {
 	bucket *s3gof3r.Bucket
 
 	CDNPrefix string
+	S3url     string
 
 	Scheme    string
 	PathStyle bool
-}
 
-type wrapperWriteCloser struct {
-	ctx         context.Context
-	path        string
-	writeCloser io.WriteCloser
-}
-
-func (wc wrapperWriteCloser) Write(b []byte) (n int, err error) {
-	select {
-	case <-wc.ctx.Done():
-		return 0, context.Canceled
-	default:
-	}
-	n, err = wc.writeCloser.Write(b)
-	if err != nil {
-		return n, errUploading(wc.path, err.Error())
-	}
-	return n, err
-}
-
-func (wc wrapperWriteCloser) Close() (err error) {
-	select {
-	case <-wc.ctx.Done():
-		return context.Canceled
-	default:
-	}
-	if err := wc.writeCloser.Close(); err != nil {
-		return &ErrFailedRequest{isPut: true, path: wc.path, body: err.Error()}
-	}
-	return nil
+	requestLookup requestLookup
 }
 
 func (c *S3Cache) putWriter(ctx context.Context, path string) (putWriter io.WriteCloser, err error) {
@@ -167,9 +168,49 @@ func (c *S3Cache) putWriter(ctx context.Context, path string) (putWriter io.Writ
 	return wrapperWriteCloser{ctx: ctx, path: path, writeCloser: io2.WriterMultiCloser(gzw, gzw, putWriter)}, nil
 }
 
+func (c *S3Cache) cdnPrefix() string {
+	if c.CDNPrefix != "" {
+		return c.CDNPrefix
+	}
+	if c.PathStyle {
+		return url2.Join(c.S3url, "bramble")
+	}
+	return c.S3url
+}
+
 func (c *S3Cache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
+	// TODO: cleanup, lots of it
+	matchingPath, params := c.requestLookup.lookup(http.MethodGet, path)
+	if matchingPath == "" {
+		return nil, errors.Errorf("request path %q doesn't match an expected route", path)
+	}
+
+	if matchingPath == "/package/versions/*name" {
+		resp, err := http.Get(url2.Join(c.S3url, "bramble") + "?prefix=" +
+			stdpath.Join("/package/source", params.ByName("name")))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		var result ListBucketResult
+		if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+
+		versions := []string{}
+		for _, result := range result.Contents {
+			unescaped, _ := url.QueryUnescape(result.Key)
+			parts := strings.Split(unescaped, "@")
+			versions = append(versions, parts[1])
+		}
+		var out bytes.Buffer
+		if err := json.NewEncoder(&out).Encode(versions); err != nil {
+			return nil, err
+		}
+		return io.NopCloser(&out), nil
+	}
 	encodedPath := encodePath(path)
-	req, err := http.NewRequest(http.MethodGet, url2.Join("https://store.bramble.run", encodedPath), nil)
+	req, err := http.NewRequest(http.MethodGet, url2.Join(c.cdnPrefix(), encodedPath), nil)
 	if err != nil {
 		return nil, errFetching(path, err.Error())
 	}
@@ -287,4 +328,60 @@ func (cs *StdCache) Put(ctx context.Context, path string) (writer io.WriteCloser
 		pw.Close()
 		return <-errChan
 	}), nil
+}
+
+type ListBucketResult struct {
+	XMLName     xml.Name `xml:"ListBucketResult"`
+	Text        string   `xml:",chardata"`
+	Xmlns       string   `xml:"xmlns,attr"`
+	Name        string   `xml:"Name"`
+	Prefix      string   `xml:"Prefix"`
+	Marker      string   `xml:"Marker"`
+	MaxKeys     string   `xml:"MaxKeys"`
+	Delimiter   string   `xml:"Delimiter"`
+	IsTruncated string   `xml:"IsTruncated"`
+	Contents    []struct {
+		Text         string `xml:",chardata"`
+		Key          string `xml:"Key"`
+		LastModified string `xml:"LastModified"`
+		ETag         string `xml:"ETag"`
+		Size         string `xml:"Size"`
+		Owner        struct {
+			Text        string `xml:",chardata"`
+			ID          string `xml:"ID"`
+			DisplayName string `xml:"DisplayName"`
+		} `xml:"Owner"`
+		StorageClass string `xml:"StorageClass"`
+	} `xml:"Contents"`
+}
+
+type wrapperWriteCloser struct {
+	ctx         context.Context
+	path        string
+	writeCloser io.WriteCloser
+}
+
+func (wc wrapperWriteCloser) Write(b []byte) (n int, err error) {
+	select {
+	case <-wc.ctx.Done():
+		return 0, context.Canceled
+	default:
+	}
+	n, err = wc.writeCloser.Write(b)
+	if err != nil {
+		return n, errUploading(wc.path, err.Error())
+	}
+	return n, err
+}
+
+func (wc wrapperWriteCloser) Close() (err error) {
+	select {
+	case <-wc.ctx.Done():
+		return context.Canceled
+	default:
+	}
+	if err := wc.writeCloser.Close(); err != nil {
+		return &ErrFailedRequest{isPut: true, path: wc.path, body: err.Error()}
+	}
+	return nil
 }

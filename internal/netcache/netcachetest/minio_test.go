@@ -1,4 +1,4 @@
-package netcache
+package netcachetest
 
 import (
 	"bytes"
@@ -6,7 +6,6 @@ import (
 	"io"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +18,7 @@ func TestMinio(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := "test/testfile@+-$%^"
+	key := "output/testfile@+-$%^"
 	{
 		// put
 		writer, err := client.Put(context.Background(), key)
@@ -49,6 +48,4 @@ func TestMinio(t *testing.T) {
 		}
 		require.Equal(t, fakeFile, buf.Bytes())
 	}
-
-	time.Sleep(time.Minute)
 }
