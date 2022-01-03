@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/klauspost/pgzip"
 	"github.com/maxmcd/bramble/pkg/io2"
 	"github.com/maxmcd/bramble/pkg/url2"
+	"github.com/pkg/errors"
 	"github.com/rlmcpherson/s3gof3r"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -72,28 +74,46 @@ var defaultRouter = func() *httprouter.Router {
 	return router
 }()
 
-func NewDoCache(accessKeyID, secretAccessKey, hostname string) Client {
+type S3CacheOptions struct {
+	AccessKeyID     string
+	SecretAccessKey string
+	S3url           string
+	CDNPrefix       string
+	PathStyle       bool
+}
+
+func NewS3Cache(opt S3CacheOptions) (Client, error) {
 	keys := s3gof3r.Keys{
-		AccessKey: accessKeyID,
-		SecretKey: secretAccessKey,
+		AccessKey: opt.AccessKeyID,
+		SecretKey: opt.SecretAccessKey,
 	}
+	parsed, err := url.Parse(opt.S3url)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error pasing S3url parameter %s", opt.S3url)
+	}
+
 	// TODO: this must be set for the entire lifetime of the client/bucket.
 	// Should patch underlying lib to support explicit region. Although since
 	// we're not relying on this value for now this is not really issue, the
 	// value just needs to be set to something.
 	os.Setenv("AWS_REGION", " ")
-	s3 := s3gof3r.New(hostname, keys)
-	cc := &DOCache{bucket: s3.Bucket("bramble")}
+
+	s3 := s3gof3r.New(parsed.Host, keys)
+	cc := &S3Cache{bucket: s3.Bucket("bramble")}
 	cc.bucket.Client = &http.Client{
 		// For tracing
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
-	cc.Scheme = "https"
-	return cc
+	cc.Scheme = parsed.Scheme
+	cc.CDNPrefix = opt.CDNPrefix
+	cc.PathStyle = opt.PathStyle
+	return cc, nil
 }
 
-type DOCache struct {
+type S3Cache struct {
 	bucket *s3gof3r.Bucket
+
+	CDNPrefix string
 
 	Scheme    string
 	PathStyle bool
@@ -130,7 +150,7 @@ func (wc wrapperWriteCloser) Close() (err error) {
 	return nil
 }
 
-func (c *DOCache) putWriter(ctx context.Context, path string) (putWriter io.WriteCloser, err error) {
+func (c *S3Cache) putWriter(ctx context.Context, path string) (putWriter io.WriteCloser, err error) {
 	encodedPath := encodePath(path)
 	h := http.Header{}
 	h.Set("x-amz-acl", "public-read")
@@ -147,7 +167,7 @@ func (c *DOCache) putWriter(ctx context.Context, path string) (putWriter io.Writ
 	return wrapperWriteCloser{ctx: ctx, path: path, writeCloser: io2.WriterMultiCloser(gzw, gzw, putWriter)}, nil
 }
 
-func (c *DOCache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
+func (c *S3Cache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
 	encodedPath := encodePath(path)
 	req, err := http.NewRequest(http.MethodGet, url2.Join("https://store.bramble.run", encodedPath), nil)
 	if err != nil {
@@ -165,7 +185,7 @@ func (c *DOCache) Get(ctx context.Context, path string) (body io.ReadCloser, err
 	return io2.ReaderMultiCloser(gzr, gzr, resp.Body), nil
 }
 
-func (c *DOCache) Put(ctx context.Context, path string) (writer io.WriteCloser, err error) {
+func (c *S3Cache) Put(ctx context.Context, path string) (writer io.WriteCloser, err error) {
 	return c.putWriter(ctx, path)
 }
 

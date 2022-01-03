@@ -127,5 +127,5 @@ func (cc CacheClient) GetDerivation(ctx context.Context, filename string) (drv D
 		}
 		return Derivation{}, false, errors.WithStack(err)
 	}
-	return drv, true, json.NewDecoder(w).Decode(drv)
+	return drv, true, json.NewDecoder(w).Decode(&drv)
 }

@@ -112,24 +112,31 @@ func (dc *dependencyClient) getPackageConfig(ctx context.Context, pkg types.Pack
 }
 
 func (dc *dependencyClient) uploadPackage(ctx context.Context, pkg types.Package) (err error) {
-	writer, err := dc.cacheClient.Put(ctx, "package/source/"+pkg.String())
-	if err != nil {
-		return err
-	}
 	location := dc.dependencyDirectory.localPackageLocation(pkg)
-	if err := reptar.Archive(dc.dependencyDirectory.localPackageLocation(pkg), writer); err != nil {
-		return err
+	{
+		writer, err := dc.cacheClient.Put(ctx, "package/source/"+pkg.String())
+		if err != nil {
+			return err
+		}
+		if err := reptar.Archive(location, writer); err != nil {
+			return err
+		}
+		if err := writer.Close(); err != nil {
+			return err
+		}
 	}
-	cfg, lockfile, err := config.ReadConfigs(location)
-	if err != nil {
-		return err
+	{
+		cfg, lockfile, err := config.ReadConfigs(location)
+		if err != nil {
+			return err
+		}
+		writer, err := dc.cacheClient.Put(ctx, "package/config/"+pkg.String())
+		if err != nil {
+			return err
+		}
+		if err := json.NewEncoder(writer).Encode(config.ConfigAndLockfile{Config: cfg, Lockfile: lockfile}); err != nil {
+			return err
+		}
+		return writer.Close()
 	}
-	writer, err = dc.cacheClient.Put(ctx, "package/config/"+pkg.String())
-	if err != nil {
-		return err
-	}
-	if err := json.NewEncoder(writer).Encode(config.ConfigAndLockfile{Config: cfg, Lockfile: lockfile}); err != nil {
-		return err
-	}
-	return writer.Close()
 }

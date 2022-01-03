@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/netcache"
@@ -327,7 +328,8 @@ func (tb testBuilder) testGithubDownloader(url, reference string) (location stri
 	return location, nil
 }
 
-func TestPushJob(t *testing.T) {
+func TestPushJobAndUpload(t *testing.T) {
+	ctx := context.Background()
 	tb := testBuilder{
 		t: t,
 		packages: map[string]types.Package{
@@ -341,12 +343,12 @@ func TestPushJob(t *testing.T) {
 			},
 		},
 	}
-
+	dependencyDir := t.TempDir()
 	server := httptest.NewServer(
-		serverHandler(t.TempDir(), tb.NewBuilder, tb.testGithubDownloader),
+		serverHandler(dependencyDir, tb.NewBuilder, tb.testGithubDownloader),
 	)
 
-	if err := PostJob(context.Background(), server.URL, "x.y/z", ""); err != nil {
+	if err := PostJob(ctx, server.URL, "x.y/z", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -357,7 +359,7 @@ func TestPushJob(t *testing.T) {
 	}
 	for _, m := range tb.packages {
 		{
-			cfg, err := dc.getPackageConfig(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			cfg, err := dc.getPackageConfig(ctx, types.Package{Name: m.Name, Version: m.Version})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -366,10 +368,27 @@ func TestPushJob(t *testing.T) {
 		}
 		{
 			loc := t.TempDir()
-			err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version}, loc)
+			err := dc.getPackageSource(ctx, types.Package{Name: m.Name, Version: m.Version}, loc)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
+	}
+	{
+		client := netcache.StartMinio(t)
+		manager := NewManager(dependencyDir, "", client)
+		if err := manager.UploadPackage(ctx, types.Package{
+			Name:    "x.y/z",
+			Version: "2.0.0",
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		vs, err := manager.dependencyClient.getPackageVersions(ctx, "x.y/z")
+		time.Sleep(time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(vs)
 	}
 }
