@@ -85,16 +85,23 @@ type CacheClient struct {
 	client netcache.Client
 }
 
-func (cc CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
-	filename := drv.Filename()
-	writer, err := cc.client.Put(ctx, "derivation/"+filename)
+func (cc CacheClient) DerivationExists(ctx context.Context, drv Derivation) (bool, error) {
+	return cc.client.Exists(ctx, "derivation/"+drv.Filename())
+}
+
+func (cc CacheClient) PostDerivation(ctx context.Context, drv Derivation) error {
+	writer, err := cc.client.Put(ctx, "derivation/"+drv.Filename())
 	if err != nil {
-		return "", errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 	if _, err := writer.Write([]byte(drv.JSON())); err != nil {
-		return "", errors.WithStack(err)
+		return errors.WithStack(err)
 	}
-	return filename, writer.Close()
+	return writer.Close()
+}
+
+func (cc CacheClient) OutputExists(ctx context.Context, hash string) (bool, error) {
+	return cc.client.Exists(ctx, "output/"+hash)
 }
 
 func (cc CacheClient) PostOutput(ctx context.Context, hash string, body io.Reader) error {

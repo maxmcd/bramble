@@ -53,7 +53,7 @@ func Archive(location string, out io.Writer) (err error) {
 			var err error
 			linkTarget, err = os.Readlink(path)
 			if err != nil {
-				return fmt.Errorf("%s: readlink: %w", fi.Name(), err)
+				return errors.Errorf("%s: readlink: %w", fi.Name(), err)
 			}
 			// TODO: convert from absolute to relative
 		}
@@ -97,11 +97,11 @@ func Archive(location string, out io.Writer) (err error) {
 			var file io.ReadCloser
 			file, err = os.Open(path)
 			if err != nil {
-				return fmt.Errorf("%s: opening: %w", path, err)
+				return errors.Wrapf(err, "%s: opening", path)
 			}
 			_, err := io.Copy(tw, file)
 			if err != nil {
-				return fmt.Errorf("%s: copying contents: %v", fi.Name(), err)
+				return errors.Wrapf(err, "%s: copying contents", fi.Name())
 			}
 			_ = file.Close()
 		}
@@ -185,10 +185,10 @@ func Unarchive(in io.Reader, location string) error {
 				return errors.WithStack(err)
 			}
 			if err := wf.Close(); err != nil {
-				return fmt.Errorf("error writing to %s: %v", abs, err)
+				return errors.Errorf("error writing to %s: %v", abs, err)
 			}
 			if n != header.Size {
-				return fmt.Errorf("only wrote %d bytes to %s; expected %d", n, abs, header.Size)
+				return errors.Errorf("only wrote %d bytes to %s; expected %d", n, abs, header.Size)
 			}
 		}
 	}

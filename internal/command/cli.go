@@ -18,6 +18,7 @@ import (
 
 	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/logger"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
@@ -380,12 +381,25 @@ their public functions with documentation. If an immediate subdirectory has a
 						return errors.New("bramble publish takes at most two arguments")
 					}
 					pkg := args[0]
+
+					client, err := netcache.NewS3Cache(netcache.S3CacheOptions{
+						AccessKeyID:       os.Getenv("ACCESS_KEY_ID"),
+						SecretAccessKey:   os.Getenv("SECRET_ACCESS_KEY"),
+						S3EndpointPrefix:  "https://nyc3.digitaloceanspaces.com",
+						CDNEndpointPrefix: "https://store.bramble.run",
+					})
+					if err != nil {
+						return errors.Wrap(err, "couldn't initialize cache client")
+					}
+
 					return publish(c.Context, publishOptions{
 						pkg:    pkg,
 						local:  c.Bool("local"),
 						upload: c.Bool("upload"),
 						url:    c.String("url"),
-					}, dependency.DownloadGithubRepo, nil)
+					},
+						dependency.DownloadGithubRepo,
+						client)
 				},
 			},
 			{

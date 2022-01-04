@@ -343,12 +343,23 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 				if err != nil {
 					return err
 				}
-				// Upload, could confirm hash
-				if _, err := cc.PostDerivation(ctx, normalized); err != nil {
+				exists, err := cc.DerivationExists(ctx, normalized)
+				if err != nil {
 					return err
 				}
+				if !exists {
+					if err := cc.PostDerivation(ctx, normalized); err != nil {
+						return err
+					}
+				}
+
 				// Loop through outputs and post them
 				for _, output := range normalized.Outputs {
+					if exists, err := cc.OutputExists(ctx, output.Path); err != nil {
+						return err
+					} else if exists {
+						continue
+					}
 					r, w := io.Pipe()
 					defer r.Close()
 					defer w.Close()

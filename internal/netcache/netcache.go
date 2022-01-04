@@ -27,6 +27,7 @@ import (
 )
 
 type Client interface {
+	Exists(ctx context.Context, path string) (bool, error)
 	Get(ctx context.Context, path string) (body io.ReadCloser, err error)
 	Put(ctx context.Context, path string) (writer io.WriteCloser, err error)
 }
@@ -101,11 +102,11 @@ func newRequestLookup() requestLookup {
 }
 
 type S3CacheOptions struct {
-	AccessKeyID     string
-	SecretAccessKey string
-	S3url           string
-	CDNPrefix       string
-	PathStyle       bool
+	AccessKeyID       string
+	SecretAccessKey   string
+	S3EndpointPrefix  string
+	CDNEndpointPrefix string
+	PathStyle         bool
 }
 
 func NewS3Cache(opt S3CacheOptions) (Client, error) {
@@ -113,9 +114,9 @@ func NewS3Cache(opt S3CacheOptions) (Client, error) {
 		AccessKey: opt.AccessKeyID,
 		SecretKey: opt.SecretAccessKey,
 	}
-	parsed, err := url.Parse(opt.S3url)
+	parsed, err := url.Parse(opt.S3EndpointPrefix)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error pasing S3url parameter %s", opt.S3url)
+		return nil, errors.Wrapf(err, "error pasing S3url parameter %s", opt.S3EndpointPrefix)
 	}
 
 	// TODO: this must be set for the entire lifetime of the client/bucket.
@@ -131,8 +132,8 @@ func NewS3Cache(opt S3CacheOptions) (Client, error) {
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	cc.Scheme = parsed.Scheme
-	cc.S3url = opt.S3url
-	cc.CDNPrefix = opt.CDNPrefix
+	cc.S3url = opt.S3EndpointPrefix
+	cc.CDNPrefix = opt.CDNEndpointPrefix
 	cc.PathStyle = opt.PathStyle
 
 	cc.requestLookup = newRequestLookup()
@@ -176,6 +177,31 @@ func (c *S3Cache) cdnPrefix() string {
 		return url2.Join(c.S3url, "bramble")
 	}
 	return c.S3url
+}
+
+func (c *S3Cache) Exists(ctx context.Context, path string) (exists bool, err error) {
+	matchingPath, _ := c.requestLookup.lookup(http.MethodGet, path)
+	if matchingPath == "" {
+		return false, errors.Errorf("request path %q doesn't match an expected route", path)
+	}
+	// TODO: error on routes that are not "existable"?
+	encodedPath := encodePath(path)
+	req, err := http.NewRequest(http.MethodGet, url2.Join(c.cdnPrefix(), encodedPath), nil)
+	if err != nil {
+		return false, errFetching(path, err.Error())
+	}
+	req = req.WithContext(ctx)
+	resp, err := http.DefaultClient.Do(req)
+	if err := responseError(false, path, resp, err); err != nil {
+		return false, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	return false, errFetching(path, fmt.Sprintf("unexpected response code: %d", resp.StatusCode))
 }
 
 func (c *S3Cache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
@@ -302,11 +328,32 @@ func responseError(isPut bool, path string, resp *http.Response, err error) erro
 	return nil
 }
 
+func (cs *StdCache) Exists(ctx context.Context, path string) (exists bool, err error) {
+	req, err := http.NewRequest(http.MethodHead, url2.Join(cs.host, path), nil)
+	if err != nil {
+		return false, errFetching(path, err.Error())
+	}
+	req = req.WithContext(ctx)
+	resp, err := cs.client.Do(req)
+	if err != nil {
+		return false, errFetching(path, err.Error())
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	return false, errFetching(path, fmt.Sprintf("unexpected response code: %d", resp.StatusCode))
+}
+
 func (cs *StdCache) Get(ctx context.Context, path string) (body io.ReadCloser, err error) {
 	req, err := http.NewRequest(http.MethodGet, url2.Join(cs.host, path), nil)
 	if err != nil {
 		return nil, errFetching(path, err.Error())
 	}
+	req = req.WithContext(ctx)
 	resp, err := cs.client.Do(req)
 	if err := responseError(false, path, resp, err); err != nil {
 		return nil, err
@@ -317,8 +364,13 @@ func (cs *StdCache) Get(ctx context.Context, path string) (body io.ReadCloser, e
 func (cs *StdCache) Put(ctx context.Context, path string) (writer io.WriteCloser, err error) {
 	errChan := make(chan error)
 	pr, pw := io.Pipe()
+	req, err := http.NewRequest(http.MethodPost, url2.Join(cs.host, path), pr)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
 	go func() {
-		resp, err := http.Post(url2.Join(cs.host, path), "", pr)
+		resp, err := cs.client.Do(req)
 		if err != nil {
 			_ = pr.CloseWithError(err)
 		}

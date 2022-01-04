@@ -3,4 +3,5 @@ name = "github.com/maxmcd/bramble"
 version = "0.0.3"
 
 [dependencies]
+"github.com/brmbl/std" = "0.0.1"
 "github.com/maxmcd/busybox" = "0.0.2"

@@ -14,9 +14,9 @@ import (
 func TestDO(t *testing.T) {
 	t.Skip("this test requires live credentials")
 	client, err := NewS3Cache(S3CacheOptions{
-		AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		S3url:           "https://nyc3.digitaloceanspaces.com",
+		AccessKeyID:      os.Getenv("AWS_ACCESS_KEY_ID"),
+		SecretAccessKey:  os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		S3EndpointPrefix: "https://nyc3.digitaloceanspaces.com",
 	})
 	if err != nil {
 		t.Fatal(err)

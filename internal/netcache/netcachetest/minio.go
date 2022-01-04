@@ -117,10 +117,10 @@ func StartMinio(t *testing.T) netcache.Client {
 	runCommand(t, mcBin, "policy", "set", "download", "local/bramble")
 
 	client, err := netcache.NewS3Cache(netcache.S3CacheOptions{
-		SecretAccessKey: "password",
-		AccessKeyID:     "root",
-		S3url:           s3Addr,
-		PathStyle:       true,
+		SecretAccessKey:  "password",
+		AccessKeyID:      "root",
+		S3EndpointPrefix: s3Addr,
+		PathStyle:        true,
 	})
 	if err != nil {
 		t.Fatal(err)

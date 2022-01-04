@@ -15,6 +15,7 @@ import (
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/httpx"
 	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/pkg/errors"
 )
 
 type dependencyClient struct {
@@ -114,7 +115,13 @@ func (dc *dependencyClient) getPackageConfig(ctx context.Context, pkg types.Pack
 func (dc *dependencyClient) uploadPackage(ctx context.Context, pkg types.Package) (err error) {
 	location := dc.dependencyDirectory.localPackageLocation(pkg)
 	{
-		writer, err := dc.cacheClient.Put(ctx, "package/source/"+pkg.String())
+		sourcePath := "package/source/" + pkg.String()
+		if exists, err := dc.cacheClient.Exists(ctx, sourcePath); err != nil {
+			return err
+		} else if exists {
+			return errors.Errorf("a version of package %s already exists in the registry", pkg)
+		}
+		writer, err := dc.cacheClient.Put(ctx, sourcePath)
 		if err != nil {
 			return err
 		}
