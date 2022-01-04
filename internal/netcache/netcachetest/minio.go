@@ -64,11 +64,6 @@ func StartMinio(t *testing.T) netcache.Client {
 			if err := os.Chmod(location, 0755); err != nil {
 				t.Fatal(err)
 			}
-			fi, err := os.Stat(location)
-			if err != nil {
-				t.Fatal(err)
-			}
-			fmt.Println(fi.Mode(), "-----", location)
 		}
 	}
 	stateDir := t.TempDir()
