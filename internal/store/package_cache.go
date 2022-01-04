@@ -18,6 +18,13 @@ import (
 
 func (s *Store) CacheServer() http.Handler {
 	router := httpx.New()
+	router.HEAD("/derivation/:filename", func(c httpx.Context) error {
+		if fileutil.FileExists(s.joinStorePath(c.Params.ByName("filename"))) {
+			c.ResponseWriter.WriteHeader(http.StatusOK)
+		}
+		c.ResponseWriter.WriteHeader(http.StatusNotFound)
+		return nil
+	})
 	router.GET("/derivation/:filename", func(c httpx.Context) (err error) {
 		f, err := os.Open(s.joinStorePath(c.Params.ByName("filename")))
 		if err != nil {
@@ -26,6 +33,13 @@ func (s *Store) CacheServer() http.Handler {
 		defer f.Close()
 		_, err = io.Copy(c.ResponseWriter, f)
 		return err
+	})
+	router.HEAD("/output/:hash", func(c httpx.Context) error {
+		if fileutil.FileExists(s.joinStorePath(c.Params.ByName("hash"))) {
+			c.ResponseWriter.WriteHeader(http.StatusOK)
+		}
+		c.ResponseWriter.WriteHeader(http.StatusNotFound)
+		return nil
 	})
 	router.GET("/output/:hash", func(c httpx.Context) (err error) {
 		output := s.joinStorePath(c.Params.ByName("hash"))

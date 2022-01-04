@@ -53,7 +53,7 @@ func Archive(location string, out io.Writer) (err error) {
 			var err error
 			linkTarget, err = os.Readlink(path)
 			if err != nil {
-				return errors.Errorf("%s: readlink: %w", fi.Name(), err)
+				return errors.Wrapf(err, "%s: readlink", fi.Name())
 			}
 			// TODO: convert from absolute to relative
 		}
@@ -185,7 +185,7 @@ func Unarchive(in io.Reader, location string) error {
 				return errors.WithStack(err)
 			}
 			if err := wf.Close(); err != nil {
-				return errors.Errorf("error writing to %s: %v", abs, err)
+				return errors.Wrapf(err, "error writing to %s", abs)
 			}
 			if n != header.Size {
 				return errors.Errorf("only wrote %d bytes to %s; expected %d", n, abs, header.Size)

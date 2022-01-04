@@ -192,9 +192,10 @@ func (c *S3Cache) Exists(ctx context.Context, path string) (exists bool, err err
 	}
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
-	if err := responseError(false, path, resp, err); err != nil {
+	if err != nil {
 		return false, err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return false, nil
 	}
