@@ -9,6 +9,7 @@ import (
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
+	"github.com/maxmcd/bramble/pkg/url2"
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
 )
@@ -121,35 +122,64 @@ func (p *Project) scanForLoadNames() (moduleNames []string, err error) {
 }
 
 // TODO: function that takes load() argument values and references the config and pulls down the needed version
-func (p *Project) findOrDownloadModulePath(ctx context.Context, pkg string) (path string, err error) {
+func (p *Project) findOrDownloadModulePath(ctx context.Context, pkg string) (projectPath, relPath string, err error) {
 	if strings.HasPrefix(pkg, p.config.Package.Name) {
-		path = pkg[len(p.config.Package.Name):]
-		path = filepath.Join(p.location, path)
-		return path, nil
+		path := pkg[len(p.config.Package.Name):]
+		return p.location, filepath.Clean(path), nil
 	}
-	cd, found := p.doesModulePackageExist(pkg)
+	name, dep, found := p.doesModulePackageExist(pkg)
 	if !found {
-		return "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", pkg)
+		return "", "", errors.Errorf("%q is not a dependency of this project, do you need to add it?", pkg)
 	}
-	if cd.Path != "" {
+
+	relPath, err = url2.Rel(name, pkg)
+	if err != nil {
+		return "", "", errors.Wrapf(err, "error calculating relative module path between %s and %s", name, pkg)
+	}
+
+	if dep.Path != "" {
 		// TODO: Does this actually work
 		// TODO: cd.Path must be relative?
-		return filepath.Join(p.location, cd.Path), nil
+		return filepath.Join(p.location, dep.Path), relPath, nil
 	}
-	path, err = p.dm.PackagePathOrDownload(ctx, types.Package{Name: pkg, Version: cd.Version})
-	return path, err
+	projectPath, err = p.dm.PackagePathOrDownload(ctx, types.Package{Name: name, Version: dep.Version})
+	return projectPath, relPath, err
 }
 
-func (p *Project) doesModulePackageExist(pkg string) (config.Dependency, bool) {
-	// TODO: check for packages that could containt this module
+func (p *Project) doesModulePackageExist(pkg string) (name string, dep config.Dependency, found bool) {
 	if d, ok := p.config.Dependencies[pkg]; ok {
-		return d, ok
+		return pkg, d, ok
 	}
-	d, ok := p.lockFile.Dependencies[pkg]
-	return d, ok
+	if d, ok := p.lockFile.Dependencies[pkg]; ok {
+		return pkg, d, ok
+	}
+	var longestName string
+	var longestDep config.Dependency
+	// No specific match, looking for sub-path match
+	for name, d := range p.config.Dependencies {
+		if strings.HasPrefix(pkg, name) {
+			if len(name) > len(longestName) {
+				longestName = name
+				longestDep = d
+			}
+		}
+	}
+	for name, d := range p.lockFile.Dependencies {
+		if strings.HasPrefix(pkg, name) {
+			if len(name) > len(longestName) {
+				longestName = name
+				longestDep = d
+			}
+		}
+	}
+	if longestName == "" {
+		return "", config.Dependency{}, false
+	}
+	return longestName, longestDep, true
 }
 
 func (p *Project) moduleInProject(module string) bool {
+	// TODO: use other function that actually looks at substring matches
 	if strings.HasPrefix(module, p.config.Package.Name) {
 		return true
 	}
@@ -198,7 +228,8 @@ func (p *Project) ParseModuleFuncArgument(ctx context.Context, name string, allo
 		return
 	}
 	if p.moduleInProject(module.Name) {
-		if _, err := p.findOrDownloadModulePath(ctx, module.Name); err != nil {
+		// TODO: unclear to me what is going on here, find out and leave comment
+		if _, _, err := p.findOrDownloadModulePath(ctx, module.Name); err != nil {
 			return Module{}, err
 		}
 		return module, nil
@@ -218,12 +249,14 @@ func (p *Project) ParseModuleFuncArgument(ctx context.Context, name string, allo
 	return Module{}, errors.Errorf("%q is not a dependency of this project, do you need to add it?", module.Name)
 }
 
-func (p *Project) moduleToPath(module string) (path string, err error) {
-	path, err = p.findOrDownloadModulePath(context.Background(), module)
+func (p *Project) moduleToPath(ctx context.Context, module string) (projectPath, path string, err error) {
+	projectPath, relPath, err := p.findOrDownloadModulePath(ctx, module)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+	path = filepath.Join(projectPath, relPath)
 
+	// TODO could make these three syscalls just a single directory file list call
 	directoryWithNameExists := fileutil.PathExists(path)
 
 	var directoryHasDefaultDotBramble bool
@@ -239,11 +272,11 @@ func (p *Project) moduleToPath(module string) (path string, err error) {
 	case fileWithNameExists:
 		path += BrambleExtension
 	default:
-		return "", errors.Errorf("Module %q not found, %q is not a directory and %q does not exist",
+		return "", "", errors.Errorf("Module %q not found, %q is not a directory and %q does not exist",
 			module, path, path+BrambleExtension)
 	}
 
-	return path, nil
+	return projectPath, path, nil
 }
 
 func (p *Project) FindAllModules(path string) (modules []string, err error) {

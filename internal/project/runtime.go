@@ -19,9 +19,10 @@ func (p *Project) newRuntime(target string) *runtime {
 	rt := &runtime{project: p}
 	rt.allDerivations = map[string]Derivation{}
 	rt.cache = map[string]*entry{}
+
+	// Random internal key so that fetch built-ins can use the network
 	rt.internalKey = rand.Int63()
-	// TODO: sys will be needed by this, what else?
-	derivation, err := rt.loadNativeDerivation(starlark.NewBuiltin("_derivation", rt.derivationFunction))
+	derivation, err := rt.loadNativeDerivation(starlark.NewBuiltin("_derivation", rt.derivationFunction(p.location)))
 	if err != nil {
 		repl.PrintError(err)
 		panic(err)
@@ -29,6 +30,7 @@ func (p *Project) newRuntime(target string) *runtime {
 
 	assertGlobals, _ := assert.LoadAssertModule()
 	rt.predeclared = starlark.StringDict{
+		// FOR_SUBLOAD can't use reference to project location
 		"derivation": derivation,
 		"test":       starlark.NewBuiltin("test", rt.testBuiltin),
 		"run":        starlark.NewBuiltin("run", rt.runBuiltin),
@@ -39,6 +41,24 @@ func (p *Project) newRuntime(target string) *runtime {
 		}.filesBuiltin),
 	}
 	return rt
+}
+
+func (rt *runtime) predeclatedWithPath(projectPath string) starlark.StringDict {
+	derivation, err := rt.loadNativeDerivation(starlark.NewBuiltin("_derivation", rt.derivationFunction(projectPath)))
+	if err != nil {
+		repl.PrintError(err)
+		panic(err)
+	}
+	return starlark.StringDict{
+		"derivation": derivation,
+		"test":       rt.predeclared["test"],
+		"run":        rt.predeclared["run"],
+		"assert":     rt.predeclared["assert"],
+		"sys":        rt.predeclared["sys"],
+		"files": starlark.NewBuiltin("files", filesBuiltin{
+			projectLocation: projectPath,
+		}.filesBuiltin),
+	}
 }
 
 func (rt *runtime) newThread(ctx context.Context, name string) *starlark.Thread {
@@ -82,7 +102,7 @@ func starlarkSys(target string) *starlarkstruct.Module {
 
 func (p *Project) REPL() {
 	rt := p.newRuntime("")
-	repl.REPL(rt.newThread(context.Background(), "repl"), rt.predeclared)
+	repl.REPL(rt.newThread(context.TODO(), "repl"), rt.predeclared)
 }
 
 func (p *Project) relativePathFromConfig() string {
@@ -103,12 +123,13 @@ type entry struct {
 	err     error
 }
 
-func (rt *runtime) starlarkExecFile(thread *starlark.Thread, filename string) (globals starlark.StringDict, err error) {
+func (rt *runtime) starlarkExecFile(thread *starlark.Thread, filename, projectPath string) (globals starlark.StringDict, err error) {
 	prog, err := rt.sourceStarlarkProgram(filename)
 	if err != nil {
 		return
 	}
-	g, err := prog.Init(thread, rt.predeclared)
+	// FOR_SUBLOAD
+	g, err := prog.Init(thread, rt.predeclatedWithPath(projectPath))
 	for name := range g {
 		// no importing or calling of underscored methods
 		if strings.HasPrefix(name, "_") {

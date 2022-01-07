@@ -125,7 +125,7 @@ func (dm *Manager) localPackageDependencies(pkg types.Package) (vs []types.Packa
 func (dm *Manager) CalculateConfigBuildlist(ctx context.Context, cfg config.Config) (map[string]config.Dependency, error) {
 	versions, err := mvs.BuildList(
 		mvsVersionFromPackage(types.Package{Name: cfg.Package.Name, Version: cfg.Package.Version}),
-		dm.reqs(cfg),
+		dm.reqs(ctx, cfg),
 	)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 	jr := JobRequest{Package: pkg, Reference: reference}
 	dc := &dependencyClient{client: &http.Client{}, host: url}
 	fmt.Println("Sending build to build server")
-	id, err := dc.postJob(context.Background(), jr)
+	id, err := dc.postJob(ctx, jr)
 	if err != nil {
 		return err
 	}
@@ -167,12 +167,12 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 			return context.Canceled
 		default:
 		}
-		job, err := dc.getJob(context.Background(), id)
+		job, err := dc.getJob(ctx, id)
 		if err != nil {
 			return err
 		}
 		if job.Error != "" {
-			_ = dc.getLogs(context.Background(), id, os.Stdout)
+			_ = dc.getLogs(ctx, id, os.Stdout)
 			return errors.Wrap(errors.New(job.ErrWithStack), "got error posting job")
 		}
 		if !job.End.IsZero() {
@@ -184,13 +184,14 @@ func PostJob(ctx context.Context, url, pkg, reference string) (err error) {
 	return nil
 }
 
-func (dm *Manager) reqs(cfg config.Config) mvs.Reqs {
-	return dependencyManagerReqs{deps: dm, cfg: cfg}
+func (dm *Manager) reqs(ctx context.Context, cfg config.Config) mvs.Reqs {
+	return dependencyManagerReqs{deps: dm, cfg: cfg, ctx: ctx}
 }
 
 type dependencyManagerReqs struct {
 	deps *Manager
 	cfg  config.Config
+	ctx  context.Context
 }
 
 var _ mvs.Reqs = dependencyManagerReqs{}
@@ -212,7 +213,7 @@ func (r dependencyManagerReqs) Required(m mvs.Version) (versions []mvs.Version, 
 	default:
 		// TODO: tracing
 		// TODO: cache this result locally?
-		pkgs, err = r.deps.remotePackageDependencies(context.Background(), p)
+		pkgs, err = r.deps.remotePackageDependencies(r.ctx, p)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "error fetching package")

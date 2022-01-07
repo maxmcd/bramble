@@ -204,20 +204,22 @@ func isTopLevel(thread *starlark.Thread) bool {
 	return thread.CallStack().At(2).Name == "<toplevel>" || thread.CallStack().At(2).Name == "<expr>"
 }
 
-func (rt *runtime) derivationFunction(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if thread.Name != "repl" && isTopLevel(thread) {
-		return nil, errors.New("derivation call not within a function")
+func (rt *runtime) derivationFunction(projectPath string) func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
+	return func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if thread.Name != "repl" && isTopLevel(thread) {
+			return nil, errors.New("derivation call not within a function")
+		}
+		// Parse function arguments and assemble the basic derivation
+		drv, err := rt.newDerivationFromArgs(args, kwargs, projectPath)
+		if err != nil {
+			return nil, err
+		}
+		rt.allDerivations[drv.hash()] = drv
+		return drv, nil
 	}
-	// Parse function arguments and assemble the basic derivation
-	drv, err := rt.newDerivationFromArgs(args, kwargs)
-	if err != nil {
-		return nil, err
-	}
-	rt.allDerivations[drv.hash()] = drv
-	return drv, nil
 }
 
-func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple) (drv Derivation, err error) {
+func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.Tuple, projectPath string) (drv Derivation, err error) {
 	drv = Derivation{
 		Outputs: []string{"out"},
 	}
@@ -264,7 +266,7 @@ func (rt *runtime) newDerivationFromArgs(args starlark.Tuple, kwargs []starlark.
 	}
 
 	for _, src := range drv.Sources.Files {
-		abs := filepath.Join(rt.project.location, src)
+		abs := filepath.Join(projectPath, src)
 		if !fileutil.PathExists(abs) {
 			return drv, errors.Errorf("Source file %q doesn't exit", abs)
 		}

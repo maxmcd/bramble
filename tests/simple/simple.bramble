@@ -1,13 +1,13 @@
-# load(nix_seed="github.com/maxmcd/bramble/lib/nix-seed")
+load(nix_seed="github.com/brmbl/std/nix_seed")
 
 
-# def simple():
-#     simple = derivation(
-#         name="simple",
-#         builder=nix_seed.stdenv().out + "/bin/bash",
-#         env={"stdenv": nix_seed.stdenv(), "PATH": nix_seed.stdenv().out + "/bin"},
-#         args=["./simple_builder.sh"],
-#         sources=files(["./simple.c", "simple_builder.sh"]),
-#     )
-#     test(simple, ["simple"])
-#     return simple
+def simple():
+    simple = derivation(
+        name="simple",
+        builder=nix_seed.stdenv().out + "/bin/bash",
+        env={"stdenv": nix_seed.stdenv(), "PATH": nix_seed.stdenv().out + "/bin"},
+        args=["./simple_builder.sh"],
+        sources=files(["./simple.c", "simple_builder.sh"]),
+    )
+    test(simple, ["simple"])
+    return simple

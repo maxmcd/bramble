@@ -85,7 +85,7 @@ func blogScenario(t *testing.T) (config.Config, *Manager) {
 
 func TestDMReqsRequired(t *testing.T) {
 	cfg, dm := blogScenario(t)
-	reqs := dm.reqs(cfg)
+	reqs := dm.reqs(context.Background(), cfg)
 	deps, err := reqs.Required(mvs.Version{
 		Name:    "A@1",
 		Version: "1.0",
@@ -101,7 +101,8 @@ func TestDMReqsRequired(t *testing.T) {
 
 func TestDMReqs(t *testing.T) {
 	cfg, dm := blogScenario(t)
-	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs(cfg))
+	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"},
+		dm.reqs(context.Background(), cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},
-		dm.reqs(cfg),
+		dm.reqs(context.Background(), cfg),
 		mvs.Version{Name: "C@1", Version: "3.0"},
 	)
 	if err != nil {
@@ -179,7 +180,8 @@ func TestDMReqsRemote(t *testing.T) {
 				cacheClient: netcache.NewStdCache(server.URL),
 			}
 
-			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs(cfg))
+			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"},
+				localDM.reqs(context.Background(), cfg))
 			if err != nil {
 				t.Fatal(err)
 			}

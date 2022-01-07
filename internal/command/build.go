@@ -108,7 +108,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		derivationDataLock.Unlock()
 
 		source, err := b.store.StoreLocalSources(ctx, store.SourceFiles{
-			ProjectLocation: b.project.Location(),
+			ProjectLocation: drv.Sources.ProjectLocation,
 			Location:        drv.Sources.Location,
 			Files:           drv.Sources.Files,
 		}) // TODO: delete this if the build fails?

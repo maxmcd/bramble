@@ -3,6 +3,7 @@ package url2
 import (
 	"net/url"
 	"path"
+	"path/filepath"
 )
 
 // Join is a url-aware path.Join, it will try and parse the first element as a
@@ -23,6 +24,19 @@ func Join(elem ...string) string {
 		u.Path += "/"
 	}
 	return u.String()
+}
+
+func Rel(basepath, targetpath string) (string, error) {
+	u, err := url.Parse(basepath)
+	if err != nil {
+		return filepath.Rel(basepath, targetpath)
+	}
+	u.Path, err = filepath.Rel(basepath, targetpath)
+	// Preserve trailing slash if passed
+	if err == nil && string(targetpath[len(u.Path)-1]) == "/" {
+		u.Path += "/"
+	}
+	return u.String(), nil
 }
 
 func lastCharOfLastElem(elems []string) string {
