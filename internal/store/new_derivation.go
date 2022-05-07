@@ -7,7 +7,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/reptar"
 	"github.com/pkg/errors"
 )
 
@@ -81,7 +81,7 @@ func (s *Store) StoreLocalSources(ctx context.Context, sources SourceFiles) (out
 		return
 	}
 	hshr := hasher.New()
-	if err = reptar.Reptar(tmpDir, hshr); err != nil {
+	if err = reptar.Archive(tmpDir, hshr); err != nil {
 		return
 	}
 	storeLocation := s.joinStorePath(hshr.String())

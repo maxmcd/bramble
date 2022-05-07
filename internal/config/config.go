@@ -135,7 +135,7 @@ func ParseConfig(r io.Reader) (cfg Config, err error) {
 	return cfg, nil
 }
 
-func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
+func ReadConfigs(dir string) (cfg Config, lockFile *Lockfile, err error) {
 	{
 		bDotToml := filepath.Join(dir, "bramble.toml")
 		cfg, err = ReadConfig(bDotToml)
@@ -150,7 +150,7 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 		lockFileLocation := filepath.Join(dir, "bramble.lock")
 		if !fileutil.FileExists(lockFileLocation) {
 			// Don't read the lockfile if we don't have one
-			return cfg, &LockFile{}, err
+			return cfg, &Lockfile{}, err
 		}
 		f, err := os.Open(lockFileLocation)
 		if err != nil {
@@ -162,12 +162,9 @@ func ReadConfigs(dir string) (cfg Config, lockFile *LockFile, err error) {
 	}
 }
 
-func WriteLockfile(lockFile *LockFile, dir string) (err error) {
+func WriteLockfile(lockFile *Lockfile, dir string) (err error) {
 	lockFile.lock.Lock()
 	defer lockFile.lock.Unlock()
-	if !lockFile.changed {
-		return nil
-	}
 
 	// Get lock on lockfile
 	done, err := getConfigLock(dir)
@@ -183,58 +180,92 @@ func WriteLockfile(lockFile *LockFile, dir string) (err error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	lf := LockFile{
+	lf := Lockfile{
 		URLHashes: map[string]string{},
 	}
 	if _, err := toml.DecodeReader(f, &lf); err != nil {
 		return err
 	}
-	if reflect.DeepEqual(lockFile.URLHashes, lf.URLHashes) {
-		return nil
-	}
-
 	_ = f.Truncate(0)
 	_, _ = f.Seek(0, 0)
-	for url, hash := range lockFile.URLHashes {
-		if v, ok := lf.URLHashes[url]; ok && v != hash {
-			return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+	if !reflect.DeepEqual(lockFile.URLHashes, lf.URLHashes) {
+		for url, hash := range lockFile.URLHashes {
+			if v, ok := lf.URLHashes[url]; ok && v != hash {
+				return errors.Errorf("found existing hash for %q with value %q not %q, not sure how to proceed", url, v, hash)
+			}
+			lf.URLHashes[url] = hash
 		}
-		lf.URLHashes[url] = hash
 	}
-
-	return toml.NewEncoder(f).Encode(&lf)
+	lf.Dependencies = lockFile.Dependencies
+	lockFile.Render(f)
+	return nil
 }
 
-type LockFile struct {
+type Lockfile struct {
 	URLHashes map[string]string
-	changed   bool
 	lock      sync.RWMutex
+
+	Dependencies map[string]Dependency
 }
 
-var _ types.LockfileWriter = new(LockFile)
+func (lf *Lockfile) Render(w io.Writer) {
+	var keys []string
+	{
+		fmt.Fprintln(w, "[URLHashes]")
+		for key := range lf.URLHashes {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fxt.Fprintfln(w, "%q = %q", key, lf.URLHashes[key])
+		}
+	}
+	if len(lf.Dependencies) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	{
+		fmt.Fprintln(w, "[Dependencies]")
+		var keys []string
+		for key := range lf.Dependencies {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			dep := lf.Dependencies[key]
+			fxt.Fprintfln(w, "%q = %q", key, dep.Version)
+		}
+	}
+}
 
-func (l *LockFile) AddEntry(k, v string) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	oldV, found := l.URLHashes[k]
+var _ types.LockfileWriter = new(Lockfile)
+
+func (lf *Lockfile) AddEntry(k, v string) error {
+	lf.lock.Lock()
+	defer lf.lock.Unlock()
+	oldV, found := lf.URLHashes[k]
 	if found && oldV != v {
 		return errors.Errorf(
 			"Existing lockfile entry found for %q, old hash %q does not equal new has value %q",
 			k, oldV, v)
 	}
 	if !found {
-		if l.URLHashes == nil {
-			l.URLHashes = map[string]string{}
+		if lf.URLHashes == nil {
+			lf.URLHashes = map[string]string{}
 		}
-		l.URLHashes[k] = v
-		l.changed = true
+		lf.URLHashes[k] = v
 	}
 	return nil
 }
 
-func (l *LockFile) LookupEntry(k string) (v string, found bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-	v, found = l.URLHashes[k]
+func (lf *Lockfile) LookupEntry(k string) (v string, found bool) {
+	lf.lock.RLock()
+	defer lf.lock.RUnlock()
+	v, found = lf.URLHashes[k]
 	return v, found
+}
+
+type ConfigAndLockfile struct {
+	Lockfile *Lockfile
+	Config   Config
 }

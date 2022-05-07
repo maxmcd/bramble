@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/maxmcd/bramble/internal/config"
+	"github.com/maxmcd/bramble/internal/netcache"
+	"github.com/maxmcd/bramble/internal/netcache/netcachetest"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fxt"
 	"github.com/maxmcd/bramble/v/cmd/go/mvs"
@@ -26,11 +28,11 @@ func pkg(m string, deps ...string) func() (string, []string) {
 }
 
 func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config, *Manager) {
-	dm := &Manager{dir: dir(t.TempDir())}
+	dm := &Manager{dependencyDirectory: dependencyDirectory(t.TempDir())}
 	var returnedConfig config.Config
 	for i, dep := range deps {
 		pkg, deps := dep()
-		if err := os.MkdirAll(dm.dir.join("src", pkg), 0755); err != nil {
+		if err := os.MkdirAll(dm.dependencyDirectory.join("src", pkg), 0755); err != nil {
 			t.Fatal(err)
 		}
 		parts := strings.Split(pkg, "@")
@@ -46,7 +48,7 @@ func testDepMgr(t *testing.T, deps ...func() (string, []string)) (config.Config,
 			name, version := parts[0], parts[1]
 			cfg.Dependencies[name] = config.Dependency{Version: version}
 		}
-		f, err := os.Create(dm.dir.join("src", pkg, "bramble.toml"))
+		f, err := os.Create(dm.dependencyDirectory.join("src", pkg, "bramble.toml"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +85,7 @@ func blogScenario(t *testing.T) (config.Config, *Manager) {
 
 func TestDMReqsRequired(t *testing.T) {
 	cfg, dm := blogScenario(t)
-	reqs := dm.reqs(cfg)
+	reqs := dm.reqs(context.Background(), cfg)
 	deps, err := reqs.Required(mvs.Version{
 		Name:    "A@1",
 		Version: "1.0",
@@ -99,7 +101,8 @@ func TestDMReqsRequired(t *testing.T) {
 
 func TestDMReqs(t *testing.T) {
 	cfg, dm := blogScenario(t)
-	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, dm.reqs(cfg))
+	vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"},
+		dm.reqs(context.Background(), cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +128,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 
 	vs, err := mvs.Upgrade(
 		mvs.Version{Name: "A@1", Version: "1.0"},
-		dm.reqs(cfg),
+		dm.reqs(context.Background(), cfg),
 		mvs.Version{Name: "C@1", Version: "3.0"},
 	)
 	if err != nil {
@@ -144,7 +147,7 @@ func TestDMReqsUpgrade(t *testing.T) {
 }
 
 func (dm *Manager) deleteHalfDeps(t *testing.T) {
-	list, err := filepath.Glob(dm.dir.join("src", "*"))
+	list, err := filepath.Glob(dm.dependencyDirectory.join("src", "*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,14 +172,16 @@ func TestDMReqsRemote(t *testing.T) {
 			// partially present subset
 			localDM.deleteHalfDeps(t)
 
-			server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
+			server := httptest.NewServer(ServerHandler(string(remoteDM.dependencyDirectory), nil, nil))
 
 			localDM.dependencyClient = &dependencyClient{
-				client: &http.Client{},
-				host:   server.URL,
+				client:      &http.Client{},
+				host:        server.URL,
+				cacheClient: netcache.NewStdCache(server.URL),
 			}
 
-			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"}, localDM.reqs(cfg))
+			vs, err := mvs.BuildList(mvs.Version{Name: "A@1", Version: "1.0"},
+				localDM.reqs(context.Background(), cfg))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,11 +202,12 @@ func TestDMPathOrDownload(t *testing.T) {
 	remoteCFG, remoteDM := blogScenario(t)
 	_, localDM := testDepMgr(t) // no deps
 
-	server := httptest.NewServer(ServerHandler(string(remoteDM.dir), nil, nil))
+	server := httptest.NewServer(ServerHandler(string(remoteDM.dependencyDirectory), nil, nil))
 
 	localDM.dependencyClient = &dependencyClient{
-		client: &http.Client{},
-		host:   server.URL,
+		client:      &http.Client{},
+		host:        server.URL,
+		cacheClient: netcache.NewStdCache(server.URL),
 	}
 
 	path, err := localDM.PackagePathOrDownload(context.Background(), types.Package{"A", "1.1.0"})
@@ -324,7 +330,8 @@ func (tb testBuilder) testGithubDownloader(url, reference string) (location stri
 	return location, nil
 }
 
-func TestPushJob(t *testing.T) {
+func TestPushJobAndUpload(t *testing.T) {
+	ctx := context.Background()
 	tb := testBuilder{
 		t: t,
 		packages: map[string]types.Package{
@@ -338,33 +345,65 @@ func TestPushJob(t *testing.T) {
 			},
 		},
 	}
-
+	dependencyDir := t.TempDir()
 	server := httptest.NewServer(
-		serverHandler(t.TempDir(), tb.NewBuilder, tb.testGithubDownloader),
+		serverHandler(dependencyDir, tb.NewBuilder, tb.testGithubDownloader),
 	)
 
-	if err := PostJob(context.Background(), server.URL, "x.y/z", ""); err != nil {
+	if err := PostJob(ctx, server.URL, "x.y/z", ""); err != nil {
 		t.Fatal(err)
 	}
+
 	dc := &dependencyClient{
-		host:   server.URL,
-		client: &http.Client{},
+		host:        server.URL,
+		client:      &http.Client{},
+		cacheClient: netcache.NewStdCache(server.URL),
 	}
 	for _, m := range tb.packages {
 		{
-			cfg, err := dc.getPackageConfig(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			cfg, err := dc.getPackageConfig(ctx, types.Package{Name: m.Name, Version: m.Version})
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, cfg.Package.Name, m.Name)
-			assert.Equal(t, cfg.Package.Version, m.Version)
+			assert.Equal(t, cfg.Config.Package.Name, m.Name)
+			assert.Equal(t, cfg.Config.Package.Version, m.Version)
 		}
 		{
-			body, err := dc.getPackageSource(context.Background(), types.Package{Name: m.Name, Version: m.Version})
+			loc := t.TempDir()
+			err := dc.getPackageSource(ctx, types.Package{Name: m.Name, Version: m.Version}, loc)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_ = body
 		}
 	}
+	{
+		XYZ := types.Package{
+			Name:    "x.y/z",
+			Version: "2.0.0",
+		}
+		client := netcachetest.StartMinio(t)
+		manager := NewManager(dependencyDir, "", client)
+		if err := manager.UploadPackage(ctx, XYZ); err != nil {
+			t.Fatal(err)
+		}
+
+		vs, err := manager.dependencyClient.getPackageVersions(ctx, "x.y/z")
+		if err != nil {
+			t.Fatal(err)
+		}
+		require.Equal(t, vs, []string{"2.0.0"})
+
+		otherManager := NewManager(t.TempDir(), "", client)
+		path, err := otherManager.PackagePathOrDownload(ctx, XYZ)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, _, err := config.ReadConfigs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, cfg.Package.Name, XYZ.Name)
+		assert.Equal(t, cfg.Package.Version, XYZ.Version)
+	}
+
 }

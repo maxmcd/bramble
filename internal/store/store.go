@@ -2,28 +2,23 @@ package store
 
 import (
 	"bufio"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
-	"sync"
 
 	"github.com/maxmcd/bramble/internal/logger"
 	"github.com/maxmcd/bramble/internal/tracing"
-	"github.com/maxmcd/bramble/pkg/chunkedarchive"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
 	"github.com/maxmcd/bramble/pkg/sandbox"
+	"github.com/maxmcd/reptar"
 	"github.com/pkg/errors"
-	"github.com/rhnvrm/simples3"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -320,12 +315,6 @@ func (s *Store) WriteDerivation(drv Derivation) (filename string, err error) {
 	return filename, ioutil.WriteFile(fileLocation, drv.JSON(), 0644)
 }
 
-type CacheClient interface {
-	PostChunk(context.Context, io.Reader) (string, error)
-	PostDerivation(context.Context, Derivation) (string, error)
-	PostOutput(context.Context, OutputRequestBody) error
-}
-
 func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Derivation, cc CacheClient) (err error) {
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.UploadDerivationsToCache")
@@ -334,191 +323,65 @@ func (s *Store) UploadDerivationsToCache(ctx context.Context, derivations []Deri
 	ctx, cancel = context.WithCancel(ctx)
 	defer cancel()
 
-	bodyWriter := chunkedarchive.NewParallelBodyWriter(
-		8,
-		func(rc io.ReadCloser) (out []string, err error) {
-			buf := bufio.NewReader(rc)
-			for {
-				// TODO: hash the body before uploading to confirm it doesn't already exist
-				limited := io.LimitReader(buf, 4e6)
-				hash, err := cc.PostChunk(ctx, limited)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, hash)
-				fmt.Println("Finished uploading chunk", hash)
-				if _, err := buf.Peek(1); err != nil {
-					break
-				}
+	numParallel := 12
+	sem := make(chan struct{}, numParallel)
+
+	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		for _, d := range derivations {
+			drv := d // copy
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return context.Canceled
 			}
-			return out, rc.Close()
-		},
-	)
 
-	uploaded := map[string]struct{}{}
-	errChan := make(chan error)
-	doneChan := make(chan struct{})
-	sem := make(chan struct{}, runtime.NumCPU())
-	var wg sync.WaitGroup
-
-	// Loop through derivations
-	for _, drv := range derivations {
-		// Normalize them with the fixed prefix path
-		normalized, err := s.normalizeDerivation(drv)
-		if err != nil {
-			return err
-		}
-		// Upload, could confirm hash
-		if _, err := cc.PostDerivation(ctx, normalized); err != nil {
-			return err
-		}
-		// Loop through outputs and post them
-		for _, output := range normalized.Outputs {
-			if _, ok := uploaded[output.Path]; ok {
-				continue
-			}
-			uploaded[output.Path] = struct{}{}
-			wg.Add(1)
-			go func(output Output) {
-				// Limit parallelism
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				// This will upload using the spawned queue in parallel
-				toc, err := chunkedarchive.Archive(bodyWriter, s.joinStorePath(output.Path))
+			group.Go(func() error {
+				// Normalize them with the fixed prefix path
+				normalized, err := s.normalizeDerivation(drv)
 				if err != nil {
-					errChan <- err
+					return err
+				}
+				exists, err := cc.DerivationExists(ctx, normalized)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					if err := cc.PostDerivation(ctx, normalized); err != nil {
+						return err
+					}
 				}
 
-				if err := cc.PostOutput(ctx, OutputRequestBody{
-					TOC:    toc,
-					Output: output,
-				}); err != nil {
-					errChan <- err
+				// Loop through outputs and post them
+				for _, output := range normalized.Outputs {
+					if exists, err := cc.OutputExists(ctx, output.Path); err != nil {
+						return err
+					} else if exists {
+						continue
+					}
+					r, w := io.Pipe()
+					defer r.Close()
+					defer w.Close()
+					group.Go(func() error {
+						bufWriter := bufio.NewWriter(w)
+						if err := reptar.Archive(s.joinStorePath(output.Path), bufWriter); err != nil {
+							return err
+						}
+						if err := bufWriter.Flush(); err != nil {
+							return err
+						}
+						return w.Close()
+					})
+					if err := cc.PostOutput(ctx, output.Path, r); err != nil {
+						return err
+					}
 				}
-				wg.Done()
-			}(output)
+				<-sem
+				return nil
+			})
 		}
-	}
-
-	go func() {
-		wg.Wait()
-		doneChan <- struct{}{}
-	}()
-	select {
-	case err := <-errChan:
-		return err
-	case <-doneChan:
 		return nil
-	}
-}
-
-type S3CacheClient struct {
-	s3 *simples3.S3
-}
-
-type fakeSizeSeeker struct {
-	buf *bytes.Buffer
-	loc int64
-}
-
-func (fss fakeSizeSeeker) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-		fss.loc = offset
-		// Ignore seeks beyond loc
-		return fss.loc, nil
-	case io.SeekCurrent:
-		return 0, nil
-	case io.SeekEnd:
-		fss.loc -= offset
-		// Ignore seeks beyond loc
-		return int64(fss.buf.Len()) - fss.loc, nil
-	}
-	panic("unimplemented")
-}
-func (fss fakeSizeSeeker) Read(p []byte) (n int, err error) { return fss.buf.Read(p) }
-
-var _ CacheClient = new(S3CacheClient)
-
-func NewS3CacheClient(s3 *simples3.S3) CacheClient {
-	return &S3CacheClient{s3: s3}
-}
-
-func fileUpload(s3 *simples3.S3, body *bytes.Buffer, ui simples3.UploadInput) error {
-	checkIt := "https://store.bramble.run/" + ui.ObjectKey
-	resp, err := http.Head(checkIt)
-	if err != nil {
-		return err
-	}
-	switch resp.StatusCode {
-	case http.StatusNotFound:
-	case http.StatusOK:
-		return nil
-	default:
-		return errors.Errorf("unexpected response code %d for url %q", resp.StatusCode, checkIt)
-	}
-	// TODO: Could reduce memory overhead here
-	buf := &bytes.Buffer{}
-	w := gzip.NewWriter(buf)
-	if _, err := io.Copy(w, bytes.NewBuffer(body.Bytes())); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-
-	ui.Body = fakeSizeSeeker{buf: body}
-	if _, err := s3.FileUpload(ui); err != nil {
-		return err
-	}
-
-	ui.Body = fakeSizeSeeker{buf: buf}
-	ui.FileName += ".gz"
-	ui.ObjectKey += ".gz"
-	if _, err := s3.FileUpload(ui); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (cc *S3CacheClient) PostChunk(ctx context.Context, r io.Reader) (string, error) {
-	var buf bytes.Buffer
-	h := hasher.New()
-	tee := io.TeeReader(r, h)
-	if _, err := io.Copy(&buf, tee); err != nil {
-		return "", err
-	}
-	err := fileUpload(cc.s3, &buf, simples3.UploadInput{
-		Bucket:      "bramble",
-		ACL:         "public-read",
-		ObjectKey:   "chunk/" + h.String(),
-		FileName:    h.String(),
-		ContentType: "application/octet-stream",
 	})
-	return "", err
-}
-func (cc *S3CacheClient) PostDerivation(ctx context.Context, drv Derivation) (string, error) {
-	filename := drv.Filename()
-	err := fileUpload(cc.s3, bytes.NewBuffer([]byte(drv.JSON())), simples3.UploadInput{
-		Bucket:      "bramble",
-		ACL:         "public-read",
-		ObjectKey:   "derivation/" + drv.Filename(),
-		FileName:    drv.Filename(),
-		ContentType: "application/json",
-	})
-	return filename, err
-}
-func (cc *S3CacheClient) PostOutput(ctx context.Context, req OutputRequestBody) error {
-	buf := &bytes.Buffer{}
-	if err := json.NewEncoder(buf).Encode(req); err != nil {
-		return err
-	}
-	err := fileUpload(cc.s3, buf, simples3.UploadInput{
-		Bucket:      "bramble",
-		ACL:         "public-read",
-		ObjectKey:   "output/" + req.Output.Path,
-		FileName:    req.Output.Path,
-		ContentType: "application/json",
-	})
-	return err
+	return group.Wait()
 }

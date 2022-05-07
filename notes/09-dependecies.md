@@ -140,3 +140,18 @@ Then what's the subset of these paths that have "github.com/a/b/c/d" as a valid 
 -------
 
 We must use the `...` path expansion because otherwise we have no other way do indicate the difference between "all things at this path" and "just the module at this path" since both of those things could have the same import path. ie: `foo.com/a/b` and `foo.com/a/b` could refer either to "all modules in the b folder" or the specific file "foo/com/a/b/default.bramble". We could call the first one `foo.com/a/b/...`
+
+
+------
+
+I think we're getting close to something that works, or is at least well defined and then might not work for complex reasons.
+
+We have a project. It pulls in dependency "a/b".
+
+If you `bramble install(???) 1/2` or `bramble install(???) 1/2/a/b` it will search for the longest module name that matches. So if there is also a module `1/2/a` that will be pulled by the second command.
+
+We basically assume import paths aren't overwritten within major version numbers.
+
+However, if we search for `bramble install(???) 1/2@v1` or `bramble install(???) 1/2/a/b@v1` or `bramble install(???) 1/2@v1.1.0` we search for compatible modules within that search path. We always look for major version module compatibility first, then search for feature/patch versions, so you can't use a more specific version to override the module search logic.
+
+

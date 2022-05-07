@@ -99,7 +99,7 @@ func TestProject_FindAllModules(t *testing.T) {
 		},
 		{
 			"../../", ".",
-			[]string{"github.com/maxmcd/bramble/lib"},
+			[]string{"github.com/maxmcd/bramble/tests"},
 			[]string{
 				"github.com/maxmcd/bramble/internal/project/testdata/circular/b",
 				"github.com/maxmcd/bramble/internal/project/testdata/circular",
@@ -227,6 +227,11 @@ func Test_parseModuleFuncArgument(t *testing.T) {
 			wantModule: "github.com/maxmcd/bramble",
 			wantFn:     "all",
 		}, {
+			name:       "full module name with subdirectory",
+			arg:        "github.com/maxmcd/bramble/tests:all",
+			wantModule: "github.com/maxmcd/bramble/tests",
+			wantFn:     "all",
+		}, {
 			name:       "relative path to file with slash",
 			arg:        "./bar/main:other",
 			wantModule: "github.com/maxmcd/bramble/internal/project/testdata/bar/main",
@@ -293,8 +298,8 @@ func TestProject_BuildArgumentsToModules(t *testing.T) {
 			wd:   "./testdata/project",
 			args: []string{"./..."},
 			wantModules: []Module{
-				{"testproject/a", "", false},
-				{"testproject", "", false},
+				{"testproject/a", ""},
+				{"testproject", ""},
 			},
 			wantErr: false,
 		},
@@ -303,7 +308,7 @@ func TestProject_BuildArgumentsToModules(t *testing.T) {
 			wd:   ".",
 			args: []string{"./testdata"},
 			wantModules: []Module{
-				{"github.com/maxmcd/bramble/internal/project/testdata", "", false},
+				{"github.com/maxmcd/bramble/internal/project/testdata", ""},
 			},
 			wantErr: false,
 		},

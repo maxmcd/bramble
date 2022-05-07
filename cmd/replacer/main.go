@@ -6,8 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/textreplace"
+	"github.com/maxmcd/reptar"
 	"github.com/mholt/archiver/v3"
 )
 
@@ -28,7 +28,7 @@ func run() (err error) {
 	if err != nil {
 		return err
 	}
-	if err := reptar.Reptar(location, f); err != nil {
+	if err := reptar.Archive(location, f); err != nil {
 		return err
 	}
 	f.Seek(0, 0)

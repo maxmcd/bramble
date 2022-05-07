@@ -18,7 +18,7 @@ install:
 
 gotestsum: $(gopath)/bin/gotestsum
 $(gopath)/bin/gotestsum:
-	go get gotest.tools/gotestsum
+	go install gotest.tools/gotestsum@latest
 	go mod tidy
 
 build: install

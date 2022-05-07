@@ -14,8 +14,11 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/maxmcd/bramble/internal/dependency"
 	"github.com/maxmcd/bramble/internal/logger"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/project"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
@@ -24,7 +27,6 @@ import (
 	"github.com/maxmcd/bramble/pkg/starutil"
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/pkg/errors"
-	"github.com/rhnvrm/simples3"
 	cli "github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -352,7 +354,7 @@ their public functions with documentation. If an immediate subdirectory has a
 			},
 			{
 				Name:      "publish",
-				UsageText: `bramble publish package [reference]`,
+				UsageText: `bramble publish <package>`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "url",
@@ -378,57 +380,26 @@ their public functions with documentation. If an immediate subdirectory has a
 					if len(args) > 2 {
 						return errors.New("bramble publish takes at most two arguments")
 					}
-					module := args[0]
-					reference := ""
-					if len(args) == 2 {
-						reference = args[1]
+					pkg := args[0]
+
+					client, err := netcache.NewS3Cache(netcache.S3CacheOptions{
+						AccessKeyID:       os.Getenv("ACCESS_KEY_ID"),
+						SecretAccessKey:   os.Getenv("SECRET_ACCESS_KEY"),
+						S3EndpointPrefix:  "https://nyc3.digitaloceanspaces.com",
+						CDNEndpointPrefix: "https://store.bramble.run",
+					})
+					if err != nil {
+						return errors.Wrap(err, "couldn't initialize cache client")
 					}
 
-					if c.Bool("local") {
-						// TODO: add build cache handler to this server
-						s, err := store.NewStore("")
-						if err != nil {
-							return err
-						}
-						builder := dependency.Builder(filepath.Join(s.BramblePath, "var/dependencies"),
-							newBuilder(s),
-							dependency.DownloadGithubRepo,
-						)
-						builtDerivations, err := builder(&dependency.Job{
-							Package:   module,
-							Reference: reference,
-						})
-						if err != nil {
-							return err
-						}
-						if c.Bool("upload") {
-							var drvs []store.Derivation
-							for _, drvFilename := range builtDerivations {
-								drv, _, err := s.LoadDerivation(drvFilename)
-								if err != nil {
-									return errors.Wrap(err, "error loading derivation from store")
-								}
-								drvs = append(drvs, drv)
-							}
-							// TODO: replace with something generally usable
-							s3 := simples3.New("",
-								os.Getenv("DIGITALOCEAN_SPACES_ACCESS_ID"),
-								os.Getenv("DIGITALOCEAN_SPACES_SECRET_KEY"))
-							s3.SetEndpoint("nyc3.digitaloceanspaces.com")
-							cc := store.NewS3CacheClient(s3)
-							fmt.Printf("Uploading %d derivations\n", len(drvs))
-							if err := s.UploadDerivationsToCache(c.Context, drvs, cc); err != nil {
-								return err
-							}
-						}
-						return nil
-					}
-
-					url := "https://store.bramble.run"
-					if u := c.String("url"); u != "" {
-						url = u
-					}
-					return dependency.PostJob(c.Context, url, module, reference)
+					return publish(c.Context, publishOptions{
+						pkg:    pkg,
+						local:  c.Bool("local"),
+						upload: c.Bool("upload"),
+						url:    c.String("url"),
+					},
+						dependency.DownloadGithubRepo,
+						client)
 				},
 			},
 			{
@@ -446,8 +417,14 @@ their public functions with documentation. If an immediate subdirectory has a
 					if err != nil {
 						return err
 					}
-					parts := strings.Split(c.Args().First(), "@")
-					return b.project.AddDependency(types.Package{Version: parts[1], Name: parts[0]})
+					cut := func(s, sep string) (before, after string, ok bool) {
+						if i := strings.Index(s, sep); i >= 0 {
+							return s[:i], s[i+len(sep):], true
+						}
+						return s, "", false
+					}
+					name, version, _ := cut(c.Args().First(), "@")
+					return b.project.AddDependency(c.Context, types.Package{Name: name, Version: version})
 				},
 			},
 			{
@@ -543,6 +520,9 @@ func RunCLI() {
 		panic("give me the stack")
 	}()
 	sandbox.Entrypoint()
+
+	go func() { _ = http.ListenAndServe(":6060", nil) }()
+
 	defer tracing.Stop()
 
 	// Patch cli lib to remove bool default

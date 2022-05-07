@@ -1,0 +1,23 @@
+
+
+# Copied from std
+def fetch_url(url=None):
+    """
+    fetch_url is a wrapper around the "fetch_url" builder that creates a
+    derivation name from the passed url. fetch_url tries to use the last
+    filename in the url path, but if one doesn't exist it creates one from the
+    schema and domain
+
+    http://example.com/my.pdf => "my.pdf"
+    http://example.com        => "httpexample.com"
+    """
+    if url == None:
+        assert.fail()
+    return derivation(name=_url_name(url), builder="fetch_url", env={"url": url})
+
+
+def _url_name(url):
+    name = url.split("/")[-1]
+    if not name:
+        return ''.join([c for c in url.elems() if c in ".0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"])
+    return name

@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/maxmcd/bramble/internal/cacheclient"
 	"github.com/maxmcd/bramble/internal/config"
 	"github.com/maxmcd/bramble/internal/dependency"
+	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/store"
 	"github.com/maxmcd/bramble/internal/tracing"
 	"github.com/maxmcd/bramble/pkg/fxt"
@@ -85,17 +86,17 @@ func TestRun(t *testing.T) {
 	for _, tt := range []test{
 		{
 			name:   "simple",
-			args:   []string{"../../:print_simple"},
+			args:   []string{"../../tests:print_simple"},
 			checks: []check{noError()},
 		},
 		{
 			name:   "simple explicit",
-			args:   []string{"../../:print_simple", "simple"},
+			args:   []string{"../../tests:print_simple", "echo", "simple"},
 			checks: []check{noError()},
 		},
 		{
 			name: "sim",
-			args: []string{"../../:print_simple", "sim"},
+			args: []string{"../../tests:print_simple", "foo"},
 			checks: []check{
 				errContains("executable file not found"),
 				exitCodeIs(1),
@@ -103,21 +104,21 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "exit code",
-			args: []string{"../../:bash", "bash", "-c", "exit 2"},
+			args: []string{"../../tests:ash", "ash", "-c", "exit 2"},
 			checks: []check{
 				exitCodeIs(2),
 			},
 		},
 		{
 			name: "write to readonly system",
-			args: []string{"../../:bash", "bash", "-c", "touch foo"},
+			args: []string{"../../tests:ash", "ash", "-c", "touch foo"},
 			checks: []check{
 				exitCodeIs(1),
 			},
 		},
 		{
 			name: "weird exit code",
-			args: []string{"../../:bash", "bash", "-c", "exit 56"},
+			args: []string{"../../tests:ash", "ash", "-c", "exit 56"},
 			checks: []check{
 				exitCodeIs(56),
 			},
@@ -168,9 +169,13 @@ func TestBuildAllFunction(t *testing.T) {
 	initIntegrationTest(t)
 
 	app := cliApp(".")
-	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble:all"}); err != nil {
+	if err := app.Run([]string{"bramble", "build", "github.com/maxmcd/bramble/tests:all"}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestDepComplex(t *testing.T) {
+
 }
 
 func TestDep(t *testing.T) {
@@ -199,6 +204,7 @@ func TestDep(t *testing.T) {
 		name        string
 		pkg         string
 		files       map[string]interface{}
+		installed   map[string]config.Dependency
 		errContains string
 		install     []string
 	}
@@ -206,25 +212,25 @@ func TestDep(t *testing.T) {
 		{"first", "first", map[string]interface{}{
 			"./first/bramble.toml":    config.Config{Package: config.Package{Name: "first", Version: "0.0.1"}},
 			"./first/default.bramble": "def first():\n  print('print from first')",
-		}, "", nil},
+		}, map[string]config.Dependency{}, "", nil},
 		{"second syntax err", "second", map[string]interface{}{
 			"./second/bramble.toml":    config.Config{Package: config.Package{Name: "second", Version: "0.0.1"}},
 			"./second/default.bramble": "def first)",
-		}, "second/default.bramble:1:10", nil},
+		}, map[string]config.Dependency{}, "second/default.bramble:1:10", nil},
 		{"third with load", "third", map[string]interface{}{
 			"./third/bramble.toml":    config.Config{Package: config.Package{Name: "third", Version: "0.0.1"}},
 			"./third/default.bramble": "load('first')\ndef third():\n  first.first()",
-		}, "", []string{"first@0.0.1"}},
+		}, map[string]config.Dependency{"first": {Version: "0.0.1"}}, "", []string{"first@0.0.1"}},
 		{"fourth nested", "fourth", map[string]interface{}{
 			"./fourth/bramble.toml":           config.Config{Package: config.Package{Name: "fourth", Version: "0.0.1"}},
 			"./fourth/default.bramble":        "load('third')\ndef fourth():\n  third.third()",
 			"./fourth/nested/bramble.toml":    config.Config{Package: config.Package{Name: "fourth/nested", Version: "0.0.1"}},
 			"./fourth/nested/default.bramble": "def nested():\n  print('hello nested')",
-		}, "", []string{"third@0.0.1"}},
+		}, map[string]config.Dependency{"third": {Version: "0.0.1"}}, "", []string{"third@0.0.1"}},
 		{"fifth with nested load", "fifth", map[string]interface{}{
 			"./fifth/bramble.toml":    config.Config{Package: config.Package{Name: "fifth", Version: "0.0.1"}},
 			"./fifth/default.bramble": "load('fourth/nested')\ndef fifth():\n  nested.nested()",
-		}, "", []string{"fourth/nested@0.0.1"}},
+		}, map[string]config.Dependency{"fourth/nested": {Version: "0.0.1"}}, "", []string{"fourth/nested@0.0.1"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for path, file := range tt.files {
@@ -240,9 +246,11 @@ func TestDep(t *testing.T) {
 				}
 			}
 			test.ErrContains(t, func() error {
+				loc := filepath.Join(projectDir, tt.pkg)
 				{
-					app := cliApp(filepath.Join(projectDir, tt.pkg))
+					app := cliApp(loc)
 					for _, toInstall := range tt.install {
+						fmt.Println(toInstall, "-------------")
 						if err := app.Run([]string{"bramble", "add", toInstall}); err != nil {
 							return err
 						}
@@ -250,12 +258,26 @@ func TestDep(t *testing.T) {
 					if err := app.Run([]string{"bramble", "build", "--just-parse", "./..."}); err != nil {
 						return err
 					}
+					f, err := os.Open(loc + "/bramble.lock")
+					if err != nil {
+						fmt.Println(err)
+					}
+					io.Copy(os.Stdout, f)
+
 				}
 				{
 					app := cliApp(".")
 					if err := app.Run([]string{"bramble", "publish", "--url", server.URL, tt.pkg}); err != nil {
 						return err
 					}
+				}
+				{
+					cfg, err := config.ReadConfig(loc + "/bramble.toml")
+					if err != nil {
+						t.Fatal(err)
+					}
+					cfg.Render(os.Stdout)
+					require.Equal(t, cfg.Dependencies, tt.installed)
 				}
 				return nil
 			}(), tt.errContains)
@@ -273,11 +295,11 @@ func TestStore_CacheServer(t *testing.T) {
 	{
 		test.SetEnv(t, "BRAMBLE_PATH", clientBramblePath)
 		app := cliApp(".")
-		if err := app.Run([]string{"bramble", "build", "../../lib:busybox"}); err != nil {
+		if err := app.Run([]string{"bramble", "build", "../../tests/busybox:busybox"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-
+	fmt.Println("build complete")
 	{
 		serverBramblePath := t.TempDir()
 		s, err := store.NewStore(serverBramblePath)
@@ -297,10 +319,9 @@ func TestStore_CacheServer(t *testing.T) {
 			}
 			drvs = append(drvs, drv)
 		}
-		cc := cacheclient.New(server.URL)
-		// s3 := simples3.New("", "", "")
-		// s3.SetEndpoint("nyc3.digitaloceanspaces.com")
-		// cc := store.NewS3CacheClient(s3)
+
+		cc := store.NewCacheClient(netcache.NewStdCache(server.URL))
+		// cc := store.NewS3CacheClient("", "", "nyc3.digitaloceanspaces.com")
 		if err := clientStore.UploadDerivationsToCache(ctx, drvs, cc); err != nil {
 			t.Fatal(err)
 		}
@@ -321,20 +342,20 @@ func TestModuleCLIParsing(t *testing.T) {
 		{"build ./...", "../../", false},
 		{"build tests", "../../", true},
 		{"build github.com/maxmcd/bramble/...", "../../", false},
-		{"build ./lib", "../../", false},
+		{"build ./tests", "../../", false},
 		{"build ./internal", "../../", true},
-		{"build :all", "../../", true},
-		{"build ./:all", "../../", false},
+		{"build tests:all", "../../", true},
+		{"build ./tests:all", "../../", false},
 		{"build github.com/maxmcd/bramble/tests/...", "../../", false},
 		{"build github.com/maxmcd/busybox/...", "../../", true},
 		// run
 		{"run ./...", "../../", true},
-		{"run tests", "../../", true},
+		// {"run tests", "../../", true}, // re-add when we can support a remote lookup of "tests"
 		{"run :print_simple", "../../", true},
-		{"run ./:print_simple simple", "../../", false},
-		{"run ./lib:git git", "../../", false},
+		{"run ./tests:print_simple simple", "../../", false},
+		{"run ./tests:ash ash", "../../", false},
 		{"run ./internal:foo foo", "../../", true},
-		{"run github.com/maxmcd/bramble:print_simple simple", "../../", false},
+		{"run github.com/maxmcd/bramble/tests:print_simple simple", "../../", false},
 		// {"run github.com/maxmcd/busybox:busybox ash", "../../", false},
 		// {"run github.com/maxmcd/busybox@0.0.1:busybox ash", "../../", false},
 	}

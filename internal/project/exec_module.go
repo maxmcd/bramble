@@ -212,12 +212,13 @@ func (rt *runtime) execModule(ctx context.Context, module string) (globals starl
 	// Add a placeholder to indicate "load in progress".
 	rt.cache[module] = nil
 
-	path, err := rt.project.moduleToPath(module)
+	projectPath, path, err := rt.project.moduleToPath(ctx, module)
 	if err != nil {
 		return nil, err
 	}
+	// FOR_SUBLOAD
 	// Load and initialize the module in a new thread.
-	globals, err = rt.starlarkExecFile(rt.newThread(ctx, "module "+module), path)
+	globals, err = rt.starlarkExecFile(rt.newThread(ctx, "module "+module), path, projectPath)
 	rt.cache[module] = &entry{globals: globals, err: err}
 	return globals, err
 }

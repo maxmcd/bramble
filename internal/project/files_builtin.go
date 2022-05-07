@@ -14,8 +14,9 @@ import (
 )
 
 type FilesList struct {
-	Files    []string
-	Location string
+	Files           []string
+	Location        string
+	ProjectLocation string
 }
 
 var _ starlark.Value = new(FilesList)
@@ -27,6 +28,7 @@ func (fl FilesList) Type() string          { return "file_list" }
 func (fl FilesList) Truth() starlark.Bool  { return true }
 
 type filesBuiltin struct {
+	// FOR_SUBLOAD
 	projectLocation string
 }
 
@@ -107,7 +109,8 @@ func (fb filesBuiltin) filesBuiltin(thread *starlark.Thread, fn *starlark.Builti
 		relFileDirectory = fileDirectory
 	}
 	fl := FilesList{
-		Location: relFileDirectory,
+		Location:        relFileDirectory,
+		ProjectLocation: fb.projectLocation,
 	}
 	for f := range inclSet {
 		if _, match := exclSet[f]; !match {

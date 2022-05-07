@@ -1,0 +1,14 @@
+load("github.com/maxmcd/bramble/tests/busybox")
+
+
+def all():
+    return [busybox.busybox()]
+
+
+def print_simple():
+    return run(busybox.busybox(), "echo", ["simple"], hidden_paths=["/"])
+
+
+def ash():
+    # TODO: relative filepaths
+    return run(busybox.busybox(), "ash", read_only_paths=["../"])

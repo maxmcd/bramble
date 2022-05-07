@@ -21,10 +21,9 @@ import (
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/sandbox"
 	"github.com/maxmcd/bramble/pkg/textreplace"
-	"github.com/maxmcd/bramble/v/untar"
+	"github.com/maxmcd/reptar"
 	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
@@ -52,6 +51,11 @@ type BuildDerivationOptions struct {
 }
 
 func (b *Builder) BuildDerivation(ctx context.Context, drv Derivation, opts BuildDerivationOptions) (builtDrv Derivation, didBuild bool, err error) {
+	select {
+	case <-ctx.Done():
+		return Derivation{}, false, context.Canceled
+	default:
+	}
 	var span trace.Span
 	ctx, span = tracer.Start(ctx, "store.BuildDerivation")
 	defer span.End()
@@ -189,9 +193,9 @@ func (b *Builder) checkFetchDerivationHashes(drv Derivation, url string) error {
 	// If we have a hash to validate, ensure it's valid
 	if hash != "" && outputPath != hash {
 		return errors.Errorf(
-			"Urlfetch content doesn't match with the existing hash. "+
+			"Urlfetch for %q content doesn't match with the existing hash. "+
 				"Hash %q was provided by the output was %q",
-			hash, outputPath)
+			url, hash, outputPath)
 	}
 	// If we never had a hash to validate, add it to lockfile
 	if hash == "" {
@@ -229,7 +233,7 @@ func (b *Builder) fetchURLBuilder(ctx context.Context, drv Derivation, outputPat
 		if err != nil {
 			return errors.Wrap(err, "requires gzip-compressed body")
 		}
-		if err = untar.Untar(r, outputPaths["out"]); err != nil {
+		if err = reptar.Unarchive(r, outputPaths["out"]); err != nil {
 			return err
 		}
 		return nil
@@ -487,7 +491,7 @@ func (s *Store) archiveAndScanOutputDirectory(ctx context.Context, tarOutput, ha
 	// write the output files into an archive
 	go func() {
 		btpw := bufio.NewWriter(tarPipeWriter)
-		if err := reptar.Reptar(s.joinStorePath(storeFolder), btpw); err != nil {
+		if err := reptar.Archive(s.joinStorePath(storeFolder), btpw); err != nil {
 			errChan <- err
 			return
 		}
@@ -588,7 +592,7 @@ func (s *Store) hashNormalizedBuildOutput(location string, hash string) (err err
 	errChan := make(chan error)
 	resultChan := make(chan string)
 	go func() {
-		if err := reptar.Reptar(location, pipeWriter); err != nil {
+		if err := reptar.Archive(location, pipeWriter); err != nil {
 			errChan <- err
 		}
 		pipeWriter.Close()

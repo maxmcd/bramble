@@ -87,7 +87,8 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 	err = output.WalkAndPatch(8, func(dep project.Dependency, drv project.Derivation) (addGraph *project.ExecModuleOutput, buildOutputs []project.BuildOutput, err error) {
 		select {
 		case <-ctx.Done():
-			return
+			fmt.Println("context cancelled")
+			return nil, nil, context.Canceled
 		default:
 		}
 		dependencies := []store.DerivationOutput{}
@@ -107,7 +108,7 @@ func (b bramble) runBuild(ctx context.Context, output project.ExecModuleOutput, 
 		derivationDataLock.Unlock()
 
 		source, err := b.store.StoreLocalSources(ctx, store.SourceFiles{
-			ProjectLocation: b.project.Location(),
+			ProjectLocation: drv.Sources.ProjectLocation,
 			Location:        drv.Sources.Location,
 			Files:           drv.Sources.Files,
 		}) // TODO: delete this if the build fails?

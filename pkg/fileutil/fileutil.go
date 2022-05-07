@@ -1,7 +1,6 @@
 package fileutil
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -48,59 +47,6 @@ func CommonFilepathPrefix(paths []string) string {
 	return string(c)
 }
 
-func CP(wd string, paths ...string) (err error) {
-	if len(paths) == 1 {
-		return errors.New("copy takes at least two arguments")
-	}
-	absPaths := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if !filepath.IsAbs(path) {
-			absPaths = append(absPaths, filepath.Join(wd, path))
-		} else {
-			absPaths = append(absPaths, path)
-		}
-	}
-	dest := absPaths[len(paths)-1]
-	// if dest exists and it's not a directory
-	if FileExists(dest) {
-		return errors.New("copy destination can't be a file that exists")
-	}
-
-	toCopy := absPaths[:len(absPaths)-1]
-
-	// "cp foo.txt bar.txt" or "cp ./foo ./bar" is a special case if it's just
-	// two paths and they don't exist yet
-	if len(toCopy) == 1 && !PathExists(dest) {
-		f := toCopy[0]
-		if IsDir(f) {
-			return errors.WithStack(CopyDirectory(f, dest))
-		}
-		return errors.WithStack(CopyFile(f, dest))
-	}
-
-	// otherwise copy each listed file into a directory with the given name
-	for i, path := range toCopy {
-		// TODO: this should be Lstat. Do we need to add symlink support to CopyFile?
-		fi, err := os.Stat(path)
-		if err != nil {
-			return errors.Errorf("%q doesn't exist", paths[i])
-		}
-		if fi.IsDir() {
-			destFolder := filepath.Join(dest, fi.Name())
-			if err = CreateDirIfNotExists(destFolder, 0755); err != nil {
-				return err
-			}
-			err = CopyDirectory(path, filepath.Join(dest, fi.Name()))
-		} else {
-			err = CopyFile(path, filepath.Join(dest, fi.Name()))
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
-	return nil
-}
-
 func ReplaceAll(filepath, old, new string) (err error) {
 	f, err := os.Stat(filepath)
 	if err != nil {
@@ -134,11 +80,6 @@ func CopyDirectory(scrDir, dest string) error {
 			return errors.WithStack(err)
 		}
 
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		_ = stat
-		if !ok {
-			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
-		}
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeSymlink:
 			if err := CopySymLink(sourcePath, destPath); err != nil {
@@ -157,6 +98,10 @@ func CopyDirectory(scrDir, dest string) error {
 			}
 		}
 
+		// stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		// if !ok {
+		// 	return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
+		// }
 		// if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
 		// 	return errors.WithStack(err)
 		// }
@@ -190,11 +135,6 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 			return errors.Wrap(err, "error finding source file")
 		}
 
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
-		}
-
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
 			if err := CreateDirIfNotExists(destPath, 0755); err != nil {
@@ -209,10 +149,19 @@ func CopyFilesByPath(prefix string, files []string, dest string) (err error) {
 				return errors.WithStack(err)
 			}
 		}
-
-		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return errors.WithStack(err)
-		}
+		// TODO: Commenting this out (and the one in the function above) because
+		// we hit an issue where a file's group was `root`, but we can't write a
+		// file as the root group. Seems fine to leave this out, files should be
+		// greated with the default user and group of the of the current user,
+		// but just commenting for now. Who knows what the future holds.
+		//
+		// stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		// if !ok {
+		// 	return errors.Errorf("failed to get raw syscall.Stat_t data for '%s'", file)
+		// }
+		// if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+		//  return errors.WithStack(err)
+		// }
 
 		// TODO: when does this happen???
 		isSymlink := fileInfo.Mode()&os.ModeSymlink != 0

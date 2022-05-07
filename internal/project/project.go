@@ -32,7 +32,7 @@ type Project struct {
 
 	wd string
 
-	lockFile *config.LockFile
+	lockFile *config.Lockfile
 
 	dm *dependency.Manager
 }
@@ -174,22 +174,36 @@ func (p *Project) CalculateDependencies() (err error) {
 	return nil
 }
 
-func (p *Project) AddDependency(v types.Package) (err error) {
+func (p *Project) AddDependency(ctx context.Context, v types.Package) (err error) {
+	name, vs, err := p.dm.FindPackageFromModuleName(ctx, v.Name, v.Version)
+	if err != nil {
+		return err
+	}
+	_, _ = name, vs
+
 	existing, found := p.config.Dependencies[v.Name]
 	if found {
-		existing.Version = v.Version
-		p.config.Dependencies[v.Name] = existing
+		if v.Version != "" {
+			// TODO: validate that the version is well formed
+			existing.Version = v.Version
+			p.config.Dependencies[v.Name] = existing
+		}
 	} else {
 		p.config.Dependencies[v.Name] = config.Dependency{
 			Version: v.Version,
 		}
 	}
-	cfg, err := p.dm.CalculateConfigBuildlist(p.config)
+	buildList, err := p.dm.CalculateConfigBuildlist(ctx, p.config)
 	if err != nil {
 		return err
 	}
-	cfg.Render(os.Stdout)
-	return p.writeConfig(cfg)
+
+	p.lockFile.Dependencies = buildList
+	if err := p.WriteLockfile(); err != nil {
+		return err
+	}
+
+	return p.writeConfig(p.config)
 }
 
 func (p *Project) writeConfig(cfg config.Config) (err error) {

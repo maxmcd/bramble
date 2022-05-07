@@ -90,4 +90,12 @@ So now we:
 
 Ok, so regular build uses the network and re-generates the file if the sources have changed. Is there a way to track this? Maybe this goes in the lockfile? Yeah whatf do we do with the generate step? It's a derivation? It's a derivation that points at a generated file? How does that reference work? It's in the special value. So when a file changes, we re-generate. How do we know a file has changed? With generated file, we skip it, we just trust the generated file???? Yeah this is nasty, write it out...
 
-Ah yes, ok, the problem is, how do we know that the input files have changed?
+Ah yes, ok, the problem is, how do we know that the input files have changed? (add a hash to generated file)
+
+-------------------
+
+More thoughts on this:
+
+Maybe could just do recursive nix? Requirement is that the derivation that is calling bramble from within a derivation must not link to any dynamic dependencies in the output. Could allow people to have relatively full control of the build, but just aren't allowed to link out. Would be good for compiled languages, or similar.
+
+Tough that we don't know what the build graph is going to be in advance. Means we can't proactively fetch cache. Is there a way to persist what derivations were called on by that derivation? Maybe we just write it to the file as a non-hashable annotation? Oh yeah, could go in the output section. On a fresh build though we're still flying blind, maybe that's ok... not sure.

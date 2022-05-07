@@ -24,5 +24,6 @@ func TestNewProject(t *testing.T) {
 		if err := p.WriteLockfile(); err != nil {
 			t.Fatal(err)
 		}
+
 	}
 }
