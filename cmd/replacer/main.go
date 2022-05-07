@@ -6,8 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/maxmcd/bramble/pkg/reptar"
 	"github.com/maxmcd/bramble/pkg/textreplace"
+	"github.com/maxmcd/reptar"
 	"github.com/mholt/archiver/v3"
 )
 

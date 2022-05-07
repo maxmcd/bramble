@@ -14,7 +14,7 @@ import (
 	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/internal/types"
 	"github.com/maxmcd/bramble/pkg/httpx"
-	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/reptar"
 	"github.com/pkg/errors"
 )
 

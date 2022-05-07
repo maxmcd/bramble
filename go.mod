@@ -10,8 +10,9 @@ require (
 	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/containerd/console v1.0.3
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/klauspost/pgzip v1.2.4
+	github.com/klauspost/pgzip v1.2.5
 	github.com/maxmcd/dag v0.0.0-20210909010249-5757e2034a95
+	github.com/maxmcd/reptar v0.0.0-20220507012129-b7cb8d03dbe9
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/minio/sha256-simd v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
@@ -31,7 +32,6 @@ require (
 	golang.org/x/mod v0.4.2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
-	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 	gotest.tools/v3 v3.0.3 // indirect
 )
 

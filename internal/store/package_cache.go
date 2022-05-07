@@ -12,7 +12,7 @@ import (
 	"github.com/maxmcd/bramble/internal/netcache"
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/httpx"
-	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/reptar"
 	"github.com/pkg/errors"
 )
 

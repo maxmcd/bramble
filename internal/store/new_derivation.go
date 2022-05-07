@@ -7,7 +7,7 @@ import (
 
 	"github.com/maxmcd/bramble/pkg/fileutil"
 	"github.com/maxmcd/bramble/pkg/hasher"
-	"github.com/maxmcd/bramble/pkg/reptar"
+	"github.com/maxmcd/reptar"
 	"github.com/pkg/errors"
 )
 
