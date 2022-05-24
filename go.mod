@@ -15,7 +15,7 @@ require (
 	github.com/minio/sha256-simd v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6
-	github.com/opencontainers/runc v1.0.3
+	github.com/opencontainers/runc v1.1.2
 	github.com/pkg/errors v0.9.1
 	github.com/rhnvrm/simples3 v0.7.0
 	github.com/stretchr/testify v1.7.0
@@ -28,7 +28,7 @@ require (
 	go.starlark.net v0.0.0-20210901212718-87f333178d59
 	go.uber.org/zap v1.19.1
 	golang.org/x/mod v0.4.2
-	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
+	golang.org/x/sys v0.0.0-20211116061358-0a5406a5449c
 	gotest.tools/v3 v3.0.3 // indirect
 )
 
